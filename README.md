@@ -1,37 +1,45 @@
-# Bff_Template_Repo
+# 🧩 BFF User — Backend for Frontend pour la gestion des utilisateurs
 
-## 🏗️ Dépôt Modèle pour Backend for Frontend (BFF)
+## 🏗️ Présentation
 
-Ce dépôt sert de point de départ pour créer une application BFF (Backend for Frontend) destinée à interagir avec différents microservices.
+Ce dépôt correspond au **BFF (Backend for Frontend)** destiné à **gérer toutes les requêtes liées aux utilisateurs**.  
+Il sert d’interface entre le frontend et les différents microservices liés à la gestion des **users**, en assurant :
+- l’adaptation des données pour le front,  
+- la centralisation des appels vers les APIs backend,  
+- la simplification des flux réseau.
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Fonctionnalités principales
 
 - Serveur basé sur **Express.js**
-- Développement en **TypeScript** pour une meilleure sécurité et expérience
-- Gestion des variables d’environnement avec **dotenv**
-- Route de vérification de santé (health check) intégrée
-- Support **Docker** pour la conteneurisation
-- Gestion basique des erreurs
+- Développement en **TypeScript** pour une meilleure sécurité et maintenabilité
+- Intégration d’un endpoint `/health` pour la supervision
+- Gestion centralisée des erreurs et de la configuration réseau
+- Conteneurisation avec **Docker**
+- Tests unitaires avec **Jest**
+- Linting et formatage conformes aux standards du projet
 
 ---
 
-## ⚠️ Important
+## ⚙️ Objectif de ce BFF
 
-Avant de lancer l’application, pensez à définir la variable d’environnement `PORT`.
+Le **BFF User** a pour rôle :
+- de **gérer toutes les opérations liées aux utilisateurs** (récupération, création, mise à jour, suppression),
+- de **communiquer avec le microservice User Core**,
+- et de **préparer les données** pour un usage optimal côté frontend.
 
-Créez un fichier `.env` à la racine du projet avec le contenu suivant :
+---
+
+## ⚠️ Configuration
+
+Avant de démarrer, crée un fichier `.env` à la racine du projet :
 
 ```env
 PORT=3000
 ```
+# Installer les dépendances
+npm install
 
-## 🚀 Démarrage Rapide
-
-```bash
-# Construire l'image Docker
-docker build -t bff-template .
-
-# Lancer le conteneur
-docker run -p 3000:3000 --env-file .env bff-template
+# Lancer le serveur
+npm run start
