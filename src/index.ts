@@ -1,6 +1,10 @@
 import express from 'express';
 import healthRouter from './routes/health';
 import dotenv from 'dotenv';
+import usersRouter from './routes/getUsers';
+import createUserRouter from './routes/createUser';
+import updateUserRouter from './routes/updateUser';
+import deleteUserRouter from './routes/deleteUser';
 
 dotenv.config();
 
@@ -14,6 +18,26 @@ if (!PORT) {
 }
 
 app.use('/health', healthRouter);
+
+/**
+ * Get methods for users
+ */
+app.use('/users', usersRouter);
+
+/**
+ * Post methods for users
+ */
+app.use('/users', createUserRouter);
+
+/**
+ * Put methods for users
+ */
+app.use('/users', updateUserRouter);
+
+/**
+ * Delete methods for users
+ */
+app.use('/users', deleteUserRouter);
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
