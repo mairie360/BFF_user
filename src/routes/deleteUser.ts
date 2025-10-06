@@ -23,7 +23,7 @@ deleteUserRouter.delete('/:id', (req: Request, res: Response) => {
     handleApiRequest(req, res, async () => {
         console.log("Deleting user with id:", id);
         const response = await axios.delete(`${BASE_API_URL}/users/${id}`);
-        return response.data; // juste retourner les données
+        return response.data; // just return the data
     });
 });
 
