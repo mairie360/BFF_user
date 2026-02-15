@@ -1,0 +1,20 @@
+name: BFF User CICD
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  call-bff-pipeline:
+    uses: mairie360/CICD/.github/workflows/BFFs-cicd.yml@feat/mair-7-add-cicd-for-bffs
+    with:
+      package_name: mon-super-bff 
+      node_version: 20
+    secrets: inherit
