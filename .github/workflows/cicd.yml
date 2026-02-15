@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 jobs:
-  call-bff-pipeline:
+  CICD:
     uses: mairie360/CICD/.github/workflows/BFFs-cicd.yml@feat/mair-7-add-cicd-for-bffs
     with:
       package_name: mon-super-bff 
