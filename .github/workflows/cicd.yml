@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   CICD:
-    uses: mairie360/CICD/.github/workflows/BFFs-cicd.yml@feat/mair-7-add-cicd-for-bffs
+    uses: mairie360/CICD/.github/workflows/BFFs-cicd.yml@main
     with:
       package_name: mon-super-bff 
       node_version: 20
