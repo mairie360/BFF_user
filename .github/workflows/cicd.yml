@@ -13,6 +13,6 @@ jobs:
   CICD:
     uses: mairie360/CICD/.github/workflows/BFFs-cicd.yml@main
     with:
-      package_name: mon-super-bff 
+      package_name: bff-user
       node_version: 20
     secrets: inherit
