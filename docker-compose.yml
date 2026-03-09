@@ -132,46 +132,38 @@ services:
   
   #add other apis if needed
 
-  bff-user: # change bff name
-    container_name: bff-user-developpement #change bff name
+  bff-user:
+    container_name: bff-user-developpement
     build:
       context: .
       dockerfile: development.Dockerfile
+    # Mode synchronisation en temps réel (Docker Compose V2)
     develop:
       watch:
         - action: sync
           path: ./src
-          target: /usr/src/bff-user/src #change bff name
-        - action: sync
-          path: ./Cargo.toml
-          target: /usr/src/bff-user/Cargo.toml #change bff name
-        - action: sync
-          path: ./Cargo.lock
-          target: /usr/src/bff-user/Cargo.lock #change bff name
+          target: /app/src
+        - action: rebuild
+          path: package.json
     ports:
       - "4000:4000"
-    volumes:
-      - bff-user-target:/usr/src/bff-user/target #change bff name
     networks:
       - backend
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
     environment:
       <<: *common-env
-      PUBLIC_URL: http://bff-user.development.mairie360.fr  #change bff name
-      JWT_SECRET: b"secret"
-      JWT_TIMEOUT: 3600
+      # IMPORTANT : On utilise le nom du service Docker pour communiquer
+      CORE_API_URL: "core" 
+      CORE_API_PORT: 3000
+    volumes:
+      - /app/node_modules # Isolation des modules pour éviter les conflits OS (Mac/Windows vs Linux)
     depends_on:
       core:
         condition: service_healthy
-      #add other apis if needed
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://bff-user:4000/health"] #change bff name
-      interval: 5s
-      timeout: 2s
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 10s
 
   nginx:
     image: nginx:1.27.4-bookworm
