@@ -1,26 +1,43 @@
 import { Router } from 'express';
-import axios from 'axios'; // La lib utilisée
+import axios from 'axios';
+import { CheckApiResponse, CheckApiResponseSchema } from '../views/check_api_view';
+import { registry } from '../openapi-registry';
 
 const router = Router();
+const FULL_URL = `http://${process.env.CORE_API_URL}:${process.env.CORE_API_PORT}`;
 
-// Récupération des variables d'environnement
-const core_api_url = process.env.CORE_API_URL;
-const core_api_port = process.env.CORE_API_PORT;
+// Déclaration OpenAPI automatisée
+registry.registerPath({
+  method: 'get',
+  path: '/check_apis',
+  tags: ['Connectivity'],
+  summary: "Vérifie la connexion avec l'API Core (Rust)",
+  responses: {
+    200: {
+      description: 'Connexion réussie',
+      content: {
+        'application/json': {
+          schema: CheckApiResponseSchema,
+        },
+      },
+    },
+    502: {
+      description: 'API Core injoignable',
+    },
+  },
+});
 
-const FULL_URL = `http://${core_api_url}:${core_api_port}`;
-
+// Ta logique Express classique (inchangée et typée !)
 router.get('/', async (_, res) => {
   try {
-    // On fait l'appel vers l'API de base (ou un endpoint /health spécifique)
-    const response = await axios.get(`${FULL_URL}/health`, { timeout: 5000 });
+    await axios.get(`${FULL_URL}/health`, { timeout: 5000 });
     
-    console.log(response);
-    
-    res.status(200).json({
+    const result: CheckApiResponse = {
       status: 'OK',
       core_api: 'Connected',
-      details: response.data
-    });
+    };
+
+    res.status(200).json(result);
   } catch (error) {
     res.status(502).json({
       status: 'Error',

@@ -2,8 +2,17 @@ import { Router } from 'express';
 
 const router = Router();
 
-router.get('/', (_, res) => {
-  res.status(200).json({ status: 'ok' });
+/**
+ * @openapi
+ * /health:
+ * get:
+ * summary: Vérifie la santé du BFF
+ * responses:
+ * 200:
+ * description: OK
+ */
+router.get('/', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 export default router;
