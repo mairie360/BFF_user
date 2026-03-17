@@ -1,5 +1,6 @@
 import express from 'express';
 import healthRouter from './routes/health';
+import checkApis from './routes/check_apis';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -7,6 +8,7 @@ dotenv.config();
 const app = express();
 
 const PORT = process.env.PORT;
+const HOST = '0.0.0.0';
 
 if (!PORT) {
   console.error('Error: PORT environment variable is not set.');
@@ -14,7 +16,8 @@ if (!PORT) {
 }
 
 app.use('/health', healthRouter);
+app.use('/check_apis', checkApis);
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+app.listen(Number(PORT), HOST, () => {
+  console.log(`Server ready at http://${HOST}:${PORT}`);
 });
