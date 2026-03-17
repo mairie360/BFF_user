@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "8.4.3",
+    "@mairie360/core-api-openapi": "0.0.0-staging.d727f093b6d1a3db07e65c7b4a1c24dbb422992a",
     "axios": "1.12.2",
     "dotenv": "17.2.3",
     "express": "5.1.0",
     "next-swagger-doc": "0.4.1",
+    "openapi-fetch": "0.17.0",
     "swagger-jsdoc": "6.2.8",
     "swagger-ui-express": "5.0.1",
     "swagger-ui-react": "5.32.0",
