@@ -6,3 +6,6 @@ dist/
 .vscode/
 coverage/
 src/services/generated/
+
+openapi.json
+openapi.yaml
