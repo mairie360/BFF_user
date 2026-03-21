@@ -166,7 +166,7 @@ services:
       retries: 3
 
   nginx:
-    image: nginx:1.27.4-bookworm
+    image: nginx:1.29.1-bookworm
     restart: always
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
