@@ -9,4 +9,4 @@ src/services/generated/
 
 openapi.json
 openapi.yaml
-npmrc
+.npmrc
