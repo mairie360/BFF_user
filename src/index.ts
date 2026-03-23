@@ -4,6 +4,8 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import healthRouter from './routes/health';
 import checkApis from './routes/check_apis';
 import dotenv from 'dotenv';
+import cookieParser  from 'cookie-parser';
+import authRouter from './routes/auth';
 
 dotenv.config();
 
@@ -42,10 +44,15 @@ app.get('/swagger.json', (req, res) => {
   res.send(swaggerSpec);
 });
 
+app.use(cookieParser());
+
 // --- Middlewares & Routes ---
 app.use(express.json());
 app.use('/health', healthRouter);
 app.use('/check_apis', checkApis);
+app.use('/auth', authRouter);
+
+
 
 app.listen(Number(PORT), HOST, () => {
   console.log(`Server ready at http://${HOST}:${PORT}`);
