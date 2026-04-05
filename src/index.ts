@@ -1,11 +1,12 @@
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
 import healthRouter from './routes/health';
 import checkApis from './routes/check_apis';
-import dotenv from 'dotenv';
-import cookieParser  from 'cookie-parser';
 import authRouter from './routes/auth';
+import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
@@ -29,31 +30,31 @@ const swaggerOptions: swaggerJsdoc.Options = {
       },
     ],
   },
-  // On pointe vers les fichiers contenant les annotations @openapi
-  apis: ['./src/routes/*.ts'], 
+  apis: ['./src/routes/*.ts'],
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
-// Route pour l'interface visuelle
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// --- Middlewares globaux ---
+app.use(express.json());
+app.use(cookieParser());
 
-// Route pour l'extraction JSON (utilisée par l'Action Composite)
+// --- Routes Swagger ---
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get('/swagger.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
 
-app.use(cookieParser());
-
-// --- Middlewares & Routes ---
-app.use(express.json());
+// --- Routes métier ---
 app.use('/health', healthRouter);
 app.use('/check_apis', checkApis);
 app.use('/auth', authRouter);
 
+// --- Middleware de gestion des erreurs ---
+app.use(errorHandler);
 
-
+// --- Démarrage du serveur ---
 app.listen(Number(PORT), HOST, () => {
   console.log(`Server ready at http://${HOST}:${PORT}`);
   console.log(`Swagger docs at http://${HOST}:${PORT}/docs`);

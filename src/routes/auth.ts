@@ -1,21 +1,24 @@
 import { Router } from 'express';
 import authController from '../controllers/authController';
-import { authenticate } from '../middleware/authenticate';
 import { registry } from '../openapi-registry';
 
 const router = Router();
 
+// =============== OpenAPI Documentation ===============
+
 registry.registerPath({
     method: 'post',
     path: '/auth/login',
+    tags: ['Authentication'],
+    summary: 'Authentifier un utilisateur',
     requestBody: {
         content: {
             'application/json': {
                 schema: {
                     type: 'object',
                     properties: {
-                        email: { type: 'string', format: 'email' },
-                        password: { type: 'string', minLength: 6 }
+                        email: { type: 'string', format: 'email', description: 'Email de l\'utilisateur' },
+                        password: { type: 'string', minLength: 6, description: 'Mot de passe' }
                     },
                     required: ['email', 'password']
                 }
@@ -24,64 +27,81 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'Login successful',
+            description: 'Authentification réussie',
             content: {
                 'application/json': {
                     schema: {
                         type: 'object',
                         properties: {
                             accessToken: { type: 'string' },
-                            user: { $ref: '#/components/schemas/User' }
+                            message: { type: 'string' }
                         }
                     }
                 }
             }
         },
+        400: {
+            description: 'Erreur de validation'
+        },
         401: {
-            description: 'Invalid email or password'
+            description: 'Email ou mot de passe invalide'
         }
     }
 });
 
 registry.registerPath({
     method: 'post',
-    path: '/auth/refresh',
+    path: '/auth/logout',
     tags: ['Authentication'],
-    summary: 'Renouveler le token d\'accès',
-    requestBody: {
-        content: {
-            'application/json': {
-                schema: {
-                    type: 'object',
-                    properties: {},
-                    description: 'Le refreshToken est envoyé via cookie HttpOnly'
-                }
-            }
-        }
-    },
+    summary: 'Déconnecter un utilisateur',
     responses: {
         200: {
-            description: 'Token refreshed successfully',
+            description: 'Déconnexion réussie',
             content: {
                 'application/json': {
                     schema: {
                         type: 'object',
                         properties: {
-                            accessToken: { type: 'string' }
+                            message: { type: 'string' }
+                        }
+                    }
+                }
+            }
+        }
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/auth/me',
+    tags: ['Authentication'],
+    summary: 'Récupérer les infos de l\'utilisateur connecté',
+    responses: {
+        200: {
+            description: 'Infos utilisateur',
+            content: {
+                'application/json': {
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            id: { type: 'string' },
+                            email: { type: 'string' },
+                            name: { type: 'string' }
                         }
                     }
                 }
             }
         },
         401: {
-            description: 'Invalid or expired refresh token'
+            description: 'Non authentifié'
         }
     }
 });
 
+// =============== Routes ===============
+
 router.post('/login', authController.login);
-router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
-router.get('/me', authenticate, authController.getMe);
+router.get('/me', authController.getMe);
 
 export default router;

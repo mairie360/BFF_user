@@ -27,7 +27,6 @@ registry.registerPath({
   },
 });
 
-// Ta logique Express classique (inchangée et typée !)
 router.get('/', async (_, res) => {
   try {
     await axios.get(`${FULL_URL}/health`, { timeout: 5000 });

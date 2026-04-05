@@ -1,73 +1,80 @@
 import { Request, Response } from 'express';
-import { login as loginService } from '../services/authService';
-import tokenService from '../services/tokenService';
-import coreClient from '../clients/coreClient';
+import { AuthenticationService } from '@mairie360/core-api-openapi';
+import { validateLoginInput } from '../utils/validators';
+import { setTokenCookie, clearTokenCookie } from '../utils/cookieUtils';
 
-// Override Express Request type to include user information
-declare global {
-    namespace Express {
-        interface Request {
-            user?: { userId: string };
-        }
-    }
-}
-
-async function login(req: Request, res: Response) {
-    const body = req.body as { email?: string; password?: string };
-    const { email, password } = body;
-    if (!email || !password) {
-        return res.status(400).json({ message: 'Email and password are required' });
-    }
-
+/**
+ * Login - Authentifier un utilisateur
+ * POST /auth/login
+ */
+export async function login(req: Request, res: Response) {
     try {
-        const data = await loginService(email, password);
-        const { accessToken, refreshToken, user } = data.data;
-        tokenService.setRefreshCookieInResponse(res, refreshToken); // Set refresh token in HTTP-only cookie
-        res.json({ accessToken, user });
-    } catch (error) {
+        const { email, password } = req.body;
+
+        // Valider les inputs (verification en plus de celle du coreapi)
+        const validation = validateLoginInput(email, password);
+        if (!validation.valid) {
+            return res.status(400).json({ 
+                message: 'Validation error',
+                errors: validation.errors 
+            });
+        }
+
+        const token = await AuthenticationService.login({
+            email,
+            password
+        });
+
+        // token en cookie HttpOnly
+        setTokenCookie(res, token);
+
+        res.json({ 
+            accessToken: token,
+            message: 'Login successful' 
+        });
+
+    } catch (error: any) {
         console.error('Login error:', error);
-        res.status(401).json({ message: 'Invalid email or password' });
+        
+        if (error.status === 401) {
+            return res.status(401).json({ message: 'Invalid email or password' });
+        }
+        
+        res.status(500).json({ message: 'Authentication failed' });
     }
 }
 
-async function refresh(req: Request, res: Response) {
-    const refreshToken = req.cookies.refreshToken;
-    if (!refreshToken) {
-        return res.status(401).json({ message: 'Missing refresh token' });
+/**
+ * Logout - Déconnecter un utilisateur
+ * POST /auth/logout
+ */
+export function logout(req: Request, res: Response) {
+    try {
+        clearTokenCookie(res);
+
+        res.json({ message: 'Logged out successfully' });
+
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({ message: 'Logout failed' });
     }
-
-    const payload = tokenService.verifyRefreshToken(refreshToken);
-    if (!payload) {
-        return res.status(401).json({ message: 'Invalid or expired refresh token' });
-    }
-
-    // will the backend refresh the token
-
-    // const userId = payload.userId;
-
-    // try {
-    //     const data = await coreClient.GET(`/users/${userId}`);
-    //     const { accessToken, refreshTokenpo: newRefreshToken } = data.data;
-    //     tokenService.setRefreshCookieInResponse(res, newRefreshToken); // Update refresh token in cookie
-    //     res.json({ accessToken });
-    // } catch (error) {
-    //     console.error('Error refreshing token:', error);
-    //     res.status(500).json({ message: 'Failed to refresh token' });
-    // }
 }
 
-function logout(req: Request, res: Response) {
-    tokenService.clearRefreshCookie(res); // Clear the refresh token cookie
-    res.json({ message: 'Logged out successfully' });
-}
-
-function getMe(req: Request, res: Response) {
-    res.json({ user: req.user });
+/**
+ * Get current user info
+ * GET /auth/me (PROTÉGÉE)
+ */
+export function getMe(req: Request, res: Response) {
+    try {
+        res.json(req.user || { message: 'No user info available' });
+    } catch (error) {
+        console.error('Get user error:', error);
+        res.status(500).json({ message: 'Failed to get user info' });
+    }
 }
 
 export default {
     login,
-    refresh,
     logout,
     getMe
 };
