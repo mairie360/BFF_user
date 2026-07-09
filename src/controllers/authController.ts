@@ -1,7 +1,17 @@
 import { Request, Response } from 'express';
-import { AuthenticationService } from '@mairie360/core-api-openapi';
-import { validateLoginInput } from '../utils/validators';
-import { setTokenCookie, clearTokenCookie } from '../utils/cookieUtils';
+import axios from 'axios';
+import { clearTokenCookie, setTokenCookie } from '../utils/cookieUtils';
+import type { LoginView } from '@mairie360/core-api-openapi/models/LoginView';
+import type { RegisterView } from '@mairie360/core-api-openapi/models/RegisterView';
+import { coreClient, getCoreApiBaseUrl } from '../clients/coreClient';
+
+function sendCoreError(error: unknown, res: Response) {
+    if (axios.isAxiosError(error) && error.response) {
+        return res.status(error.response.status).json(error.response.data);
+    }
+
+    return res.status(500).json({ message: 'Unknown error', error });
+}
 
 /**
  * Login - Authentifier un utilisateur
@@ -9,38 +19,39 @@ import { setTokenCookie, clearTokenCookie } from '../utils/cookieUtils';
  */
 export async function login(req: Request, res: Response) {
     try {
-        const { email, password } = req.body;
+        const loginView: LoginView = req.body;
+        const { data: token } = await coreClient.post<string>(
+            '/api/v1/auth/login',
+            loginView,
+            { baseURL: getCoreApiBaseUrl() },
+        );
 
-        // Valider les inputs (verification en plus de celle du coreapi)
-        const validation = validateLoginInput(email, password);
-        if (!validation.valid) {
-            return res.status(400).json({ 
-                message: 'Validation error',
-                errors: validation.errors 
-            });
+        if (typeof token === 'string') {
+            setTokenCookie(res, token);
         }
 
-        const token = await AuthenticationService.login({
-            email,
-            password
-        });
-
-        // token en cookie HttpOnly
-        setTokenCookie(res, token);
-
-        res.json({ 
-            accessToken: token,
-            message: 'Login successful' 
-        });
-
+        res.status(200).json(token);
     } catch (error: any) {
-        console.error('Login error:', error);
-        
-        if (error.status === 401) {
-            return res.status(401).json({ message: 'Invalid email or password' });
-        }
-        
-        res.status(500).json({ message: 'Authentication failed' });
+        sendCoreError(error, res);
+    }
+}
+
+/**
+ * Register - Créer un utilisateur
+ * POST /auth/register
+ */
+export async function register(req: Request, res: Response) {
+    try {
+        const registerView: RegisterView = req.body;
+        const { data: result } = await coreClient.post<string>(
+            '/api/v1/auth/register',
+            registerView,
+            { baseURL: getCoreApiBaseUrl() },
+        );
+
+        res.status(201).json(result);
+    } catch (error: any) {
+        sendCoreError(error, res);
     }
 }
 
@@ -53,28 +64,18 @@ export function logout(req: Request, res: Response) {
         clearTokenCookie(res);
 
         res.json({ message: 'Logged out successfully' });
-
-    } catch (error) {
-        console.error('Logout error:', error);
-        res.status(500).json({ message: 'Logout failed' });
-    }
-}
-
-/**
- * Get current user info
- * GET /auth/me (PROTÉGÉE)
- */
-export function getMe(req: Request, res: Response) {
-    try {
-        res.json(req.user || { message: 'No user info available' });
-    } catch (error) {
-        console.error('Get user error:', error);
-        res.status(500).json({ message: 'Failed to get user info' });
+    } catch (error: any) {
+        if (error && error.status && error.body) {
+            res.status(error.status).json(error.body);
+        } else {
+            console.error('Logout error:', error);
+            res.status(500).json({ message: 'Logout failed', error });
+        }
     }
 }
 
 export default {
     login,
+    register,
     logout,
-    getMe
 };

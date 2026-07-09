@@ -1,107 +1,142 @@
 import { Router } from 'express';
 import authController from '../controllers/authController';
-import { registry } from '../openapi-registry';
+import {
+    ApiErrorResponse,
+    AuthTokenResponse,
+    LoginViewSchema,
+    LogoutResponse,
+    RegisterViewSchema,
+    registry,
+} from '../openapi-registry';
 
 const router = Router();
-
-// =============== OpenAPI Documentation ===============
 
 registry.registerPath({
     method: 'post',
     path: '/auth/login',
     tags: ['Authentication'],
-    summary: 'Authentifier un utilisateur',
-    requestBody: {
-        content: {
-            'application/json': {
-                schema: {
-                    type: 'object',
-                    properties: {
-                        email: { type: 'string', format: 'email', description: 'Email de l\'utilisateur' },
-                        password: { type: 'string', minLength: 6, description: 'Mot de passe' }
-                    },
-                    required: ['email', 'password']
-                }
-            }
-        }
+    summary: 'Authentifie un utilisateur',
+    description: 'Transmet les identifiants au Core API et retourne le token JWT.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: LoginViewSchema,
+                },
+            },
+        },
     },
     responses: {
         200: {
-            description: 'Authentification réussie',
+            description: 'Utilisateur authentifié avec succès',
             content: {
                 'application/json': {
-                    schema: {
-                        type: 'object',
-                        properties: {
-                            accessToken: { type: 'string' },
-                            message: { type: 'string' }
-                        }
-                    }
-                }
-            }
-        },
-        400: {
-            description: 'Erreur de validation'
+                    schema: AuthTokenResponse,
+                },
+            },
         },
         401: {
-            description: 'Email ou mot de passe invalide'
-        }
-    }
+            description: 'Identifiants invalides',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        500: {
+            description: 'Erreur serveur',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/register',
+    tags: ['Authentication'],
+    summary: 'Crée un utilisateur',
+    description: 'Transmet les informations d\'inscription au Core API.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: RegisterViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        201: {
+            description: 'Utilisateur créé avec succès',
+            content: {
+                'application/json': {
+                    schema: AuthTokenResponse,
+                },
+            },
+        },
+        400: {
+            description: 'Données invalides',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        409: {
+            description: 'Utilisateur déjà existant',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        500: {
+            description: 'Erreur serveur',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+    },
 });
 
 registry.registerPath({
     method: 'post',
     path: '/auth/logout',
     tags: ['Authentication'],
-    summary: 'Déconnecter un utilisateur',
+    summary: 'Déconnecte un utilisateur',
+    description: 'Supprime le cookie HTTP-only contenant le token d\'accès.',
     responses: {
         200: {
-            description: 'Déconnexion réussie',
+            description: 'Utilisateur déconnecté',
             content: {
                 'application/json': {
-                    schema: {
-                        type: 'object',
-                        properties: {
-                            message: { type: 'string' }
-                        }
-                    }
-                }
-            }
-        }
-    }
-});
-
-registry.registerPath({
-    method: 'get',
-    path: '/auth/me',
-    tags: ['Authentication'],
-    summary: 'Récupérer les infos de l\'utilisateur connecté',
-    responses: {
-        200: {
-            description: 'Infos utilisateur',
-            content: {
-                'application/json': {
-                    schema: {
-                        type: 'object',
-                        properties: {
-                            id: { type: 'string' },
-                            email: { type: 'string' },
-                            name: { type: 'string' }
-                        }
-                    }
-                }
-            }
+                    schema: LogoutResponse,
+                },
+            },
         },
-        401: {
-            description: 'Non authentifié'
-        }
-    }
+        500: {
+            description: 'Erreur serveur',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+    },
 });
 
 // =============== Routes ===============
 
 router.post('/login', authController.login);
+router.post('/register', authController.register);
 router.post('/logout', authController.logout);
-router.get('/me', authController.getMe);
 
 export default router;
