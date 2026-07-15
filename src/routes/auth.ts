@@ -3,6 +3,7 @@ import authController from '../controllers/authController';
 import {
     ApiErrorResponse,
     AuthTokenResponse,
+    ForceChangePasswordViewSchema,
     LoginViewSchema,
     LogoutResponse,
     RegisterViewSchema,
@@ -104,6 +105,53 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
+    path: '/auth/force-change-password',
+    tags: ['Authentication'],
+    summary: 'Force le changement de mot de passe',
+    description: 'Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force-change-password/.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: ForceChangePasswordViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        204: {
+            description: 'Mot de passe changé avec succès',
+        },
+        400: {
+            description: 'Données invalides',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        401: {
+            description: 'Token invalide ou expiré',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        500: {
+            description: 'Erreur serveur',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
     path: '/auth/logout',
     tags: ['Authentication'],
     summary: 'Déconnecte un utilisateur',
@@ -132,6 +180,7 @@ registry.registerPath({
 
 router.post('/login', authController.login);
 router.post('/register', authController.register);
+router.post('/force-change-password', authController.forceChangePassword);
 router.post('/logout', authController.logout);
 
 export default router;

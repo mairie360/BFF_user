@@ -1,7 +1,12 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { clearTokenCookie, setTokenCookie } from '../utils/cookieUtils';
-import type { CreateUserView, LoginResponseView, LoginView } from '@mairie360/core-api-openapi/model';
+import type {
+    CreateUserView,
+    ForceChangePasswordView,
+    LoginResponseView,
+    LoginView,
+} from '@mairie360/core-api-openapi/models';
 import { coreAdminUsersClient, coreAuthClient } from '../clients/coreClient';
 
 function sendCoreError(error: unknown, res: Response) {
@@ -57,6 +62,21 @@ export async function register(req: Request, res: Response) {
 }
 
 /**
+ * Force change password - Change un mot de passe via token Core API
+ * POST /auth/force-change-password
+ */
+export async function forceChangePassword(req: Request, res: Response) {
+    try {
+        const forceChangePasswordView: ForceChangePasswordView = req.body;
+        await coreAuthClient.forceChangePassword(forceChangePasswordView);
+
+        res.status(204).send();
+    } catch (error) {
+        sendCoreError(error, res);
+    }
+}
+
+/**
  * Logout - Déconnecter un utilisateur
  * POST /auth/logout
  */
@@ -87,5 +107,6 @@ function isLoginResponseView(value: unknown): value is LoginResponseView {
 export default {
     login,
     register,
+    forceChangePassword,
     logout,
 };

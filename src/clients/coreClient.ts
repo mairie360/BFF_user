@@ -2,13 +2,18 @@ import axios from 'axios';
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import type {
     CreateUserView,
+    ForceChangePasswordView,
     GetUserResponseView,
     LoginResponseView,
     LoginView,
-} from '@mairie360/core-api-openapi/model';
+} from '@mairie360/core-api-openapi/models';
 
 type CoreAuthClient = {
     login: (loginView: LoginView, options?: AxiosRequestConfig) => Promise<AxiosResponse<LoginResponseView>>;
+    forceChangePassword: (
+        forceChangePasswordView: ForceChangePasswordView,
+        options?: AxiosRequestConfig,
+    ) => Promise<AxiosResponse<void>>;
 };
 
 type CoreAdminUsersClient = {
