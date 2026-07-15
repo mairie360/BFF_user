@@ -1,5 +1,9 @@
+import '../config/registerGeneratedOpenApi';
 import axios from 'axios';
-import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+import { getAdminUsers } from '@mairie360/core-api-openapi/endpoints/admin-users/admin-users';
+import { getAuth } from '@mairie360/core-api-openapi/endpoints/auth/auth';
+import { getUsers } from '@mairie360/core-api-openapi/endpoints/users/users';
 import type {
     CreateUserView,
     ForceChangePasswordView,
@@ -7,6 +11,7 @@ import type {
     LoginResponseView,
     LoginView,
 } from '@mairie360/core-api-openapi/models';
+import { DEFAULT_JWT_TOKEN } from '../config/token';
 
 type CoreAuthClient = {
     login: (loginView: LoginView, options?: AxiosRequestConfig) => Promise<AxiosResponse<LoginResponseView>>;
@@ -39,51 +44,33 @@ export function getCoreApiBaseUrl(): string {
 
 export const coreClient = axios.create({
     baseURL: getCoreApiBaseUrl(),
+    timeout: 5000,
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
-function registerTsNodeForGeneratedPackage(): void {
-    // The published OpenAPI package exposes TypeScript sources. Register ts-node so
-    // runtime requires from node_modules work the same way as in the other BFFs.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('ts-node').register({
-        transpileOnly: true,
-        ignore: [],
-        compilerOptions: { module: 'commonjs' },
-    });
-}
+coreClient.interceptors.request.use(
+    (config) => {
+        const currentAuth = config.headers.Authorization;
+        const isLoginRequest = config.url === '/api/v1/auth/login';
 
-function loadGeneratedCoreClients(axiosInstance: AxiosInstance): {
-    auth: CoreAuthClient;
-    adminUsers: CoreAdminUsersClient;
-    users: CoreUsersClient;
-} {
-    registerTsNodeForGeneratedPackage();
+        if (!isLoginRequest && !currentAuth && DEFAULT_JWT_TOKEN) {
+            config.headers.Authorization = DEFAULT_JWT_TOKEN.startsWith('Bearer ')
+                ? DEFAULT_JWT_TOKEN
+                : `Bearer ${DEFAULT_JWT_TOKEN}`;
+        }
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getAuth } = require('@mairie360/core-api-openapi/endpoints/auth/auth') as {
-        getAuth: (instance?: AxiosInstance) => CoreAuthClient;
-    };
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getAdminUsers } = require('@mairie360/core-api-openapi/endpoints/admin-users/admin-users') as {
-        getAdminUsers: (instance?: AxiosInstance) => CoreAdminUsersClient;
-    };
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getUsers } = require('@mairie360/core-api-openapi/endpoints/users/users') as {
-        getUsers: (instance?: AxiosInstance) => CoreUsersClient;
-    };
+        if (config.url && config.url.endsWith('/')) {
+            config.url = config.url.slice(0, -1);
+        }
 
-    return {
-        auth: getAuth(axiosInstance),
-        adminUsers: getAdminUsers(axiosInstance),
-        users: getUsers(axiosInstance),
-    };
-}
+        console.log('URL OpenAPI nettoyee et envoyee :', config.baseURL + '' + config.url);
+        return config;
+    },
+    (error) => Promise.reject(error),
+);
 
-const generatedCoreClients = loadGeneratedCoreClients(coreClient);
-
-export const coreAuthClient = generatedCoreClients.auth;
-export const coreAdminUsersClient = generatedCoreClients.adminUsers;
-export const coreUsersClient = generatedCoreClients.users;
+export const coreAuthClient: CoreAuthClient = getAuth(coreClient);
+export const coreAdminUsersClient: CoreAdminUsersClient = getAdminUsers(coreClient);
+export const coreUsersClient: CoreUsersClient = getUsers(coreClient);

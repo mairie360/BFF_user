@@ -105,7 +105,7 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
-    path: '/auth/force-change-password',
+    path: '/auth/force_change_password',
     tags: ['Authentication'],
     summary: 'Force le changement de mot de passe',
     description: 'Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force-change-password/.',
@@ -180,7 +180,7 @@ registry.registerPath({
 
 router.post('/login', authController.login);
 router.post('/register', authController.register);
-router.post('/force-change-password', authController.forceChangePassword);
+router.post('/force_change_password', authController.forceChangePassword);
 router.post('/logout', authController.logout);
 
 export default router;
