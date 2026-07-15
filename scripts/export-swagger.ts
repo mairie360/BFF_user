@@ -3,13 +3,6 @@ import path from 'path';
 import { OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
 import { registry } from '../src/openapi-registry';
 
-// Important : Il faut importer les routes pour qu'elles s'enregistrent dans le `registry`
-function importAll(r: string[]) {
-  r.forEach(file => {
-    require(path.resolve(__dirname, '../src/routes', file));
-  });
-}
-
 const routeFiles = fs.readdirSync(path.join(__dirname, '../src/routes')).filter(file => file.endsWith('.ts') || file.endsWith('.js'));
 routeFiles.forEach(file => {
   require(path.resolve(__dirname, '../src/routes', file));

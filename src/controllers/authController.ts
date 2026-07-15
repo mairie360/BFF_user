@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { clearTokenCookie, setTokenCookie } from '../utils/cookieUtils';
-import type { LoginView } from '@mairie360/core-api-openapi/models/LoginView';
-import type { RegisterView } from '@mairie360/core-api-openapi/models/RegisterView';
+import type { CreateUserView, LoginView } from '@mairie360/core-api-openapi/model';
 import { coreClient, getCoreApiBaseUrl } from '../clients/coreClient';
 
 function sendCoreError(error: unknown, res: Response) {
@@ -11,6 +10,16 @@ function sendCoreError(error: unknown, res: Response) {
     }
 
     return res.status(500).json({ message: 'Unknown error', error });
+}
+
+function isHttpError(error: unknown): error is { status: number; body: unknown } {
+    return (
+        typeof error === 'object'
+        && error !== null
+        && 'status' in error
+        && 'body' in error
+        && typeof error.status === 'number'
+    );
 }
 
 /**
@@ -31,7 +40,7 @@ export async function login(req: Request, res: Response) {
         }
 
         res.status(200).json(token);
-    } catch (error: any) {
+    } catch (error) {
         sendCoreError(error, res);
     }
 }
@@ -42,7 +51,7 @@ export async function login(req: Request, res: Response) {
  */
 export async function register(req: Request, res: Response) {
     try {
-        const registerView: RegisterView = req.body;
+        const registerView: CreateUserView = req.body;
         const { data: result } = await coreClient.post<string>(
             '/api/v1/auth/register',
             registerView,
@@ -50,7 +59,7 @@ export async function register(req: Request, res: Response) {
         );
 
         res.status(201).json(result);
-    } catch (error: any) {
+    } catch (error) {
         sendCoreError(error, res);
     }
 }
@@ -64,8 +73,8 @@ export function logout(req: Request, res: Response) {
         clearTokenCookie(res);
 
         res.json({ message: 'Logged out successfully' });
-    } catch (error: any) {
-        if (error && error.status && error.body) {
+    } catch (error) {
+        if (isHttpError(error)) {
             res.status(error.status).json(error.body);
         } else {
             console.error('Logout error:', error);

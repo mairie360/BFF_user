@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import { extractTokenFromHeader } from '../utils/cookieUtils';
 import { UserIdParams } from '../openapi-registry';
-import type { AboutResponseView } from '@mairie360/core-api-openapi/models/AboutResponseView';
+import type { GetMeResponseView } from '@mairie360/core-api-openapi/model';
 import { coreClient, getCoreApiBaseUrl } from '../clients/coreClient';
 
 export async function about(req: Request, res: Response) {
@@ -17,7 +17,7 @@ export async function about(req: Request, res: Response) {
         }
 
         const token = extractTokenFromHeader(req.headers.authorization);
-        const { data: userInfo } = await coreClient.get<AboutResponseView>(
+        const { data: userInfo } = await coreClient.get<GetMeResponseView>(
             `/api/v1/user/${paramsResult.data.userId}/about`,
             {
                 baseURL: getCoreApiBaseUrl(),
@@ -26,7 +26,7 @@ export async function about(req: Request, res: Response) {
         );
 
         res.status(200).json(userInfo);
-    } catch (error: any) {
+    } catch (error) {
         if (axios.isAxiosError(error) && error.response) {
             return res.status(error.response.status).json(error.response.data);
         }
