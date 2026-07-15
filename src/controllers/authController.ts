@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { clearTokenCookie, setTokenCookie } from '../utils/cookieUtils';
-import type { CreateUserView, LoginView } from '@mairie360/core-api-openapi/model';
-import { coreClient, getCoreApiBaseUrl } from '../clients/coreClient';
+import type { CreateUserView, LoginResponseView, LoginView } from '@mairie360/core-api-openapi/model';
+import { coreAdminUsersClient, coreAuthClient } from '../clients/coreClient';
 
 function sendCoreError(error: unknown, res: Response) {
     if (axios.isAxiosError(error) && error.response) {
@@ -29,14 +29,10 @@ function isHttpError(error: unknown): error is { status: number; body: unknown }
 export async function login(req: Request, res: Response) {
     try {
         const loginView: LoginView = req.body;
-        const { data: token } = await coreClient.post<string>(
-            '/api/v1/auth/login',
-            loginView,
-            { baseURL: getCoreApiBaseUrl() },
-        );
+        const { data: token } = await coreAuthClient.login(loginView);
 
-        if (typeof token === 'string') {
-            setTokenCookie(res, token);
+        if (isLoginResponseView(token)) {
+            setTokenCookie(res, token.refresh_token);
         }
 
         res.status(200).json(token);
@@ -52,13 +48,9 @@ export async function login(req: Request, res: Response) {
 export async function register(req: Request, res: Response) {
     try {
         const registerView: CreateUserView = req.body;
-        const { data: result } = await coreClient.post<string>(
-            '/api/v1/auth/register',
-            registerView,
-            { baseURL: getCoreApiBaseUrl() },
-        );
+        await coreAdminUsersClient.adminPostUser(registerView);
 
-        res.status(201).json(result);
+        res.status(201).send();
     } catch (error) {
         sendCoreError(error, res);
     }
@@ -81,6 +73,15 @@ export function logout(req: Request, res: Response) {
             res.status(500).json({ message: 'Logout failed', error });
         }
     }
+}
+
+function isLoginResponseView(value: unknown): value is LoginResponseView {
+    return (
+        typeof value === 'object'
+        && value !== null
+        && 'refresh_token' in value
+        && typeof value.refresh_token === 'string'
+    );
 }
 
 export default {

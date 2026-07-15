@@ -73,10 +73,12 @@ export const AboutResponseViewSchema = z.object({
     }),
 }).openapi('AboutResponseView');
 
-export const AuthTokenResponse = z.string().openapi({
-    description: 'Token JWT retourné par le Core API',
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-});
+export const AuthTokenResponse = z.object({
+    refresh_token: z.string().openapi({
+        description: 'Refresh token retourné par le Core API',
+        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    }),
+}).openapi('AuthTokenResponse');
 
 export const LogoutResponse = z.object({
     message: z.string().openapi({

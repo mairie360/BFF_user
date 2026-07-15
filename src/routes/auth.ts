@@ -74,11 +74,6 @@ registry.registerPath({
     responses: {
         201: {
             description: 'Utilisateur créé avec succès',
-            content: {
-                'application/json': {
-                    schema: AuthTokenResponse,
-                },
-            },
         },
         400: {
             description: 'Données invalides',

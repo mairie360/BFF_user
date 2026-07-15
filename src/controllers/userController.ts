@@ -2,8 +2,7 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import { extractTokenFromHeader } from '../utils/cookieUtils';
 import { UserIdParams } from '../openapi-registry';
-import type { GetMeResponseView } from '@mairie360/core-api-openapi/model';
-import { coreClient, getCoreApiBaseUrl } from '../clients/coreClient';
+import { coreUsersClient } from '../clients/coreClient';
 
 export async function about(req: Request, res: Response) {
     try {
@@ -17,13 +16,9 @@ export async function about(req: Request, res: Response) {
         }
 
         const token = extractTokenFromHeader(req.headers.authorization);
-        const { data: userInfo } = await coreClient.get<GetMeResponseView>(
-            `/api/v1/user/${paramsResult.data.userId}/about`,
-            {
-                baseURL: getCoreApiBaseUrl(),
-                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-            },
-        );
+        const { data: userInfo } = await coreUsersClient.getUser(paramsResult.data.userId, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
 
         res.status(200).json(userInfo);
     } catch (error) {
