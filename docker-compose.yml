@@ -3,6 +3,12 @@ volumes:
   redis-data:
   bff-user-target:
 
+secrets:
+  npmrc:
+    file: ./.npmrc
+  node_auth_token:
+    environment: NODE_AUTH_TOKEN
+
 networks:
   backend:
 
@@ -30,7 +36,7 @@ x-depends-on: &depends-on
 #   retries: 5
 
 x-service: &service-template
-  image: ghcr.io/mairie360/service_name:latest
+  image: ghcr.io/mairie360/service_name:1.0.0
   pull_policy: always
   restart: always
   expose:
@@ -42,9 +48,9 @@ x-service: &service-template
 
 services:
   postgres:
-    image: ghcr.io/mairie360/database:dev-latest
+    image: ghcr.io/mairie360/database:1.0.0
     restart: always
-    container_name: mairie360-db-bff-user #change bff name
+    container_name: mairie360-db-bff-user
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
@@ -52,7 +58,7 @@ services:
     expose:
       - "5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     networks:
       - backend
     healthcheck:
@@ -62,8 +68,8 @@ services:
       retries: 5
 
   liquibase:
-    image: ghcr.io/mairie360/liquibase-migrations:dev-latest
-    container_name: mairie360-liquibase-bff-user #change bff name
+    image: ghcr.io/mairie360/liquibase-migrations:1.0.0
+    container_name: mairie360-liquibase-bff-user
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,7 +78,7 @@ services:
       LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/mairie_360_database
       LIQUIBASE_COMMAND_USERNAME: ${DB_USER:-postgres}
       LIQUIBASE_COMMAND_PASSWORD: ${DB_PASSWORD:-password}
-      LIQUIBASE_SEARCH_PATH: /liquibase/changelog
+      LIQUIBASE_SEARCH_PATH: /migrations
     command: >
       --changelog-file=changelog.xml
       update
@@ -81,7 +87,7 @@ services:
 
   redis:
     image: redis:8.4.0-bookworm
-    container_name: mairie360-redis-bff-user #change bff name
+    container_name: mairie360-redis-bff-user #change api name
     restart: always
     expose:
       - "6379"
@@ -97,7 +103,7 @@ services:
 
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:dev-1644fa7
+    image: ghcr.io/mairie360/core-api:dev-ed2b569
     ports:
       - "3000:3000"
     networks:
@@ -123,12 +129,12 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"] # <--- Doit être 3000
-      interval: 5s
-      timeout: 2s
-      retries: 3
-      start_period: 10s
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:3000/health"] # <--- Doit être 3000
+    #   interval: 5s
+    #   timeout: 2s
+    #   retries: 3
+    #   start_period: 10s
   
   #add other apis if needed
 
@@ -137,6 +143,9 @@ services:
     build:
       context: .
       dockerfile: development.Dockerfile
+      secrets:
+        - npmrc
+        - node_auth_token
     # Mode synchronisation en temps réel (Docker Compose V2)
     develop:
       watch:
@@ -156,9 +165,9 @@ services:
       CORE_API_PORT: 3000
     volumes:
       - /app/node_modules # Isolation des modules pour éviter les conflits OS (Mac/Windows vs Linux)
-    depends_on:
-      core:
-        condition: service_healthy
+    # depends_on:
+    #   core:
+    #     condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 10s
