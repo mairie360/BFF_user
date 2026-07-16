@@ -33,6 +33,16 @@ Le **BFF User** a pour rôle :
 
 ## ⚠️ Configuration
 
+L'accès au package privé `@mairie360/core-api-openapi` nécessite un token
+GitHub Packages avec la permission `read:packages` :
+
+```sh
+export NODE_AUTH_TOKEN=<github-token>
+```
+
+Le token est transmis aux builds Docker comme secret BuildKit et n'est pas
+enregistré dans l'image.
+
 Avant de démarrer, crée un fichier `.env` à la racine du projet :
 
 ```env

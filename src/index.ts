@@ -1,9 +1,14 @@
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
-import swaggerJsdoc from 'swagger-jsdoc';
+import { OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
+import { registry } from './openapi-registry';
 import healthRouter from './routes/health';
 import checkApis from './routes/check_apis';
-import dotenv from 'dotenv';
+import authRouter from './routes/auth';
+import userRouter from './routes/user';
+import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
@@ -11,42 +16,48 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
-// --- Configuration Swagger ---
-const swaggerOptions: swaggerJsdoc.Options = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'BFF API',
-      version: '1.0.0',
-      description: 'Documentation du BFF gérant la vérification des services',
-    },
-    servers: [
-      {
-        url: `http://localhost:${PORT}`,
-        description: 'Serveur local',
-      },
-    ],
+const generator = new OpenApiGeneratorV31(registry.definitions);
+
+const openApiSpec = generator.generateDocument({
+  openapi: '3.1.0',
+  info: {
+    title: 'BFF User API',
+    version: '1.0.0',
+    description: 'API du Backend for Frontend (BFF) pour l\'authentification et les informations utilisateur.',
   },
-  // On pointe vers les fichiers contenant les annotations @openapi
-  apis: ['./src/routes/*.ts'], 
-};
-
-const swaggerSpec = swaggerJsdoc(swaggerOptions);
-
-// Route pour l'interface visuelle
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-// Route pour l'extraction JSON (utilisée par l'Action Composite)
-app.get('/swagger.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
+  servers: [
+    {
+      url: `http://localhost:${PORT}`,
+      description: 'Serveur local',
+    },
+  ],
 });
 
-// --- Middlewares & Routes ---
+// --- Middlewares globaux ---
 app.use(express.json());
+app.use(cookieParser());
+
+// --- Routes Swagger ---
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
+app.get('/openapi.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(openApiSpec);
+});
+app.get('/swagger.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(openApiSpec);
+});
+
+// --- Routes métier ---
 app.use('/health', healthRouter);
 app.use('/check_apis', checkApis);
+app.use('/auth', authRouter);
+app.use('/user', userRouter);
 
+// --- Middleware de gestion des erreurs ---
+app.use(errorHandler);
+
+// --- Démarrage du serveur ---
 app.listen(Number(PORT), HOST, () => {
   console.log(`Server ready at http://${HOST}:${PORT}`);
   console.log(`Swagger docs at http://${HOST}:${PORT}/docs`);
