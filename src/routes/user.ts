@@ -1,11 +1,11 @@
-import { Router } from 'express';
-import userController from '../controllers/userController';
+import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
     ApiErrorResponse,
     registry,
     UserIdParams,
 } from '../openapi-registry';
+import { fetchUserAbout, handleUnknownError } from './core_helpers';
 
 const router = Router();
 
@@ -54,6 +54,22 @@ registry.registerPath({
     },
 });
 
-router.get('/:userId/about', userController.about);
+router.get('/:userId/about', async (req: Request, res: Response) => {
+    const paramsResult = UserIdParams.safeParse(req.params);
+
+    if (!paramsResult.success) {
+        return res.status(400).json({
+            message: 'Invalid user ID',
+            error: paramsResult.error.issues,
+        });
+    }
+
+    try {
+        const userInfo = await fetchUserAbout(paramsResult.data.userId, req.headers.authorization);
+        return res.status(200).json(userInfo);
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
 
 export default router;

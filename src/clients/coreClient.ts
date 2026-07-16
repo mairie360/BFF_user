@@ -61,11 +61,11 @@ coreClient.interceptors.request.use(
                 : `Bearer ${DEFAULT_JWT_TOKEN}`;
         }
 
-        if (config.url && config.url.endsWith('/')) {
-            config.url = config.url.slice(0, -1);
+        if (config.url === '/api/v1/auth/force-change-password/') {
+            config.url = '/api/v1/auth/force_change_password';
         }
 
-        console.log('URL OpenAPI nettoyee et envoyee :', config.baseURL + '' + config.url);
+        console.log('URL OpenAPI envoyee :', config.baseURL + '' + config.url);
         return config;
     },
     (error) => Promise.reject(error),

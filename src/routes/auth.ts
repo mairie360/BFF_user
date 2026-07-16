@@ -1,5 +1,4 @@
-import { Router } from 'express';
-import authController from '../controllers/authController';
+import { Request, Response, Router } from 'express';
 import {
     ApiErrorResponse,
     AuthTokenResponse,
@@ -9,6 +8,14 @@ import {
     RegisterViewSchema,
     registry,
 } from '../openapi-registry';
+import { clearTokenCookie, setTokenCookie } from '../utils/cookieUtils';
+import {
+    forceChangeUserPassword,
+    handleUnknownError,
+    isLoginResponseView,
+    loginUser,
+    registerUser,
+} from './core_helpers';
 
 const router = Router();
 
@@ -108,7 +115,7 @@ registry.registerPath({
     path: '/auth/force_change_password',
     tags: ['Authentication'],
     summary: 'Force le changement de mot de passe',
-    description: 'Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force-change-password/.',
+    description: 'Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force_change_password.',
     request: {
         body: {
             required: true,
@@ -178,9 +185,41 @@ registry.registerPath({
 
 // =============== Routes ===============
 
-router.post('/login', authController.login);
-router.post('/register', authController.register);
-router.post('/force_change_password', authController.forceChangePassword);
-router.post('/logout', authController.logout);
+router.post('/login', async (req: Request, res: Response) => {
+    try {
+        const token = await loginUser(req.body);
+
+        if (isLoginResponseView(token)) {
+            setTokenCookie(res, token.refresh_token);
+        }
+
+        return res.status(200).json(token);
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+router.post('/register', async (req: Request, res: Response) => {
+    try {
+        await registerUser(req.body);
+        return res.status(201).send();
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+router.post('/force_change_password', async (req: Request, res: Response) => {
+    try {
+        await forceChangeUserPassword(req.body);
+        return res.status(204).send();
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+router.post('/logout', (_req: Request, res: Response) => {
+    clearTokenCookie(res);
+    return res.json({ message: 'Logged out successfully' });
+});
 
 export default router;
