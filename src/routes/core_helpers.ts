@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import type { AxiosRequestConfig } from 'axios';
+import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 import type { Response } from 'express';
 import type {
     CreateUserView,
@@ -46,9 +46,8 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
     );
 }
 
-export async function loginUser(loginView: LoginView): Promise<LoginResponseView> {
-    const response = await coreAuthClient.login(loginView);
-    return response.data;
+export async function loginUser(loginView: LoginView): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.login(loginView);
 }
 
 export async function registerUser(registerView: CreateUserView): Promise<void> {

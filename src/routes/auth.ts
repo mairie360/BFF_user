@@ -187,13 +187,13 @@ registry.registerPath({
 
 router.post('/login', async (req: Request, res: Response) => {
     try {
-        const token = await loginUser(req.body);
+        const coreResponse = await loginUser(req.body);
 
-        if (isLoginResponseView(token)) {
-            setTokenCookie(res, token.refresh_token);
+        if (isLoginResponseView(coreResponse.data)) {
+            setTokenCookie(res, coreResponse.data.refresh_token);
         }
 
-        return res.status(200).json(token);
+        return res.status(coreResponse.status).json(coreResponse.data);
     } catch (error) {
         return handleUnknownError(res, error);
     }
