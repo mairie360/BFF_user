@@ -6,6 +6,18 @@ function asBearerToken(token: string): string {
     return token.startsWith('Bearer ') ? token : `Bearer ${token}`;
 }
 
+function maskToken(token?: string): string {
+    if (!token) {
+        return 'absent';
+    }
+
+    if (token.length <= 16) {
+        return `${token.slice(0, 4)}...`;
+    }
+
+    return `${token.slice(0, 12)}...${token.slice(-4)}`;
+}
+
 export function bearerToken(req: Request): string | undefined {
     const authorization = req.header('authorization');
     if (authorization) {
@@ -20,6 +32,15 @@ export function bearerToken(req: Request): string | undefined {
 
 export function coreRequestOptions(req: Request): AxiosRequestConfig {
     const authorization = bearerToken(req);
+    const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
+
+    console.log('[BFF Admin] Token recu/transmis', {
+        incomingAuthorization: maskToken(req.header('authorization')),
+        incomingXSessionToken: maskToken(req.header('x-session-token')),
+        incomingAccessTokenCookie: maskToken(cookies?.accessToken),
+        incomingSessionCookie: maskToken(cookies?.session),
+        forwardedAuthorization: maskToken(authorization),
+    });
 
     return authorization
         ? {
