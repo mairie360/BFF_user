@@ -4,7 +4,8 @@ import { CheckApiResponse, CheckApiResponseSchema } from '../views/check_api_vie
 import { registry } from '../openapi-registry';
 
 const router = Router();
-const FULL_URL = `http://${process.env.CORE_API_URL}:${process.env.CORE_API_PORT}`;
+const FULL_URL = `${process.env.CORE_API_URL}`;
+// const FULL_URL = `http://${process.env.CORE_API_URL}:${process.env.CORE_API_PORT}`;
 
 // Déclaration OpenAPI automatisée
 registry.registerPath({

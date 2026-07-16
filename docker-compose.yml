@@ -162,8 +162,8 @@ services:
       <<: *common-env
       JWT_SECRET: 'b"secret"'
       # IMPORTANT : On utilise le nom du service Docker pour communiquer
-      CORE_API_URL: "core"
-      CORE_API_PORT: 3000
+      CORE_API_URL: "http://core:3000"
+      # CORE_API_PORT: 3000
     volumes:
       - /app/node_modules # Isolation des modules pour éviter les conflits OS (Mac/Windows vs Linux)
     # depends_on:
