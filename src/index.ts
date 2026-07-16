@@ -56,7 +56,7 @@ app.use('/check_apis', checkApis);
 app.use('/auth', authRouter);
 app.use('/user', userRouter);
 app.use('/session', sessionRouter);
-app.use('/', sessionRouter);
+// app.use('/', sessionRouter);
 app.use('/bff/admin', adminRouter);
 
 // --- Middleware de gestion des erreurs ---
