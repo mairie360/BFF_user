@@ -7,12 +7,13 @@ import { Response } from 'express';
  */
 export function setTokenCookie(res: Response, token: string): void {
     const isProduction = process.env.NODE_ENV === 'production';
-    
+
     res.cookie('accessToken', token, {
-        httpOnly: true,           
+        httpOnly: true,
         secure: isProduction,
-        sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000 
+        sameSite: 'lax',
+        domain: '.mairie360-eip.fr',
+        maxAge: 24 * 60 * 60 * 1000
     });
 }
 
