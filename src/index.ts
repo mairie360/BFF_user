@@ -9,6 +9,7 @@ import checkApis from './routes/check_apis';
 import authRouter from './routes/auth';
 import userRouter from './routes/user';
 import adminRouter from './routes/admin';
+import sessionRouter from './routes/session';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -54,6 +55,7 @@ app.use('/health', healthRouter);
 app.use('/check_apis', checkApis);
 app.use('/auth', authRouter);
 app.use('/user', userRouter);
+app.use('/session', sessionRouter);
 app.use('/bff/admin', adminRouter);
 
 // --- Middleware de gestion des erreurs ---
