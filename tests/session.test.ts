@@ -20,6 +20,7 @@ function tokenFor(userId: number) {
 
 const app = express();
 app.use('/session', sessionRouter);
+app.use('/', sessionRouter);
 
 describe('GET /session/me', () => {
     beforeEach(() => {
@@ -58,5 +59,18 @@ describe('GET /session/me', () => {
 
         expect(response.status).toBe(401);
         expect(mockedGetMe).not.toHaveBeenCalled();
+    });
+
+    it('keeps the current-user context available at /me', async () => {
+        mockedGetMe.mockResolvedValue({ data: { roles: ['Admin'] } } as never);
+        mockedGetGroups.mockResolvedValue({ data: { groups: [] } } as never);
+
+        const response = await request(app)
+            .get('/me')
+            .set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.roles).toEqual(['Admin']);
+        expect(response.body.groups).toEqual([]);
     });
 });
