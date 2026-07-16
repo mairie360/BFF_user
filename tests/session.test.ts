@@ -73,4 +73,18 @@ describe('GET /session/me', () => {
         expect(response.body.roles).toEqual(['Admin']);
         expect(response.body.groups).toEqual([]);
     });
+
+    it('uses user.role when the Core response has no roles array', async () => {
+        mockedGetMe.mockResolvedValue({
+            data: { role: 'Admin', roles: [] },
+        } as never);
+        mockedGetGroups.mockResolvedValue({ data: { groups: [] } } as never);
+
+        const response = await request(app)
+            .get('/me')
+            .set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.roles).toEqual(['Admin']);
+    });
 });

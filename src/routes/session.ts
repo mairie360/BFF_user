@@ -5,6 +5,7 @@ import { bearerToken, handleUnknownError } from './admin_helpers';
 
 type UserWithRoles = {
     roles?: unknown;
+    role?: unknown;
 };
 
 const router = Router();
@@ -26,13 +27,16 @@ router.get('/me', async (req: Request, res: Response) => {
             coreGroupsClient.getGroups(options),
         ]);
         const userWithRoles = userResponse.data as typeof userResponse.data & UserWithRoles;
+        const roles = Array.isArray(userWithRoles.roles) && userWithRoles.roles.length > 0
+            ? userWithRoles.roles
+            : typeof userWithRoles.role === 'string'
+                ? [userWithRoles.role]
+                : [];
 
         return res.status(200).json({
             user: userResponse.data,
             groups: groupsResponse.data.groups,
-            roles: Array.isArray(userWithRoles.roles)
-                ? userWithRoles.roles
-                : [],
+            roles,
         });
     } catch (error) {
         return handleUnknownError(res, error);
