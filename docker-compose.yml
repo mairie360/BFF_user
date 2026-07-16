@@ -48,7 +48,7 @@ x-service: &service-template
 
 services:
   postgres:
-    image: ghcr.io/mairie360/database:1.0.0
+    image: ghcr.io/mairie360/database:dev-a50c7b2
     restart: always
     container_name: mairie360-db-bff-user
     environment:
@@ -68,7 +68,7 @@ services:
       retries: 5
 
   liquibase:
-    image: ghcr.io/mairie360/liquibase-migrations:1.0.0
+    image: ghcr.io/mairie360/liquibase-migrations:dev-a50c7b2
     container_name: mairie360-liquibase-bff-user
     depends_on:
       postgres:
@@ -103,7 +103,7 @@ services:
 
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:dev-ed2b569
+    image: ghcr.io/mairie360/core-api:dev-4048375
     ports:
       - "3000:3000"
     networks:
@@ -160,8 +160,9 @@ services:
       - backend
     environment:
       <<: *common-env
+      JWT_SECRET: 'b"secret"'
       # IMPORTANT : On utilise le nom du service Docker pour communiquer
-      CORE_API_URL: "core" 
+      CORE_API_URL: "core"
       CORE_API_PORT: 3000
     volumes:
       - /app/node_modules # Isolation des modules pour éviter les conflits OS (Mac/Windows vs Linux)
@@ -170,7 +171,7 @@ services:
     #     condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
-      interval: 10s
+      interval: 15s
       timeout: 5s
       retries: 3
 

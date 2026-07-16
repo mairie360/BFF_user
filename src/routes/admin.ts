@@ -1,4 +1,5 @@
 import { Request, Response, Router } from 'express';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ApiErrorResponse, registry } from '../openapi-registry';
 import {
@@ -8,6 +9,16 @@ import {
     coreSessionsClient,
 } from '../clients/coreClient';
 import {
+    addAdministrationGroupMember,
+    listAdministrationGroupMembers,
+    listAdministrationUsers,
+    removeAdministrationGroupMember,
+    isAdministrationUserAdmin,
+    resetAdministrationUserPassword,
+    updateAdministrationGroup,
+} from '../repositories/adminRepository';
+import {
+    bearerToken,
     coreRequestOptions,
     forwardCoreResponse,
     handleUnknownError,
@@ -27,6 +38,20 @@ const GroupUserParams = z.object({
     groupId: z.coerce.number().int().positive(),
     userId: z.coerce.number().int().positive(),
 }).openapi('AdminGroupUserParams');
+const UserListQuery = z.object({
+    page: z.coerce.number().int().positive().default(1),
+    page_size: z.coerce.number().int().min(1).max(20).default(20),
+    search: z.string().trim().max(100).optional(),
+}).openapi('AdminUserListQuery');
+const GroupPatchBody = z.object({
+    name: z.string().trim().min(1).max(64).optional(),
+    description: z.string().trim().max(2_000).optional(),
+}).refine((value) => value.name !== undefined || value.description !== undefined, {
+    message: 'At least one field is required',
+}).openapi('AdminGroupPatchBody');
+const UserPasswordResetBody = z.object({
+    new_password: z.string().min(8).max(255),
+}).openapi('AdminUserPasswordResetBody');
 const JsonBody = z.record(z.string(), z.unknown()).openapi('AdminJsonBody');
 const CoreResponse = z.unknown().openapi('CoreResponse');
 
@@ -35,6 +60,9 @@ registry.register('AdminRoleIdParams', RoleIdParams);
 registry.register('AdminGroupIdParams', GroupIdParams);
 registry.register('AdminUserRoleParams', UserRoleParams);
 registry.register('AdminGroupUserParams', GroupUserParams);
+registry.register('AdminUserListQuery', UserListQuery);
+registry.register('AdminGroupPatchBody', GroupPatchBody);
+registry.register('AdminUserPasswordResetBody', UserPasswordResetBody);
 registry.register('AdminJsonBody', JsonBody);
 registry.register('CoreResponse', CoreResponse);
 
@@ -113,6 +141,103 @@ function invalidParam(res: Response, name: string): Response {
     return res.status(400).json({ message: `Invalid ${name}` });
 }
 
+async function requireAdmin(req: Request, res: Response): Promise<boolean> {
+    const authorization = bearerToken(req);
+    if (!authorization) {
+        res.status(401).json({ message: 'Invalid or missing session token' });
+        return false;
+    }
+
+    const token = authorization.replace(/^Bearer\s+/i, '');
+    const secret = process.env.JWT_SECRET;
+
+    if (!secret) {
+        res.status(500).json({ message: 'JWT_SECRET is not configured' });
+        return false;
+    }
+
+    let userId: number;
+
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) throw new Error('Invalid token');
+
+        const [encodedHeader, encodedPayload, signature] = parts;
+        const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8')) as {
+            alg?: unknown;
+        };
+        const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
+            sub?: unknown;
+            exp?: unknown;
+        };
+        const expectedSignature = createHmac('sha256', secret)
+            .update(`${encodedHeader}.${encodedPayload}`)
+            .digest();
+        const receivedSignature = Buffer.from(signature, 'base64url');
+        const validSignature =
+            header.alg === 'HS256' &&
+            expectedSignature.length === receivedSignature.length &&
+            timingSafeEqual(expectedSignature, receivedSignature);
+        userId = Number(payload.sub);
+        const validExpiration =
+            typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000);
+
+        if (!validSignature || !validExpiration || !Number.isInteger(userId) || userId <= 0) {
+            res.status(401).json({ message: 'Invalid or expired session token' });
+            return false;
+        }
+
+    } catch (error) {
+        res.status(401).json({
+            message: error instanceof Error ? error.message : 'Invalid session token',
+        });
+        return false;
+    }
+
+    try {
+        const isAdmin = await isAdministrationUserAdmin(userId);
+
+        if (!isAdmin) {
+            res.status(403).json({ message: 'Administrator role required' });
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        handleUnknownError(res, error);
+        return false;
+    }
+}
+
+registry.registerPath({
+    method: 'get',
+    path: '/bff/admin/users',
+    tags: ['Administration'],
+    summary: 'Liste les utilisateurs administrables, 20 éléments maximum par page',
+    request: { query: UserListQuery },
+    responses: coreResponses,
+});
+
+router.get('/users', async (req: Request, res: Response) => {
+    const query = UserListQuery.safeParse(req.query);
+    if (!query.success) {
+        return res.status(400).json({ message: 'Invalid pagination parameters' });
+    }
+
+    if (!(await requireAdmin(req, res))) return;
+
+    try {
+        const response = await listAdministrationUsers({
+            page: query.data.page,
+            pageSize: query.data.page_size,
+            search: query.data.search,
+        });
+        return res.status(200).json(response);
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
 registry.registerPath({
     method: 'post',
     path: '/bff/admin/users',
@@ -148,6 +273,80 @@ router.patch('/users/:userId', async (req: Request, res: Response) => {
 
     try {
         const response = await coreAdminUsersClient.adminPatchUser(userId, req.body, coreRequestOptions(req));
+        return forwardCoreResponse(res, response);
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+registry.registerPath({
+    method: 'patch',
+    path: '/bff/admin/users/{userId}/password',
+    tags: ['Administration'],
+    summary: 'Modifie le mot de passe et révoque les sessions utilisateur',
+    request: {
+        params: UserIdParams,
+        body: {
+            required: true,
+            content: { 'application/json': { schema: UserPasswordResetBody } },
+        },
+    },
+    responses: coreResponses,
+});
+
+router.patch('/users/:userId/password', async (req: Request, res: Response) => {
+    const userId = parsePositiveInteger(req.params.userId);
+    if (!userId) {
+        return invalidParam(res, 'userId');
+    }
+
+    const payload = UserPasswordResetBody.safeParse(req.body);
+    if (!payload.success) {
+        return res.status(400).json({
+            message: 'The password must contain between 8 and 255 characters',
+        });
+    }
+
+    if (!(await requireAdmin(req, res))) return;
+
+    try {
+        const updated = await resetAdministrationUserPassword(
+            userId,
+            payload.data.new_password,
+        );
+
+        if (!updated) {
+            return res.status(404).json({ message: 'Unknown user' });
+        }
+
+        return res.status(204).send();
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/bff/admin/users/{userId}',
+    tags: ['Administration'],
+    summary: 'Supprime définitivement un utilisateur via le Core API',
+    request: { params: UserIdParams },
+    responses: coreResponses,
+});
+
+router.delete('/users/:userId', async (req: Request, res: Response) => {
+    const userId = parsePositiveInteger(req.params.userId);
+    if (!userId) {
+        return invalidParam(res, 'userId');
+    }
+
+    if (!(await requireAdmin(req, res))) return;
+
+    try {
+        const response = await coreAdminUsersClient.adminDeleteUser(
+            userId,
+            coreRequestOptions(req),
+        );
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -367,6 +566,44 @@ router.get('/groups/:groupId', async (req: Request, res: Response) => {
 });
 
 registry.registerPath({
+    method: 'patch',
+    path: '/bff/admin/groups/{groupId}',
+    tags: ['Administration'],
+    summary: 'Met à jour le nom ou la description d’un groupe',
+    request: {
+        params: GroupIdParams,
+        body: {
+            required: true,
+            content: { 'application/json': { schema: GroupPatchBody } },
+        },
+    },
+    responses: coreResponses,
+});
+
+router.patch('/groups/:groupId', async (req: Request, res: Response) => {
+    const groupId = parsePositiveInteger(req.params.groupId);
+    if (!groupId) {
+        return invalidParam(res, 'groupId');
+    }
+
+    const payload = GroupPatchBody.safeParse(req.body);
+    if (!payload.success) {
+        return res.status(400).json({ message: 'Invalid group data' });
+    }
+    if (!(await requireAdmin(req, res))) return;
+
+    try {
+        const group = await updateAdministrationGroup(groupId, payload.data);
+        if (!group) {
+            return res.status(404).json({ message: 'Unknown group' });
+        }
+        return res.status(200).json({ group });
+    } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+registry.registerPath({
     method: 'delete',
     path: '/bff/admin/groups/{groupId}',
     tags: ['Administration'],
@@ -404,9 +641,11 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
         return invalidParam(res, 'groupId');
     }
 
+    if (!(await requireAdmin(req, res))) return;
+
     try {
-        const response = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        const users = await listAdministrationGroupMembers(groupId);
+        return res.status(200).json({ users });
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -427,9 +666,15 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
         return invalidParam(res, 'groupId');
     }
 
+    const userId = parsePositiveInteger(String(req.body?.user_id ?? ''));
+    if (!userId) {
+        return invalidParam(res, 'userId');
+    }
+    if (!(await requireAdmin(req, res))) return;
+
     try {
-        const response = await coreGroupsClient.addUserToGroup(groupId, req.body, coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        const created = await addAdministrationGroupMember(groupId, userId);
+        return res.status(created ? 201 : 200).json({ created });
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -454,9 +699,14 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
         return invalidParam(res, 'userId');
     }
 
+    if (!(await requireAdmin(req, res))) return;
+
     try {
-        const response = await coreGroupsClient.removeUserFromGroup(groupId, userId, coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        const removed = await removeAdministrationGroupMember(groupId, userId);
+        if (!removed) {
+            return res.status(404).json({ message: 'Unknown group member' });
+        }
+        return res.status(204).send();
     } catch (error) {
         return handleUnknownError(res, error);
     }

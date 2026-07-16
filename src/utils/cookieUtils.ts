@@ -17,6 +17,22 @@ export function setTokenCookie(res: Response, token: string): void {
 }
 
 /**
+ * Transmet le JWT d'accès retourné par le Core et le stocke sans le préfixe
+ * `Bearer` dans le cookie HttpOnly.
+ */
+export function transmitAccessToken(res: Response, authorizationHeader: string | undefined): boolean {
+    const token = extractTokenFromHeader(authorizationHeader);
+    if (!token) {
+        return false;
+    }
+
+    setTokenCookie(res, token);
+    res.setHeader('Authorization', `Bearer ${token}`);
+    res.setHeader('Access-Control-Expose-Headers', 'Authorization');
+    return true;
+}
+
+/**
  * Supprimer le token d'accès du cookie
  * @param res - Response Express
  */

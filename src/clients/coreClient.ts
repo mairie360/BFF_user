@@ -1,119 +1,24 @@
 import '../config/registerGeneratedOpenApi';
-import axios from 'axios';
-import type { AxiosRequestConfig, AxiosResponse } from 'axios';
-import { getAdminRoles } from '@mairie360/core-api-openapi/endpoints/admin-roles/admin-roles';
-import { getAdminUsers } from '@mairie360/core-api-openapi/endpoints/admin-users/admin-users';
-import { getAuth } from '@mairie360/core-api-openapi/endpoints/auth/auth';
-import { getGroups } from '@mairie360/core-api-openapi/endpoints/groups/groups';
-import { getSessions } from '@mairie360/core-api-openapi/endpoints/sessions/sessions';
-import { getUsers } from '@mairie360/core-api-openapi/endpoints/users/users';
-import type {
-    AddRoleToUserView,
-    CreateUserView,
-    ForceChangePasswordView,
-    GetGroupResultView,
-    GetGroupUsersResultView,
-    GetGroupsResultView,
-    GetMeResponseView,
-    GetResponseView,
-    GetUserResponseView,
-    HistoryResponseView,
-    LoginResponseView,
-    LoginView,
-    PatchMeView,
-    PatchUserView,
-    PatchView,
-    PostGroupView,
-    PostUserGroupView,
-    RefreshRequestView,
-    RevokeRequestView,
-    RoleWriteView,
-} from '@mairie360/core-api-openapi/models';
+import axios, { type AxiosRequestConfig } from 'axios';
+import { getCoreApi } from '@mairie360/core-api-openapi/endpoints/coreApi';
 import { DEFAULT_JWT_TOKEN } from '../config/token';
 
-type CoreAuthClient = {
-    login: (loginView: LoginView, options?: AxiosRequestConfig) => Promise<AxiosResponse<LoginResponseView>>;
-    forceChangePassword: (
-        forceChangePasswordView: ForceChangePasswordView,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-};
-
-type CoreAdminUsersClient = {
-    adminPostUser: (createUserView: CreateUserView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    adminPatchUser: (
-        userId: number,
-        patchUserView: PatchUserView,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-    adminAddRoleToUser: (
-        userId: number,
-        addRoleToUserView: AddRoleToUserView,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-    adminDeleteUserRole: (
-        userId: number,
-        roleId: number,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-};
-
-type CoreAdminRolesClient = {
-    adminGetRole: (options?: AxiosRequestConfig) => Promise<AxiosResponse<GetResponseView>>;
-    adminPostRole: (roleWriteView: RoleWriteView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    adminPutRole: (
-        id: number,
-        roleWriteView: RoleWriteView,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-    adminDeleteRole: (id: number, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    adminPatchRole: (id: number, patchView: PatchView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-};
-
-type CoreUsersClient = {
-    getMe: (options?: AxiosRequestConfig) => Promise<AxiosResponse<GetMeResponseView>>;
-    patchMe: (patchMeView: PatchMeView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    getUser: (id: number, options?: AxiosRequestConfig) => Promise<AxiosResponse<GetUserResponseView>>;
-};
-
-type CoreGroupsClient = {
-    getGroups: (options?: AxiosRequestConfig) => Promise<AxiosResponse<GetGroupsResultView>>;
-    postGroup: (postGroupView: PostGroupView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    getGroup: (groupId: number, options?: AxiosRequestConfig) => Promise<AxiosResponse<GetGroupResultView>>;
-    deleteGroup: (groupId: number, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    getGroupUsers: (groupId: number, options?: AxiosRequestConfig) => Promise<AxiosResponse<GetGroupUsersResultView>>;
-    addUserToGroup: (
-        groupId: number,
-        postUserGroupView: PostUserGroupView,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-    removeUserFromGroup: (
-        groupId: number,
-        userId: number,
-        options?: AxiosRequestConfig,
-    ) => Promise<AxiosResponse<void>>;
-};
-
-type CoreSessionsClient = {
-    getActiveSessions: (options?: AxiosRequestConfig) => Promise<AxiosResponse<GetResponseView>>;
-    history: (options?: AxiosRequestConfig) => Promise<AxiosResponse<HistoryResponseView>>;
-    refresh: (refreshRequestView: RefreshRequestView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-    revoke: (revokeRequestView: RevokeRequestView, options?: AxiosRequestConfig) => Promise<AxiosResponse<void>>;
-};
-
+/**
+ * Construit l'URL du Core API depuis la configuration Docker ou locale.
+ * Dans Compose, CORE_API_URL vaut généralement `core` et CORE_API_PORT `3000`.
+ */
 export function getCoreApiBaseUrl(): string {
-    const coreApiUrl = process.env.CORE_API_URL;
-    const coreApiPort = process.env.CORE_API_PORT;
+    const configuredUrl = process.env.CORE_API_URL || 'http://localhost:3000';
+    const configuredPort = process.env.CORE_API_PORT;
 
-    if (!coreApiUrl) {
-        return '';
+    if (configuredUrl.startsWith('http://') || configuredUrl.startsWith('https://')) {
+        return configuredUrl;
     }
 
-    return coreApiUrl.startsWith('http')
-        ? coreApiUrl
-        : `http://${coreApiUrl}${coreApiPort ? `:${coreApiPort}` : ''}`;
+    return `http://${configuredUrl}${configuredPort ? `:${configuredPort}` : ''}`;
 }
 
+/** Instance Axios partagée par tous les endpoints générés par Orval. */
 export const coreClient = axios.create({
     baseURL: getCoreApiBaseUrl(),
     timeout: 5000,
@@ -124,28 +29,81 @@ export const coreClient = axios.create({
 
 coreClient.interceptors.request.use(
     (config) => {
-        const currentAuth = config.headers.Authorization;
+        const currentAuth = config.headers?.Authorization ?? config.headers?.authorization;
         const isLoginRequest = config.url === '/api/v1/auth/login';
 
+        // Le login doit rester anonyme. Pour les autres appels, le token par
+        // défaut est utilisé uniquement si la route n'en a pas fourni un.
         if (!isLoginRequest && !currentAuth && DEFAULT_JWT_TOKEN) {
             config.headers.Authorization = DEFAULT_JWT_TOKEN.startsWith('Bearer ')
                 ? DEFAULT_JWT_TOKEN
                 : `Bearer ${DEFAULT_JWT_TOKEN}`;
         }
 
-        if (config.url === '/api/v1/auth/force-change-password/') {
+        // Le Core expose cet endpoint sans slash final, alors que le client
+        // OpenAPI généré le produit avec un slash.
+        if (config.url === '/api/v1/auth/force_change_password/') {
             config.url = '/api/v1/auth/force_change_password';
         }
 
-        console.log('URL OpenAPI envoyee :', config.baseURL + '' + config.url);
+        console.log('URL Core API envoyée :', `${config.baseURL ?? ''}${config.url ?? ''}`);
         return config;
     },
     (error) => Promise.reject(error),
 );
 
-export const coreAuthClient: CoreAuthClient = getAuth(coreClient);
-export const coreAdminUsersClient: CoreAdminUsersClient = getAdminUsers(coreClient);
-export const coreAdminRolesClient: CoreAdminRolesClient = getAdminRoles(coreClient);
-export const coreUsersClient: CoreUsersClient = getUsers(coreClient);
-export const coreGroupsClient: CoreGroupsClient = getGroups(coreClient);
-export const coreSessionsClient: CoreSessionsClient = getSessions(coreClient);
+/** API générée à partir du contrat OpenAPI du Core API. */
+export const coreApi = getCoreApi(coreClient);
+
+// Les regroupements ci-dessous gardent l'interface consommée par les routes
+// du BFF, tout en utilisant l'unique client généré `getCoreApi`.
+export const coreAuthClient = {
+    login: coreApi.login,
+    register: coreApi.register,
+    forceChangePassword: coreApi.forceChangePassword,
+    forgotPassword: coreApi.forgotPassword,
+    resetPassword: coreApi.resetPassword,
+};
+
+export const coreAdminUsersClient = {
+    adminPostUser: coreApi.adminPostUser,
+    adminPatchUser: coreApi.adminPatchUser,
+    adminDeleteUser: (userId: number, options?: AxiosRequestConfig) =>
+        coreClient.delete<void>(`/api/v1/admin/users/${userId}/`, options),
+    adminAddRoleToUser: coreApi.adminAddRoleToUser,
+    adminDeleteUserRole: coreApi.adminDeleteUserRole,
+};
+
+export const coreAdminRolesClient = {
+    adminGetRole: coreApi.adminGetRole,
+    adminPostRole: coreApi.adminPostRole,
+    adminPutRole: coreApi.adminPutRole,
+    adminDeleteRole: coreApi.adminDeleteRole,
+    adminPatchRole: coreApi.adminPatchRole,
+};
+
+export const coreUsersClient = {
+    getMe: coreApi.getMe,
+    patchMe: coreApi.patchMe,
+    getUser: coreApi.getUser,
+};
+
+export const coreGroupsClient = {
+    getGroups: coreApi.getGroups,
+    postGroup: coreApi.postGroup,
+    getGroup: coreApi.getGroup,
+    deleteGroup: coreApi.deleteGroup,
+    // Nom historique conservé pour les routes du BFF.
+    getGroupUsers: coreApi.getGroupMembers,
+    addUserToGroup: coreApi.addUserToGroup,
+    removeUserFromGroup: coreApi.removeUserFromGroup,
+};
+
+export const coreSessionsClient = {
+    getActiveSessions: coreApi.getActiveSessions,
+    history: coreApi.history,
+    refresh: coreApi.refresh,
+    revoke: coreApi.revoke,
+};
+
+export default coreApi;

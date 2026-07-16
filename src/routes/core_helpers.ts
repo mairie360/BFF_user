@@ -7,7 +7,7 @@ import type {
     GetUserResponseView,
     LoginResponseView,
     LoginView,
-} from '@mairie360/core-api-openapi/models';
+} from '@mairie360/core-api-openapi/model';
 import { coreAdminUsersClient, coreAuthClient, coreUsersClient } from '../clients/coreClient';
 
 function authOptions(incomingRequestToken?: string): AxiosRequestConfig {
