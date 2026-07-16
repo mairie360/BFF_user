@@ -25,6 +25,10 @@ export const LoginViewSchema = z.object({
         description: 'Mot de passe de l\'utilisateur',
         example: 'MotDePasse123',
     }),
+  device_info: z.string().min(1).openapi({
+      description: 'Informations sur le périphérique utilisé pour se connecter',
+      example: '',
+  }),
 }).openapi('LoginView');
 
 export const RegisterViewSchema = z.object({
