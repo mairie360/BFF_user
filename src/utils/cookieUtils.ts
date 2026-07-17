@@ -1,4 +1,16 @@
-import { Response } from 'express';
+import type { CookieOptions, Response } from 'express';
+
+function accessTokenCookieOptions(): CookieOptions {
+    const domain = process.env.COOKIE_DOMAIN?.trim();
+
+    return {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        ...(domain ? { domain } : {}),
+    };
+}
 
 /**
  * Ajouter le token d'accès dans un cookie HttpOnly
@@ -6,13 +18,8 @@ import { Response } from 'express';
  * @param token - Token JWT du Core API
  */
 export function setTokenCookie(res: Response, token: string): void {
-    const isProduction = process.env.NODE_ENV === 'production';
-
     res.cookie('accessToken', token, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'lax',
-        domain: '.mairie360-eip.fr',
+        ...accessTokenCookieOptions(),
         maxAge: 24 * 60 * 60 * 1000
     });
 }
@@ -38,11 +45,7 @@ export function transmitAccessToken(res: Response, authorizationHeader: string |
  * @param res - Response Express
  */
 export function clearTokenCookie(res: Response): void {
-    res.clearCookie('accessToken', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict'
-    });
+    res.clearCookie('accessToken', accessTokenCookieOptions());
 }
 
 /**

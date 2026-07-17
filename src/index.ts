@@ -56,7 +56,8 @@ app.use('/check_apis', checkApis);
 app.use('/auth', authRouter);
 app.use('/user', userRouter);
 app.use('/session', sessionRouter);
-// app.use('/', sessionRouter);
+// Alias conservé pour les frontends et les BFFs qui consomment GET /me.
+app.use('/', sessionRouter);
 app.use('/bff/admin', adminRouter);
 
 // --- Middleware de gestion des erreurs ---
