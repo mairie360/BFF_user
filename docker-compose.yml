@@ -11,6 +11,7 @@ secrets:
 
 networks:
   backend:
+    name: ${USER_BACKEND_NETWORK:-bff_user_backend}
 
 x-common-env: &common-env
   HOST: "0.0.0.0"
