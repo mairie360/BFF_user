@@ -20,7 +20,7 @@
     "redis": "6.2.0",
     "swagger-ui-express": "5.0.1",
     "ts-node": "10.9.2",
-    "tsx": "4.23.11",
+    "tsx": "4.23.12",
     "zod": "4.4.3"
   },
   "devDependencies": {
