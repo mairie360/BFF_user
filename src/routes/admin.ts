@@ -1,3 +1,4 @@
+import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
 import { Request, Response, Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -215,7 +216,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Liste les utilisateurs administrables, 20 éléments maximum par page',
     request: { query: UserListQuery },
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: AdministrationUsersPageSchema } } } },
 });
 
 router.get('/users', async (req: Request, res: Response) => {
@@ -408,7 +409,7 @@ registry.registerPath({
     path: '/bff/admin/roles',
     tags: ['Administration'],
     summary: 'Liste les rôles admin via le Core API',
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ roles: z.array(AdministrationRoleSchema) }) } } } },
 });
 
 router.get('/roles', async (req: Request, res: Response) => {
@@ -512,7 +513,7 @@ registry.registerPath({
     path: '/bff/admin/groups',
     tags: ['Administration'],
     summary: 'Liste les groupes via le Core API',
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ groups: z.array(AdministrationGroupSchema) }) } } } },
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
@@ -548,7 +549,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Récupère un groupe via le Core API',
     request: { params: GroupIdParams },
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ group: AdministrationGroupSchema }) } } } },
 });
 
 router.get('/groups/:groupId', async (req: Request, res: Response) => {
@@ -632,7 +633,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Liste les utilisateurs d’un groupe via le Core API',
     request: { params: GroupIdParams },
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ users: z.array(AdministrationGroupMemberSchema) }) } } } },
 });
 
 router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
@@ -717,7 +718,7 @@ registry.registerPath({
     path: '/bff/admin/sessions',
     tags: ['Administration'],
     summary: 'Liste les sessions actives via le Core API',
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ sessions: z.array(AdministrationSessionSchema) }) } } } },
 });
 
 router.get('/sessions', async (req: Request, res: Response) => {
@@ -734,7 +735,7 @@ registry.registerPath({
     path: '/bff/admin/sessions/history',
     tags: ['Administration'],
     summary: 'Récupère l’historique des sessions via le Core API',
-    responses: coreResponses,
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ sessions: z.array(AdministrationSessionSchema) }) } } } },
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {

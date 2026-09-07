@@ -1,5 +1,7 @@
 # 🧩 BFF User — Backend for Frontend pour la gestion des utilisateurs
 
+Contrat des routes et données, synchronisation BFF/web et limites de disponibilité : [CONTRACT.md](CONTRACT.md).
+
 ## 🏗️ Présentation
 
 Ce dépôt correspond au **BFF (Backend for Frontend)** destiné à **gérer toutes les requêtes liées aux utilisateurs**.  
