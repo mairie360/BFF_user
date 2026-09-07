@@ -1,57 +1,25 @@
-# 🧩 BFF User — Backend for Frontend pour la gestion des utilisateurs
+# BFF_user
 
-Contrat des routes et données, synchronisation BFF/web et limites de disponibilité : [CONTRACT.md](CONTRACT.md).
+Centralize sign-in, session access and account administration for the Mairie360 interfaces. This BFF adapts Core and supplies the user context shared by other modules.
 
-## 🏗️ Présentation
+Centraliser la connexion, la session et les opérations d’administration des comptes pour les interfaces Mairie360. Ce BFF adapte Core et fournit le contexte utilisateur partagé par les autres modules.
 
-Ce dépôt correspond au **BFF (Backend for Frontend)** destiné à **gérer toutes les requêtes liées aux utilisateurs**.  
-Il sert d’interface entre le frontend et les différents microservices liés à la gestion des **users**, en assurant :
-- l’adaptation des données pour le front,  
-- la centralisation des appels vers les APIs backend,  
-- la simplification des flux réseau.
+## Documentation
 
----
+| Language / Langue | Module | Technical / Technique |
+| --- | --- | --- |
+| English | [Module overview](docs/en/module.md) | [Technical documentation](docs/en/technical.md) |
+| Français | [Présentation du module](docs/fr/module.md) | [Documentation technique](docs/fr/technical.md) |
 
-## ✨ Fonctionnalités principales
+The guides describe the implemented module, its current limitations, local setup, routes, data, verification and CI/CD.
 
-- Serveur basé sur **Express.js**
-- Développement en **TypeScript** pour une meilleure sécurité et maintenabilité
-- Intégration d’un endpoint `/health` pour la supervision
-- Gestion centralisée des erreurs et de la configuration réseau
-- Conteneurisation avec **Docker**
-- Tests unitaires avec **Jest**
-- Linting et formatage conformes aux standards du projet
+Les guides décrivent le module implémenté, ses limites actuelles, le démarrage local, les routes, les données, les vérifications et la CI/CD.
 
----
+## Contracts and background / Contrats et compléments
 
-## ⚙️ Objectif de ce BFF
+- [CONTRACT.md](CONTRACT.md)
+- [contracts/openapi.json](contracts/openapi.json)
 
-Le **BFF User** a pour rôle :
-- de **gérer toutes les opérations liées aux utilisateurs** (récupération, création, mise à jour, suppression),
-- de **communiquer avec le microservice User Core**,
-- et de **préparer les données** pour un usage optimal côté frontend.
+`BACKEND.md`, when present, includes proposed backend requirements; use the guides and versioned OpenAPI contract to identify current behavior.
 
----
-
-## ⚠️ Configuration
-
-L'accès au package privé `@mairie360/core-api-openapi` nécessite un token
-GitHub Packages avec la permission `read:packages` :
-
-```sh
-export NODE_AUTH_TOKEN=<github-token>
-```
-
-Le token est transmis aux builds Docker comme secret BuildKit et n'est pas
-enregistré dans l'image.
-
-Avant de démarrer, crée un fichier `.env` à la racine du projet :
-
-```env
-PORT=3000
-```
-# Installer les dépendances
-npm install
-
-# Lancer le serveur
-npm run start
+`BACKEND.md`, lorsqu’il est présent, contient des besoins backend proposés; consulter les guides et le contrat OpenAPI versionné pour identifier le comportement actuel.
