@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Request, Response, Router } from 'express';
 import {
     ApiErrorResponse,
@@ -42,12 +43,17 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'Utilisateur authentifié avec succès',
+            description: 'Utilisateur authentifié ; le JWT d’accès est dans Authorization, le corps contient le refresh token.',
+            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
             content: {
                 'application/json': {
                     schema: AuthTokenResponse,
                 },
             },
+        },
+        412: {
+            description: 'Première connexion : mot de passe à changer',
+            content: { 'application/json': { schema: z.object({ token: z.string() }).passthrough() } },
         },
         401: {
             description: 'Identifiants invalides',

@@ -1,9 +1,8 @@
+import { openApiDocument as openApiSpec } from './openapi';
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
-import { OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
-import { registry } from './openapi-registry';
 import healthRouter from './routes/health';
 import checkApis from './routes/check_apis';
 import authRouter from './routes/auth';
@@ -14,26 +13,11 @@ import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+export const app = express();
+const PORT = process.env.PORT || 4000;
 const HOST = '0.0.0.0';
 
-const generator = new OpenApiGeneratorV31(registry.definitions);
 
-const openApiSpec = generator.generateDocument({
-  openapi: '3.1.0',
-  info: {
-    title: 'BFF User API',
-    version: '1.0.0',
-    description: 'API du Backend for Frontend (BFF) pour l\'authentification et les informations utilisateur.',
-  },
-  servers: [
-    {
-      url: `http://localhost:${PORT}`,
-      description: 'Serveur local',
-    },
-  ],
-});
 
 // --- Middlewares globaux ---
 app.use(express.json());
@@ -64,7 +48,7 @@ app.use('/bff/admin', adminRouter);
 app.use(errorHandler);
 
 // --- Démarrage du serveur ---
-app.listen(Number(PORT), HOST, () => {
+if (require.main === module) app.listen(Number(PORT), HOST, () => {
   console.log(`Server ready at http://${HOST}:${PORT}`);
   console.log(`Swagger docs at http://${HOST}:${PORT}/docs`);
 });
