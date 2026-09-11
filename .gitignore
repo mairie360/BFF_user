@@ -11,4 +11,11 @@ openapi.json
 openapi.yaml
 .npmrc
 
+# Rapports générés par les tests de sécurité / performance
+.zap/*.html
+.zap/*.json
+.zap/*.md
+zap.yaml
+summary.json
+
 !contracts/openapi.json
