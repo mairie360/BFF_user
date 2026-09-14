@@ -59,21 +59,33 @@ export function forwardCoreResponse<T>(res: Response, response: AxiosResponse<T>
     return res.status(response.status).send(response.data);
 }
 
+function toJsonErrorBody(data: unknown): unknown {
+    // Le Core renvoie parfois un corps texte (ex. "Forbidden: User is not an admin.") :
+    // on le normalise en JSON pour garder un Content-Type cohérent côté BFF.
+    return typeof data === 'string' ? { message: data } : data;
+}
+
 export function handleUnknownError(res: Response, error: unknown): Response {
     if (axios.isAxiosError(error)) {
         const axiosError = error as AxiosError;
         const status = axiosError.response?.status ?? 502;
 
+        // Une erreur 5xx du Core est une défaillance amont : 502 Bad Gateway.
+        if (status >= 500) {
+            console.error('[BFF] Upstream error', status, axiosError.message);
+            return res.status(502).json({ message: 'Upstream service error' });
+        }
+
         if (axiosError.response?.data !== undefined) {
-            return res.status(status).send(axiosError.response.data);
+            return res.status(status).json(toJsonErrorBody(axiosError.response.data));
         }
 
         return res.status(status).json({ message: axiosError.message });
     }
 
-    return res.status(500).json({
-        message: error instanceof Error ? error.message : 'Unexpected error',
-    });
+    // Ne jamais exposer le message d'une erreur interne (fuite d'information).
+    console.error('[BFF] Unexpected error', error);
+    return res.status(500).json({ message: 'Internal server error' });
 }
 
 export function parsePositiveInteger(value: string): number | null {

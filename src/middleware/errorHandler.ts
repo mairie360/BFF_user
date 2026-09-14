@@ -1,8 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 
 function getErrorStatus(error: unknown): number | undefined {
-    if (typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number') {
-        return error.status;
+    if (typeof error !== 'object' || error === null) {
+        return undefined;
+    }
+
+    // body-parser (express.json) et http-errors exposent status et statusCode.
+    for (const key of ['status', 'statusCode'] as const) {
+        if (key in error) {
+            const value = (error as Record<string, unknown>)[key];
+            if (typeof value === 'number') {
+                return value;
+            }
+        }
     }
 
     return undefined;
@@ -48,6 +58,15 @@ export function errorHandler(
         return res.status(404).json({ 
             message: 'Ressource non trouvée',
             error: message,
+        });
+    }
+
+    // Autres erreurs client (ex. JSON malformé -> 400, corps trop volumineux -> 413) :
+    // on conserve le statut sans exposer le détail interne.
+    if (status !== undefined && status >= 400 && status < 500) {
+        return res.status(status).json({
+            message: 'Requête invalide',
+            error: process.env.NODE_ENV === 'development' ? message : undefined,
         });
     }
 

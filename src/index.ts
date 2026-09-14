@@ -1,5 +1,6 @@
 import { openApiDocument as openApiSpec } from './openapi';
 import express from 'express';
+import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
@@ -20,6 +21,15 @@ const HOST = '0.0.0.0';
 
 
 // --- Middlewares globaux ---
+// En-têtes de sécurité (CSP, X-Content-Type-Options, Permissions-Policy, CORP…)
+// et suppression de X-Powered-By. upgrade-insecure-requests est retiré car le
+// BFF est servi en HTTP derrière le reverse proxy.
+app.use(helmet({
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: { 'upgrade-insecure-requests': null },
+    },
+}));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -43,6 +53,11 @@ app.use('/session', sessionRouter);
 // Alias conservé pour les frontends et les BFFs qui consomment GET /me.
 app.use('/', sessionRouter);
 app.use('/bff/admin', adminRouter);
+
+// --- Route inconnue : 404 JSON (le fallback Express répond en text/html) ---
+app.use((_req, res) => {
+    res.status(404).json({ message: 'Not found' });
+});
 
 // --- Middleware de gestion des erreurs ---
 app.use(errorHandler);
