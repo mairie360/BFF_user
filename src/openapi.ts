@@ -11,5 +11,6 @@ import './routes/session';
 // Runtime documentation and exported clients use the same mounted routes.
 export const openApiDocument = new OpenApiGeneratorV31(registry.definitions).generateDocument({
   openapi: '3.1.0',
-  info: { title: 'BFF User API', version: '1.0.0' },
+  // Snake_case like the Rust APIs: orval derives endpoints/bffUser.ts + getBffUser() from it.
+  info: { title: 'bff_user', version: '1.0.0' },
 });
