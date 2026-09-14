@@ -49,7 +49,7 @@ x-service: &service-template
 
 services:
   postgres:
-    image: ghcr.io/mairie360/database:1.0.0
+    image: ghcr.io/mairie360/database:1.1.0
     restart: always
     container_name: mairie360-db-bff-user
     environment:
