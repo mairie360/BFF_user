@@ -39,9 +39,8 @@
           },
           "device_info": {
             "type": "string",
-            "minLength": 1,
-            "description": "Informations sur le périphérique utilisé pour se connecter",
-            "example": ""
+            "description": "Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)",
+            "example": "Firefox"
           }
         },
         "required": [
@@ -134,8 +133,11 @@
             "example": "Dupont"
           },
           "phone": {
-            "type": "string",
-            "description": "Numéro de téléphone de l'utilisateur",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Numéro de téléphone de l'utilisateur (null si non renseigné)",
             "example": "+33123456789"
           },
           "status": {
@@ -201,9 +203,6 @@
           "core_api": {
             "type": "string",
             "example": "Connected"
-          },
-          "details": {
-            "description": "Données brutes renvoyées par l'API Core"
           }
         },
         "required": [
@@ -685,7 +684,14 @@
             }
           },
           "502": {
-            "description": "API Core injoignable"
+            "description": "API Core injoignable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckApiResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -722,6 +728,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AuthTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Données invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }
@@ -764,6 +780,16 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "Core API indisponible ou réponse amont invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -774,7 +800,7 @@
           "Authentication"
         ],
         "summary": "Crée un utilisateur",
-        "description": "Transmet les informations d'inscription au Core API.",
+        "description": "Valide puis transmet les informations d'inscription au Core API (POST /api/v1/auth/register, route publique).",
         "requestBody": {
           "required": true,
           "content": {
@@ -811,6 +837,16 @@
           },
           "500": {
             "description": "Erreur serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API indisponible ou réponse amont invalide",
             "content": {
               "application/json": {
                 "schema": {
@@ -863,8 +899,28 @@
               }
             }
           },
+          "403": {
+            "description": "Token de première connexion inconnu ou expiré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Erreur serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API indisponible ou réponse amont invalide",
             "content": {
               "application/json": {
                 "schema": {
@@ -913,7 +969,7 @@
           "Users"
         ],
         "summary": "Récupère les informations publiques d'un utilisateur",
-        "description": "Transmet la demande au Core API sur /api/v1/user/{user_id}/about.",
+        "description": "Transmet la session (en-tête Authorization, x-session-token ou cookie accessToken) au Core API sur /api/v1/user/{id}/ et ne renvoie que les informations publiques.",
         "parameters": [
           {
             "schema": {
@@ -961,6 +1017,16 @@
           },
           "500": {
             "description": "Erreur serveur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API indisponible ou réponse amont invalide",
             "content": {
               "application/json": {
                 "schema": {
@@ -3153,6 +3219,7 @@
           "Administration"
         ],
         "summary": "Rafraîchit une session via le Core API",
+        "description": "Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3165,11 +3232,28 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Session rafraîchie",
+            "headers": {
+              "Authorization": {
+                "description": "Bearer <access token>",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CoreResponse"
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "JWT refreshed successfully"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
                 }
               }
             }
@@ -3348,6 +3432,16 @@
           },
           "401": {
             "description": "Session invalide"
+          },
+          "502": {
+            "description": "Core API indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -3367,6 +3461,16 @@
           },
           "401": {
             "description": "Session invalide"
+          },
+          "502": {
+            "description": "Core API indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
           }
         }
       }

@@ -71,11 +71,11 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | --- | --- | --- | --- |
 | GET | `/health` | — | 200 |
 | GET | `/check_apis` | — | 200, 502 |
-| POST | `/auth/login` | application/json | 200, 401, 412, 500 |
-| POST | `/auth/register` | application/json | 201, 400, 409, 500 |
-| POST | `/auth/force_change_password` | application/json | 204, 400, 401, 500 |
+| POST | `/auth/login` | application/json | 200, 400, 401, 412, 500, 502 |
+| POST | `/auth/register` | application/json | 201, 400, 409, 500, 502 |
+| POST | `/auth/force_change_password` | application/json | 204, 400, 401, 403, 500, 502 |
 | POST | `/auth/logout` | — | 200, 500 |
-| GET | `/user/{userId}/about` | — | 200, 400, 401, 500 |
+| GET | `/user/{userId}/about` | — | 200, 400, 401, 500, 502 |
 | GET | `/bff/admin/users` | — | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/users` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
 | PATCH | `/bff/admin/users/{userId}` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
@@ -100,12 +100,12 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | GET | `/bff/admin/sessions/history` | — | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/sessions/refresh` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/sessions/revoke` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
-| GET | `/me` | — | 200, 401 |
-| GET | `/session/me` | — | 200, 401 |
+| GET | `/me` | — | 200, 401, 502 |
+| GET | `/session/me` | — | 200, 401, 502 |
 
 ## Session, permissions and errors
 
-Authentication routes handle their own flow. Administration operations using `requireAdmin` verify the session with `JWT_SECRET` and the database role. Other adapters forward authorization to Core. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
+Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
 
 ## Synchronization and verification
 
@@ -116,6 +116,8 @@ npm test -- --runInBand
 npm run lint
 npm run build
 ```
+
+Tests in `tests/user.upstream-mocks.test.ts` run the whole application and the real Core API client against a local HTTP mock driven by the Core API contract, rebuilt from the installed `@mairie360/core-api-openapi` package (orval types, version pinned in `package.json`): every request (path, parameters, JSON body) and every mocked success response is validated against that contract, and every BFF response against `contracts/openapi.json`. Bumping the package is enough to test against its new contract; error statuses are not typed by orval and are simulated explicitly. PostgreSQL and Redis repositories stay mocked with `jest.mock`. Routes served by Core API v1.1.1 but missing from the published contract are listed, with their reason, in `tests/support/core-fixtures.ts`.
 
 `contracts:generate` exports the runtime registry to `contracts/openapi.json` and regenerates `contracts/bff.d.ts`. `contracts:check` fails when the contract or types are stale. Then run `npm run contracts:sync` in each associated web service and deliver contract changes together.
 
