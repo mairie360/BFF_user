@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { registry } from '../openapi-registry';
+import { ApiErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import type { AxiosRequestConfig } from 'axios';
 import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
@@ -25,6 +25,7 @@ for (const path of ['/me', '/session/me']) {
     registry.registerPath({ method: 'get', path, responses: {
         200: { description: 'Identité, groupes et rôles de la session', content: { 'application/json': { schema: SessionResponseSchema } } },
         401: { description: 'Session invalide' },
+        502: { description: 'Core API indisponible', content: { 'application/json': { schema: ApiErrorResponse } } },
     } });
 }
 

@@ -1,7 +1,6 @@
 import '../config/registerGeneratedOpenApi';
 import axios, { type AxiosRequestConfig } from 'axios';
 import { getCoreApi } from '@mairie360/core-api-openapi/endpoints/coreApi';
-import { DEFAULT_JWT_TOKEN } from '../config/token';
 
 /**
  * Construit l'URL du Core API depuis la configuration Docker ou locale.
@@ -29,16 +28,8 @@ export const coreClient = axios.create({
 
 coreClient.interceptors.request.use(
     (config) => {
-        const currentAuth = config.headers?.Authorization ?? config.headers?.authorization;
-        const isLoginRequest = config.url === '/api/v1/auth/login';
-
-        // Le login doit rester anonyme. Pour les autres appels, le token par
-        // défaut est utilisé uniquement si la route n'en a pas fourni un.
-        if (!isLoginRequest && !currentAuth && DEFAULT_JWT_TOKEN) {
-            config.headers.Authorization = DEFAULT_JWT_TOKEN.startsWith('Bearer ')
-                ? DEFAULT_JWT_TOKEN
-                : `Bearer ${DEFAULT_JWT_TOKEN}`;
-        }
+        // Aucun jeton par défaut : chaque appel transmet uniquement la session de l'appelant, et les routes
+        // publiques de Core (/api/v1/auth/*) restent anonymes.
 
         // Le Core expose cet endpoint sans slash final, alors que le client
         // OpenAPI généré le produit avec un slash.

@@ -52,14 +52,15 @@ export function coreRequestOptions(req: Request): AxiosRequestConfig {
 }
 
 export function forwardCoreResponse<T>(res: Response, response: AxiosResponse<T>): Response {
-    if (response.status === 204 || response.data === undefined) {
+    if (response.status === 204 || response.data === undefined || response.data === '') {
         return res.status(response.status).send();
     }
 
-    return res.status(response.status).send(response.data);
+    // Core renvoie parfois un texte (ex. "User created successfully!") : le contrat du BFF annonce du JSON.
+    return res.status(response.status).json(toJsonBody(response.data));
 }
 
-function toJsonErrorBody(data: unknown): unknown {
+function toJsonBody(data: unknown): unknown {
     // Le Core renvoie parfois un corps texte (ex. "Forbidden: User is not an admin.") :
     // on le normalise en JSON pour garder un Content-Type cohérent côté BFF.
     return typeof data === 'string' ? { message: data } : data;
@@ -77,7 +78,7 @@ export function handleUnknownError(res: Response, error: unknown): Response {
         }
 
         if (axiosError.response?.data !== undefined) {
-            return res.status(status).json(toJsonErrorBody(axiosError.response.data));
+            return res.status(status).json(toJsonBody(axiosError.response.data));
         }
 
         return res.status(status).json({ message: axiosError.message });

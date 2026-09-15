@@ -71,11 +71,11 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | --- | --- | --- | --- |
 | GET | `/health` | — | 200 |
 | GET | `/check_apis` | — | 200, 502 |
-| POST | `/auth/login` | application/json | 200, 401, 412, 500 |
-| POST | `/auth/register` | application/json | 201, 400, 409, 500 |
-| POST | `/auth/force_change_password` | application/json | 204, 400, 401, 500 |
+| POST | `/auth/login` | application/json | 200, 400, 401, 412, 500, 502 |
+| POST | `/auth/register` | application/json | 201, 400, 409, 500, 502 |
+| POST | `/auth/force_change_password` | application/json | 204, 400, 401, 403, 500, 502 |
 | POST | `/auth/logout` | — | 200, 500 |
-| GET | `/user/{userId}/about` | — | 200, 400, 401, 500 |
+| GET | `/user/{userId}/about` | — | 200, 400, 401, 500, 502 |
 | GET | `/bff/admin/users` | — | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/users` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
 | PATCH | `/bff/admin/users/{userId}` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
@@ -100,12 +100,12 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | GET | `/bff/admin/sessions/history` | — | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/sessions/refresh` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/sessions/revoke` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
-| GET | `/me` | — | 200, 401 |
-| GET | `/session/me` | — | 200, 401 |
+| GET | `/me` | — | 200, 401, 502 |
+| GET | `/session/me` | — | 200, 401, 502 |
 
 ## Session, permissions et erreurs
 
-Les routes d’authentification gèrent leur propre parcours. Les opérations d’administration qui passent par `requireAdmin` vérifient la session avec `JWT_SECRET` et le rôle en base. Les autres adaptateurs transmettent l’autorisation à Core. Les cookies dépendent de `COOKIE_DOMAIN` et de `NODE_ENV`; les droits de l’interface ne remplacent pas les contrôles serveur.
+Les routes d’authentification gèrent leur propre parcours: les corps de login et d’inscription sont validés avant d’atteindre Core, et l’inscription utilise la route publique `POST /api/v1/auth/register` de Core. Toutes les routes `/bff/admin/*` passent par `requireAdmin`, qui vérifie la session avec `JWT_SECRET` et le rôle en base avant toute autre chose, car Core API v1.1.1 ne contrôle pas le rôle administrateur. Les autres adaptateurs transmettent la session de l’appelant à Core et n’utilisent jamais de jeton par défaut; `/me` et `/user/{userId}/about` répondent 401 sans session, et `/user/{userId}/about` ne renvoie que les champs publics (`phone` peut valoir `null`). `/bff/admin/sessions/refresh` relaie le JWT rafraîchi comme le login (en-tête et cookie). Le détail des erreurs n’est exposé qu’avec `NODE_ENV=development`; `/check_apis` ne renvoie jamais de détail réseau. Les cookies dépendent de `COOKIE_DOMAIN` et de `NODE_ENV`; les droits de l’interface ne remplacent pas les contrôles serveur.
 
 ## Synchronisation et vérifications
 
@@ -116,6 +116,8 @@ npm test -- --runInBand
 npm run lint
 npm run build
 ```
+
+Les tests de `tests/user.upstream-mocks.test.ts` exécutent toute l'application et le vrai client Core API contre un mock HTTP local piloté par le contrat Core API, reconstruit depuis le paquet `@mairie360/core-api-openapi` installé (types orval, version épinglée dans `package.json`): chaque requête (chemin, paramètres, corps JSON) et chaque réponse de succès simulée est validée contre ce contrat, et chaque réponse du BFF contre `contracts/openapi.json`. Monter la version du paquet suffit à tester le nouveau contrat; les statuts d'erreur ne sont pas typés par orval et sont simulés explicitement. Les repositories PostgreSQL et Redis restent simulés par `jest.mock`. Les routes servies par Core API v1.1.1 mais absentes du contrat publié sont listées, avec leur justification, dans `tests/support/core-fixtures.ts`.
 
 `contracts:generate` exporte le registre runtime dans `contracts/openapi.json` et régénère `contracts/bff.d.ts`. `contracts:check` échoue si le contrat ou les types sont périmés. Exécuter ensuite `npm run contracts:sync` dans chaque web service associé et livrer les modifications de contrat ensemble.
 
