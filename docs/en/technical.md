@@ -29,10 +29,9 @@ Create `.env` in the repository root. Local HTTP configuration example to adapt 
 ```dotenv
 PORT=4000
 CORE_API_URL=http://localhost:3000
-REDIS_URL=redis://localhost:6379
 ```
 
-Also set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` for an existing database containing the tables expected by the SQL repositories. These variables and any secrets listed below still need to be supplied; the HTTP example prepares neither schema nor data.
+The BFF needs no database or Redis: everything goes through Core API. The variables and any secrets listed below still need to be supplied; the HTTP example prepares no data.
 
 ```bash
 npm run start
@@ -58,10 +57,7 @@ Values below are local examples or explicitly described behavior, not production
 | `CORE_API_URL` | http://localhost:3000 | Core address including the HTTP(S) scheme. |
 | `CORE_API_PORT` | 3000 | Port appended when the address has none. |
 | `JWT_SECRET` | — | Core deployment secret required for local administrator checks. |
-| `REDIS_URL` | redis://localhost:6379 | Redis used by the first-sign-in flow. |
 | `COOKIE_DOMAIN` | — | Shared cookie domain; omit for a host-only cookie. |
-| `DB_HOST` / `DB_PORT` | localhost / 5432 | SQL repository PostgreSQL connection. |
-| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | — | Database, account and secret to supply for the expected shared schema. |
 
 ## Routes and data contract
 

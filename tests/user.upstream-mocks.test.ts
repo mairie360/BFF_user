@@ -2,37 +2,15 @@ import path from 'node:path';
 import type { Express } from 'express';
 import request from 'supertest';
 
-// PostgreSQL et Redis n'ont pas de contrat OpenAPI : les repositories restent simulés par jest.mock,
-// seul Core API est servi par un mock HTTP piloté par le contrat reconstruit depuis le paquet
-// @mairie360/core-api-openapi installé (tests/support/orval-contract.ts).
-jest.mock('../src/repositories/adminRepository', () => ({
-  addAdministrationGroupMember: jest.fn(),
-  isAdministrationUserAdmin: jest.fn(),
-  listAdministrationGroupMembers: jest.fn(),
-  listAdministrationUsers: jest.fn(),
-  removeAdministrationGroupMember: jest.fn(),
-  resetAdministrationUserPassword: jest.fn(),
-  updateAdministrationGroup: jest.fn(),
-}));
-jest.mock('../src/repositories/firstConnectionRepository', () => ({
-  consumeFirstConnectionToken: jest.fn(),
-  persistFirstConnectionPassword: jest.fn(),
-  resolveFirstConnectionUserId: jest.fn(),
-}));
+// Toute l'application est testée contre un vrai serveur HTTP simulant Core API, piloté par le contrat
+// reconstruit depuis le paquet @mairie360/core-api-openapi installé (tests/support/orval-contract.ts) :
+// le BFF n'a plus d'accès direct à PostgreSQL ni à Redis.
 
-import * as adminRepository from '../src/repositories/adminRepository';
-import * as firstConnection from '../src/repositories/firstConnectionRepository';
 import { ContractMockServer, unreachableUrl, type MockReply } from './support/contract-mock-server';
 import { OpenApiContract } from './support/openapi-contract';
 import { JWT_SECRET, expiredToken, group, loadCoreApiContract, meResponse, role, session, sessionToken, userResponse } from './support/core-fixtures';
 
-const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract())
-  .allowDeviation(
-    /réponse 200 GET \/api\/v1\/sessions\/ \$\.roles: propriété requise manquante/,
-    // Core API renvoie { sessions } (Core_API src/endpoints/v1/sessions/get/response_view.rs), mais orval a fusionné
-    // les deux structs Rust GetResponseView et type la réponse comme la liste des rôles.
-    'Contrat Core API erroné sur la réponse de GET /api/v1/sessions/',
-  );
+const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract());
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
 
 const ADMIN_ID = 1;
@@ -55,10 +33,8 @@ beforeEach(() => {
   process.env.CORE_API_URL = coreApi.url;
   jest.spyOn(console, 'log').mockImplementation(() => undefined);
   coreApi.reset();
-  jest.mocked(adminRepository.isAdministrationUserAdmin).mockResolvedValue(true);
-  jest.mocked(firstConnection.resolveFirstConnectionUserId).mockResolvedValue(42);
-  jest.mocked(firstConnection.persistFirstConnectionPassword).mockResolvedValue();
-  jest.mocked(firstConnection.consumeFirstConnectionToken).mockResolvedValue();
+  // Le rôle de l'appelant est lu dans Core API avant toute route d'administration.
+  coreApi.on('get', '/api/v1/user/me/', { body: meResponse({ role: 'Admin' }) });
 });
 
 afterEach(() => {
@@ -206,12 +182,9 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(upstreamSequence()).toEqual(['POST /api/v1/auth/force_change_password']);
       expect(coreApi.requests[0].body).toEqual(payload);
       expect(coreApi.requests[0].headers.authorization).toBeUndefined();
-      expect(firstConnection.resolveFirstConnectionUserId).toHaveBeenCalledWith('first-connection-token');
-      expect(firstConnection.persistFirstConnectionPassword).toHaveBeenCalledWith(42, 'Updated-456!');
-      expect(firstConnection.consumeFirstConnectionToken).toHaveBeenCalledWith('first-connection-token', 42);
     });
 
-    test('does not persist the password when Core API rejects the token', async () => {
+    test('forwards the Core API refusal of an unknown token', async () => {
       coreApi.on('post', '/api/v1/auth/force_change_password', coreError(401, 'Unauthorized'));
 
       const response = await request(app).post('/auth/force_change_password').send(payload);
@@ -219,16 +192,12 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(401);
       expectBffContract('post', '/auth/force_change_password', response);
       expect(response.body).toEqual({ message: 'Unauthorized' });
-      expect(firstConnection.persistFirstConnectionPassword).not.toHaveBeenCalled();
-      expect(firstConnection.consumeFirstConnectionToken).not.toHaveBeenCalled();
     });
 
     test.each([
       ['an invalid payload', { token: '' }, 400],
-      ['an unknown first-connection token', payload, 403],
+      ['an empty password', { token: 'first-connection-token', new_password: '' }, 400],
     ])('rejects %s before calling Core API', async (_label, body, status) => {
-      jest.mocked(firstConnection.resolveFirstConnectionUserId).mockResolvedValue(null);
-
       const response = await request(app).post('/auth/force_change_password').send(body);
 
       expect(response.status).toBe(status);
@@ -381,16 +350,16 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(status);
       expectBffContract(method, pathname, response);
       if (responseBody !== undefined) expect(response.body).toEqual(responseBody);
-      expect(upstreamSequence()).toEqual([upstream]);
-      expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
-      if (body) expect(coreApi.requests[0].body).toEqual(body);
-      // Core API v1.1.1 ne vérifie pas le rôle admin : le BFF le fait avant tout appel.
-      expect(adminRepository.isAdministrationUserAdmin).toHaveBeenCalledWith(ADMIN_ID);
+      // Le rôle est lu dans Core API avant l'appel proxifié.
+      expect(upstreamSequence()).toEqual(['GET /api/v1/user/me/', upstream]);
+      const proxied = coreApi.requests[1];
+      expect(proxied.headers.authorization).toBe(`Bearer ${SESSION}`);
+      if (body) expect(proxied.body).toEqual(body);
     });
 
-    test.each(cases)('$route is refused to a non-admin session without calling Core API', async ({ route, body }) => {
+    test.each(cases)('$route is refused to a non-admin session, whose role is the only Core API call', async ({ route, body }) => {
       const [method, pathname] = route.split(' ');
-      jest.mocked(adminRepository.isAdministrationUserAdmin).mockResolvedValue(false);
+      coreApi.on('get', '/api/v1/user/me/', { body: meResponse({ role: 'User' }) });
       let call = request(app)[method.toLowerCase() as 'get'](pathname).set('Cookie', `accessToken=${sessionToken(7)}`);
       if (body) call = call.send(body);
 
@@ -399,7 +368,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(403);
       expectBffContract(method, pathname, response);
       expect(response.body).toEqual({ message: 'Administrator role required' });
-      expect(coreApi.requests).toHaveLength(0);
+      expect(upstreamSequence()).toEqual(['GET /api/v1/user/me/']);
     });
 
     test('POST /bff/admin/sessions/refresh relays the refreshed JWT as Bearer header and httpOnly cookie', async () => {
@@ -413,7 +382,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.headers.authorization).toBe('Bearer refreshed.jwt.token');
       expect(response.headers['access-control-expose-headers']).toBe('Authorization');
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=refreshed\.jwt\.token;.*HttpOnly/);
-      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
+      expect(coreApi.requests[1]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
     });
 
     test('POST /bff/admin/sessions/refresh returns 502 when Core API omits the refreshed JWT', async () => {
@@ -453,7 +422,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expectBffContract('get', '/bff/admin/groups', response);
       expect(response.body).toEqual({ message: expect.stringMatching(/^Invalid (or missing|or expired) session token$/) });
       expect(coreApi.requests).toHaveLength(0);
-      expect(adminRepository.isAdministrationUserAdmin).not.toHaveBeenCalled();
     });
 
     test.each([
@@ -469,7 +437,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(400);
       expectBffContract(method, pathname, response);
       expect(response.body).toEqual({ message: `Invalid ${name}` });
-      expect(coreApi.requests).toHaveLength(0);
+      // Le rôle est vérifié avant les paramètres, pour ne rien révéler à un appelant non autorisé.
+      expect(upstreamSequence()).toEqual(['GET /api/v1/user/me/']);
     });
   });
 
@@ -481,37 +450,42 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(204);
       expectBffContract('delete', '/bff/admin/users/7', response);
-      expect(adminRepository.isAdministrationUserAdmin).toHaveBeenCalledWith(ADMIN_ID);
-      expect(upstreamSequence()).toEqual(['DELETE /api/v1/admin/users/7/']);
+      expect(upstreamSequence()).toEqual(['GET /api/v1/user/me/', 'DELETE /api/v1/admin/users/7/']);
       expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
     });
 
-    test.each([
-      ['a non-admin user', `Bearer ${SESSION}`, 403, false],
-      ['a token signed with another secret', `Bearer ${sessionToken(ADMIN_ID, 'other-secret')}`, 401, true],
-    ])('refuses %s without calling Core API', async (_label, authorization, status, isAdmin) => {
-      jest.mocked(adminRepository.isAdministrationUserAdmin).mockResolvedValue(isAdmin);
+    test('refuses a non-admin user after reading their role, without deleting anything', async () => {
+      coreApi.on('get', '/api/v1/user/me/', { body: meResponse({ role: 'User' }) });
 
-      const response = await request(app).delete('/bff/admin/users/7').set('Authorization', authorization);
+      const response = await request(app).delete('/bff/admin/users/7').set('Authorization', `Bearer ${SESSION}`);
 
-      expect(response.status).toBe(status);
+      expect(response.status).toBe(403);
+      expectBffContract('delete', '/bff/admin/users/7', response);
+      expect(upstreamSequence()).toEqual(['GET /api/v1/user/me/']);
+    });
+
+    test('refuses a token signed with another secret without calling Core API', async () => {
+      const response = await request(app).delete('/bff/admin/users/7')
+        .set('Authorization', `Bearer ${sessionToken(ADMIN_ID, 'other-secret')}`);
+
+      expect(response.status).toBe(401);
       expectBffContract('delete', '/bff/admin/users/7', response);
       expect(coreApi.requests).toHaveLength(0);
     });
   });
 
   test.each([
-    ['GET /bff/admin/users?page=2&page_size=5', () => jest.mocked(adminRepository.listAdministrationUsers).mockResolvedValue({ users: [], page: 2, page_size: 5, total: 5, total_pages: 1 })],
-    ['GET /bff/admin/groups/5/users', () => jest.mocked(adminRepository.listAdministrationGroupMembers).mockResolvedValue([])],
-  ])('%s is served from PostgreSQL without calling Core API', async (route, arrange) => {
-    arrange();
+    ['GET /bff/admin/users?page=2&page_size=5', { page: '2', page_size: '5' }],
+    ['GET /bff/admin/groups/5/users', { group_id: '5', page_size: '500' }],
+  ])('%s is served by the Core API administration listing', async (route, query) => {
+    coreApi.on('get', '/api/v1/admin/users/', { body: { users: [], page: 2, page_size: 5, total: 5, total_pages: 1 } });
     const [, url] = route.split(' ');
 
     const response = await request(app).get(url).set('Authorization', `Bearer ${SESSION}`);
 
     expect(response.status).toBe(200);
     expectBffContract('get', url.split('?')[0], response);
-    expect(coreApi.requests).toHaveLength(0);
+    expect(Object.fromEntries(coreApi.calls('/api/v1/admin/users/')[0].url.searchParams)).toEqual(query);
   });
 
   describe('Core API failures', () => {
@@ -551,17 +525,16 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(502);
       expectBffContract(method, pathname, response);
       expect(response.body).toEqual({ message: 'Upstream service error' });
-      expect(firstConnection.persistFirstConnectionPassword).not.toHaveBeenCalled();
     });
 
-    test('hides database error details behind a generic 500', async () => {
+    test('hides the details of a Core API failure on the administration listing', async () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      jest.mocked(adminRepository.listAdministrationUsers).mockRejectedValue(new Error('password authentication failed for user "postgres"'));
+      coreApi.on('get', '/api/v1/admin/users/', coreError(500, 'An error occurred while accessing the database.'));
 
       const response = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${SESSION}`);
 
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ message: 'Internal server error' });
+      expect(response.status).toBe(502);
+      expect(response.body).toEqual({ message: 'Upstream service error' });
       expect(consoleError).toHaveBeenCalled();
     });
   });

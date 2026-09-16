@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { JsonSchema, OpenApiContract } from './support/openapi-contract';
 import { loadOrvalContract, resolveOrvalPackage } from './support/orval-contract';
-import { CORE_CONTRACT_GAPS, group, meResponse, role, session, userResponse } from './support/core-fixtures';
+import { group, meResponse, role, session, userResponse } from './support/core-fixtures';
 
 // Le contrat Core API est reconstruit depuis le paquet @mairie360/core-api-openapi installé :
 // monter la version dans package.json suffit à tester le BFF contre le nouveau contrat.
@@ -13,8 +13,11 @@ const PACKAGE = '@mairie360/core-api-openapi';
 const CONSUMED = [
   { operationId: 'login', method: 'post', template: '/api/v1/auth/login' },
   { operationId: 'register', method: 'post', template: '/api/v1/auth/register' },
-  { operationId: 'forceChangePassword', method: 'post', template: '/api/v1/auth/force_change_password/' },
+  { operationId: 'forceChangePassword', method: 'post', template: '/api/v1/auth/force_change_password' },
+  { operationId: 'adminListUsers', method: 'get', template: '/api/v1/admin/users/' },
   { operationId: 'adminPostUser', method: 'post', template: '/api/v1/admin/users/' },
+  { operationId: 'adminDeleteUser', method: 'delete', template: '/api/v1/admin/users/{userId}/' },
+  { operationId: 'adminResetUserPassword', method: 'patch', template: '/api/v1/admin/users/{userId}/password' },
   { operationId: 'adminPatchUser', method: 'patch', template: '/api/v1/admin/users/{userId}/' },
   { operationId: 'adminAddRoleToUser', method: 'post', template: '/api/v1/admin/users/{userId}/roles/' },
   { operationId: 'adminDeleteUserRole', method: 'delete', template: '/api/v1/admin/users/{userId}/roles/{roleId}' },
@@ -28,6 +31,7 @@ const CONSUMED = [
   { operationId: 'getGroups', method: 'get', template: '/api/v1/groups/' },
   { operationId: 'postGroup', method: 'post', template: '/api/v1/groups/' },
   { operationId: 'getGroup', method: 'get', template: '/api/v1/groups/{groupId}/' },
+  { operationId: 'patchGroup', method: 'patch', template: '/api/v1/groups/{groupId}/' },
   { operationId: 'deleteGroup', method: 'delete', template: '/api/v1/groups/{groupId}/' },
   { operationId: 'getActiveSessions', method: 'get', template: '/api/v1/sessions/' },
   { operationId: 'history', method: 'get', template: '/api/v1/sessions/history' },
@@ -65,24 +69,12 @@ describe('Core API contract from the installed @mairie360/core-api-openapi packa
     expect(coreApi.schema('LoginView')).toMatchObject({ required: ['device_info', 'email', 'password'] });
     expect(coreApi.schema('AddRoleToUserView')).toMatchObject({ properties: { role_id: { type: 'number', minimum: 0 } } });
     expect(coreApi.responseSchema(coreApi.match('GET', '/health')!, 200)).toEqual({ documented: true, schema: undefined });
+    // Les sessions actives et les rôles ont chacun leur schéma (ils partageaient le nom GetResponseView).
+    const sessions = coreApi.match('GET', '/api/v1/sessions/')!;
+    expect(coreApi.responseSchema(sessions, 200)).toEqual({ documented: true, schema: { $ref: '#/components/schemas/GetSessionsResultView' } });
+    expect(coreApi.validate(coreApi.schema('GetSessionsResultView'), { sessions: [session('s-1')] })).toEqual([]);
     // Les erreurs ne sont pas typées par orval : aucun statut hors 2XX n'est documenté.
     expect(coreApi.responseSchema(coreApi.match('POST', '/api/v1/auth/login')!, 401).documented).toBe(false);
-  });
-});
-
-describe('known gaps between the published Core API contract and Core API v1.1.1', () => {
-  // Quand un de ces tests échoue, le paquet publié a été corrigé : retirer l'écart de CORE_CONTRACT_GAPS
-  // (tests/support/core-fixtures.ts) ou l'allowDeviation correspondant de user.upstream-mocks.test.ts.
-
-  test.each(CORE_CONTRACT_GAPS)('$reason', ({ method, template }) => {
-    expect(coreApi.document.paths[template]?.[method]).toBeUndefined();
-  });
-
-  test('GET /api/v1/sessions/ is typed with the roles GetResponseView instead of { sessions }', () => {
-    // Deux structs Rust GetResponseView (rôles et sessions) : orval n'en garde qu'une.
-    const schema = responseSchema(coreApi, 'get', '/api/v1/sessions/', 200);
-    expect(schema).toEqual({ $ref: '#/components/schemas/GetResponseView' });
-    expect(coreApi.validate(schema, { sessions: [session('s-1')] })).toEqual(['$.roles: propriété requise manquante']);
   });
 });
 

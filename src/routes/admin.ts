@@ -9,16 +9,8 @@ import {
     coreAdminUsersClient,
     coreGroupsClient,
     coreSessionsClient,
+    coreUsersClient,
 } from '../clients/coreClient';
-import {
-    addAdministrationGroupMember,
-    listAdministrationGroupMembers,
-    listAdministrationUsers,
-    removeAdministrationGroupMember,
-    isAdministrationUserAdmin,
-    resetAdministrationUserPassword,
-    updateAdministrationGroup,
-} from '../repositories/adminRepository';
 import {
     bearerToken,
     coreRequestOptions,
@@ -28,6 +20,9 @@ import {
 } from './admin_helpers';
 
 const router = Router();
+
+// Un groupe de la mairie ne dépasse pas la page maximale de Core API (500).
+const MAX_GROUP_MEMBERS = 500;
 
 const UserIdParams = z.object({ userId: z.coerce.number().int().positive() }).openapi('AdminUserIdParams');
 const RoleIdParams = z.object({ roleId: z.coerce.number().int().positive() }).openapi('AdminRoleIdParams');
@@ -196,9 +191,10 @@ async function requireAdmin(req: Request, res: Response): Promise<boolean> {
     }
 
     try {
-        const isAdmin = await isAdministrationUserAdmin(userId);
+        // Le rôle vient de Core API (GET /api/v1/user/me/), qui fait autorité sur les rôles.
+        const { data } = await coreUsersClient.getMe(coreRequestOptions(req));
 
-        if (!isAdmin) {
+        if (data.role?.trim().toLowerCase() !== 'admin') {
             res.status(403).json({ message: 'Administrator role required' });
             return false;
         }
@@ -234,12 +230,12 @@ router.get('/users', async (req: Request, res: Response) => {
 
 
     try {
-        const response = await listAdministrationUsers({
+        const response = await coreAdminUsersClient.adminListUsers({
             page: query.data.page,
-            pageSize: query.data.page_size,
-            search: query.data.search,
-        });
-        return res.status(200).json(response);
+            page_size: query.data.page_size,
+            ...(query.data.search ? { search: query.data.search } : {}),
+        }, coreRequestOptions(req));
+        return res.status(200).json(response.data);
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -316,14 +312,12 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
 
 
     try {
-        const updated = await resetAdministrationUserPassword(
+        // Core réinitialise le mot de passe, lève la première connexion et révoque les sessions actives.
+        await coreAdminUsersClient.adminResetUserPassword(
             userId,
-            payload.data.new_password,
+            { new_password: payload.data.new_password },
+            coreRequestOptions(req),
         );
-
-        if (!updated) {
-            return res.status(404).json({ message: 'Unknown user' });
-        }
 
         return res.status(204).send();
     } catch (error) {
@@ -597,11 +591,8 @@ router.patch('/groups/:groupId', async (req: Request, res: Response) => {
     }
 
     try {
-        const group = await updateAdministrationGroup(groupId, payload.data);
-        if (!group) {
-            return res.status(404).json({ message: 'Unknown group' });
-        }
-        return res.status(200).json({ group });
+        const response = await coreGroupsClient.patchGroup(groupId, payload.data, coreRequestOptions(req));
+        return res.status(200).json({ group: response.data });
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -647,7 +638,12 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 
     try {
-        const users = await listAdministrationGroupMembers(groupId);
+        // La liste d'administration filtrée par groupe porte les mêmes champs que la liste globale.
+        const response = await coreAdminUsersClient.adminListUsers(
+            { group_id: groupId, page_size: MAX_GROUP_MEMBERS },
+            coreRequestOptions(req),
+        );
+        const users = response.data.users.map(({ roles: _roles, ...member }) => member);
         return res.status(200).json({ users });
     } catch (error) {
         return handleUnknownError(res, error);
@@ -675,8 +671,14 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
     }
 
     try {
-        const created = await addAdministrationGroupMember(groupId, userId);
-        return res.status(created ? 201 : 200).json({ created });
+        // Core ne distingue pas l'ajout d'un doublon : l'appartenance est lue avant d'ajouter.
+        const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
+        if (members.data.users.includes(userId)) {
+            return res.status(200).json({ created: false });
+        }
+
+        await coreGroupsClient.addUserToGroup(groupId, { group_id: groupId, user_id: userId }, coreRequestOptions(req));
+        return res.status(201).json({ created: true });
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -703,10 +705,12 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
 
 
     try {
-        const removed = await removeAdministrationGroupMember(groupId, userId);
-        if (!removed) {
+        const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
+        if (!members.data.users.includes(userId)) {
             return res.status(404).json({ message: 'Unknown group member' });
         }
+
+        await coreGroupsClient.removeUserFromGroup(groupId, userId, coreRequestOptions(req));
         return res.status(204).send();
     } catch (error) {
         return handleUnknownError(res, error);

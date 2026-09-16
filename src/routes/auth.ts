@@ -11,11 +11,6 @@ import {
 } from '../openapi-registry';
 import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
 import {
-    consumeFirstConnectionToken,
-    persistFirstConnectionPassword,
-    resolveFirstConnectionUserId,
-} from '../repositories/firstConnectionRepository';
-import {
     forceChangeUserPassword,
     handleUnknownError,
     isLoginResponseView,
@@ -281,16 +276,8 @@ router.post('/force_change_password', async (req: Request, res: Response) => {
     }
 
     try {
-        const userId = await resolveFirstConnectionUserId(input.data.token);
-        if (!userId) {
-            return res.status(403).json({ message: 'Unknown or expired user token' });
-        }
-
-        // The Core validates the one-time token. Persisting again here keeps
-        // development images predating the Core password-persistence fix safe.
+        // Core valide le jeton à usage unique, enregistre le mot de passe et consomme le jeton.
         await forceChangeUserPassword(input.data);
-        await persistFirstConnectionPassword(userId, input.data.new_password);
-        await consumeFirstConnectionToken(input.data.token, userId);
         return res.status(204).send();
     } catch (error) {
         return handleUnknownError(res, error);

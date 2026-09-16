@@ -29,10 +29,9 @@ Créer `.env` à la racine. Exemple de configuration HTTP locale à adapter aux 
 ```dotenv
 PORT=4000
 CORE_API_URL=http://localhost:3000
-REDIS_URL=redis://localhost:6379
 ```
 
-Compléter `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` et `DB_PASSWORD` pour une base existante contenant les tables attendues par les dépôts SQL. Ces variables et les éventuels secrets listés ci-dessous restent à fournir; l’exemple HTTP ne prépare ni schéma ni données.
+Le BFF n’a besoin ni de base de données ni de Redis : tout passe par Core API. Les variables et les éventuels secrets listés ci-dessous restent à fournir; l’exemple HTTP ne prépare pas de données.
 
 ```bash
 npm run start
@@ -58,10 +57,7 @@ Les valeurs ci-dessous sont des exemples locaux ou des comportements expliciteme
 | `CORE_API_URL` | http://localhost:3000 | Adresse de Core, avec schéma HTTP(S). |
 | `CORE_API_PORT` | 3000 | Port ajouté si l’adresse ne contient pas de port. |
 | `JWT_SECRET` | — | Secret du déploiement Core requis pour les contrôles administrateur locaux. |
-| `REDIS_URL` | redis://localhost:6379 | Redis du parcours de première connexion. |
 | `COOKIE_DOMAIN` | — | Domaine partagé des cookies; omettre pour un cookie limité à l’hôte. |
-| `DB_HOST` / `DB_PORT` | localhost / 5432 | Connexion PostgreSQL des dépôts SQL. |
-| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | — | Base, compte et secret à fournir pour le schéma partagé attendu. |
 
 ## Routes et contrat de données
 

@@ -151,10 +151,8 @@ services:
       core-api-ready:
         condition: service_completed_successfully
     environment:
-      <<: *db-env
       HOST: "0.0.0.0"
       PORT: 4000
-      REDIS_URL: redis://redis:6379
       JWT_SECRET: 'b"secret"'
       CORE_API_URL: http://core-api:3000
     expose:

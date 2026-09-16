@@ -2,11 +2,6 @@ import express from 'express';
 import request from 'supertest';
 import authRouter from '../src/routes/auth';
 import { forceChangeUserPassword, loginUser } from '../src/routes/core_helpers';
-import {
-    consumeFirstConnectionToken,
-    persistFirstConnectionPassword,
-    resolveFirstConnectionUserId,
-} from '../src/repositories/firstConnectionRepository';
 
 jest.mock('../src/routes/core_helpers', () => ({
     forceChangeUserPassword: jest.fn(),
@@ -20,17 +15,8 @@ jest.mock('../src/routes/core_helpers', () => ({
     registerUser: jest.fn(),
 }));
 
-jest.mock('../src/repositories/firstConnectionRepository', () => ({
-    consumeFirstConnectionToken: jest.fn(),
-    persistFirstConnectionPassword: jest.fn(),
-    resolveFirstConnectionUserId: jest.fn(),
-}));
-
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
-const mockedConsumeToken = jest.mocked(consumeFirstConnectionToken);
-const mockedPersistPassword = jest.mocked(persistFirstConnectionPassword);
-const mockedResolveUserId = jest.mocked(resolveFirstConnectionUserId);
 
 const app = express();
 app.use(express.json());
@@ -83,38 +69,27 @@ describe('POST /auth/login', () => {
 describe('POST /auth/force_change_password', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        mockedResolveUserId.mockResolvedValue(42);
         mockedForceChangePassword.mockResolvedValue();
-        mockedPersistPassword.mockResolvedValue();
-        mockedConsumeToken.mockResolvedValue();
     });
 
-    it('persists the new password after the Core validates the token', async () => {
+    it('delegates the one-time token and the new password to Core API', async () => {
         const response = await request(app)
             .post('/auth/force_change_password')
             .send({ token: 'first-connection-token', new_password: 'Updated-456!' });
 
         expect(response.status).toBe(204);
-        expect(mockedResolveUserId).toHaveBeenCalledWith('first-connection-token');
         expect(mockedForceChangePassword).toHaveBeenCalledWith({
             token: 'first-connection-token',
             new_password: 'Updated-456!',
         });
-        expect(mockedPersistPassword).toHaveBeenCalledWith(42, 'Updated-456!');
-        expect(mockedConsumeToken).toHaveBeenCalledWith('first-connection-token', 42);
-        expect(mockedForceChangePassword.mock.invocationCallOrder[0])
-            .toBeLessThan(mockedPersistPassword.mock.invocationCallOrder[0]);
     });
 
-    it('rejects an unknown first-connection token', async () => {
-        mockedResolveUserId.mockResolvedValue(null);
-
+    it('rejects an invalid payload without calling Core API', async () => {
         const response = await request(app)
             .post('/auth/force_change_password')
-            .send({ token: 'unknown-token', new_password: 'Updated-456!' });
+            .send({ token: '' });
 
-        expect(response.status).toBe(403);
+        expect(response.status).toBe(400);
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
-        expect(mockedPersistPassword).not.toHaveBeenCalled();
     });
 });

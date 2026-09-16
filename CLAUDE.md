@@ -55,25 +55,26 @@ the committed `contracts/openapi.json`, and the generated `contracts/bff.d.ts` t
 `CONTRACT.md` also mentions `npm run contracts:sync` for downstream web services — that
 script currently has no wired source directory (`source = null` in `scripts/contracts.mjs`).
 
-### Two data paths: Core API proxy + direct DB/Redis
+### One data path: Core API
 
-1. **HTTP to Core API.** `src/clients/coreClient.ts` builds the Core base URL from
-   `CORE_API_URL`/`CORE_API_PORT` and wraps the generated client from
-   `@mairie360/core-api-openapi`. It re-exports grouped sub-clients (`coreAuthClient`,
-   `coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, ...) that the routes
-   consume. There is **no fallback bearer**: routes forward only the caller's session (Core's
-   `/api/v1/auth/*` is exempt from its JWT middleware, so login/register/force_change_password
-   go anonymous). A request interceptor only patches a trailing-slash mismatch on
-   `force_change_password`.
-2. **Direct PostgreSQL + Redis.** `src/repositories/` talk to the shared Mairie360
-   database and Redis directly — used for the admin user list/search + pagination,
-   admin password reset (also revokes sessions), group membership
-   (`group_members` table — note: some other contracts call it `group_users`), and the
-   first-sign-in password flow (Redis one-time token keyed `<token>/first_connection_id`,
-   then a `users` table update).
+`src/clients/coreClient.ts` builds the Core base URL from `CORE_API_URL`/`CORE_API_PORT` and wraps the
+generated client from `@mairie360/core-api-openapi`. It re-exports grouped sub-clients (`coreAuthClient`,
+`coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, `coreUsersClient`, ...) that the routes
+consume. There is **no fallback bearer**: routes forward only the caller's session (Core's `/api/v1/auth/*`
+is exempt from its JWT middleware, so login/register/force_change_password go anonymous).
+
+The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
+`GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
+`PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,
+group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing filtered by `group_id` for
+the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
+which validates the one-time token, saves the password and consumes the token. The admin role of the
+caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
 
 `registerGeneratedOpenApi.ts` (imported first by `coreClient.ts`) registers `ts-node` at
-runtime so the generated packages' `.ts` sources load without a build step.
+runtime so the generated packages' `.ts` sources load without a build step; `npm run build` type-checks
+with `tsc --noEmit` then bundles `dist/index.js` with esbuild (`scripts/build.mjs`), inlining those
+packages so the production image runs `node dist/index.js`.
 
 ### Routing (`src/index.ts`)
 
@@ -110,8 +111,7 @@ catch-all and only exposes error detail when `NODE_ENV === 'development'`.
 ## Environment variables
 
 `CORE_API_URL` (+ optional `CORE_API_PORT`), `JWT_SECRET` (must match Core, required for
-admin checks), `REDIS_URL`,
-`DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`, `COOKIE_DOMAIN` (omit for host-only
+admin checks), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`.
 
 ## Docker
@@ -130,16 +130,10 @@ contract is rebuilt at test time from the **installed** `@mairie360/core-api-ope
 compiler API; the package ships no `openapi.json`), so bumping it is enough to test against a new Core
 contract. The mock rejects paths, methods, params and bodies absent from the contract and validates mocked
 success responses; orval does not type errors, so mocked error replies need `outOfContract: true`. Every
-BFF response is checked against `contracts/openapi.json`. Only PostgreSQL/Redis repositories stay
-`jest.mock`ed.
+BFF response is checked against `contracts/openapi.json`.
 
 - `coreClient` reads `CORE_API_URL` at module load: the app is imported in `beforeAll` after
   `CORE_API_URL` and `JWT_SECRET` are set (`check_apis` rebuilds the URL on every call).
-- Known gaps between the published package and Core API v1.1.1 are patched into the contract by
-  `loadCoreApiContract()` (`CORE_CONTRACT_GAPS` in `tests/support/core-fixtures.ts`: undeclared
-  `DELETE /api/v1/admin/users/{userId}/`, `force_change_password` without trailing slash) or accepted with
-  `allowDeviation` (`GET /api/v1/sessions/` typed as roles). `upstream-contracts.test.ts` fails once the
-  package fixes them: remove the patch then.
 - `jest.config.ts` lets ts-jest compile `node_modules/@mairie360/*` and skips diagnostics on
   `src/clients/coreClient.ts` (spurious axios `.d.ts`/`.d.cts` clash; `npm run build` still type-checks it).
 - `openapi-contract.ts`, `contract-mock-server.ts` and `orval-contract.ts` are shared verbatim with
@@ -150,6 +144,6 @@ BFF response is checked against `contracts/openapi.json`. Only PostgreSQL/Redis 
 - ESLint: `@typescript-eslint/no-explicit-any` is an **error**. Unused args must be
   `_`-prefixed.
 - Tests use `supertest`. Unit tests (`auth`, `session`, `admin`, ...) mount one router on a bare
-  Express app and `jest.mock` `coreClient` + repositories (upstream-mock tests: see the section above).
+  Express app and `jest.mock` `coreClient` (upstream-mock tests: see the section above).
 - Prefer adding schemas to `openapi-registry.ts` / `admin_schemas.ts` and letting types
   flow from Zod (`z.infer`) rather than hand-writing interfaces.

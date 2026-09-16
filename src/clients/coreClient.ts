@@ -1,5 +1,5 @@
 import '../config/registerGeneratedOpenApi';
-import axios, { type AxiosRequestConfig } from 'axios';
+import axios from 'axios';
 import { getCoreApi } from '@mairie360/core-api-openapi/endpoints/coreApi';
 
 /**
@@ -30,13 +30,6 @@ coreClient.interceptors.request.use(
     (config) => {
         // Aucun jeton par défaut : chaque appel transmet uniquement la session de l'appelant, et les routes
         // publiques de Core (/api/v1/auth/*) restent anonymes.
-
-        // Le Core expose cet endpoint sans slash final, alors que le client
-        // OpenAPI généré le produit avec un slash.
-        if (config.url === '/api/v1/auth/force_change_password/') {
-            config.url = '/api/v1/auth/force_change_password';
-        }
-
         console.log('URL Core API envoyée :', `${config.baseURL ?? ''}${config.url ?? ''}`);
         return config;
     },
@@ -57,10 +50,12 @@ export const coreAuthClient = {
 };
 
 export const coreAdminUsersClient = {
+    adminListUsers: coreApi.adminListUsers,
+    adminGetUser: coreApi.adminGetUser,
     adminPostUser: coreApi.adminPostUser,
     adminPatchUser: coreApi.adminPatchUser,
-    adminDeleteUser: (userId: number, options?: AxiosRequestConfig) =>
-        coreClient.delete<void>(`/api/v1/admin/users/${userId}/`, options),
+    adminDeleteUser: coreApi.adminDeleteUser,
+    adminResetUserPassword: coreApi.adminResetUserPassword,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
 };
@@ -84,6 +79,7 @@ export const coreGroupsClient = {
     postGroup: coreApi.postGroup,
     getGroup: coreApi.getGroup,
     deleteGroup: coreApi.deleteGroup,
+    patchGroup: coreApi.patchGroup,
     // Nom historique conservé pour les routes du BFF.
     getGroupUsers: coreApi.getGroupMembers,
     addUserToGroup: coreApi.addUserToGroup,
