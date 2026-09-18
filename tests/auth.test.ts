@@ -1,12 +1,9 @@
 import express from 'express';
 import request from 'supertest';
+import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter from '../src/routes/auth';
 import { forceChangeUserPassword, loginUser } from '../src/routes/core_helpers';
-import {
-    consumeFirstConnectionToken,
-    persistFirstConnectionPassword,
-    resolveFirstConnectionUserId,
-} from '../src/repositories/firstConnectionRepository';
+import { axiosResponse, loginResponse } from './support/core-fixtures';
 
 jest.mock('../src/routes/core_helpers', () => ({
     forceChangeUserPassword: jest.fn(),
@@ -20,17 +17,12 @@ jest.mock('../src/routes/core_helpers', () => ({
     registerUser: jest.fn(),
 }));
 
-jest.mock('../src/repositories/firstConnectionRepository', () => ({
-    consumeFirstConnectionToken: jest.fn(),
-    persistFirstConnectionPassword: jest.fn(),
-    resolveFirstConnectionUserId: jest.fn(),
-}));
-
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
-const mockedConsumeToken = jest.mocked(consumeFirstConnectionToken);
-const mockedPersistPassword = jest.mocked(persistFirstConnectionPassword);
-const mockedResolveUserId = jest.mocked(resolveFirstConnectionUserId);
+
+/** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
+const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+const credentials: LoginView = { email: 'user@example.com', password: 'password', device_info: 'test' };
 
 const app = express();
 app.use(express.json());
@@ -42,34 +34,23 @@ describe('POST /auth/login', () => {
     });
 
     it('transmits the Core JWT as a Bearer header and accessToken cookie', async () => {
-        mockedLoginUser.mockResolvedValue({
-            data: { refresh_token: 'opaque-refresh-token' },
-            headers: { authorization: 'Bearer header.payload.signature' },
-            status: 200,
-        } as never);
+        mockedLoginUser.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
 
-        const response = await request(app)
-            .post('/auth/login')
-            .send({ email: 'user@example.com', password: 'password', device_info: 'test' });
+        const response = await request(app).post('/auth/login').send(credentials);
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual({ refresh_token: 'opaque-refresh-token' });
+        expect(response.body).toEqual(loginResponse());
         expect(response.headers.authorization).toBe('Bearer header.payload.signature');
         expect(response.headers['access-control-expose-headers']).toBe('Authorization');
         expect(response.headers['set-cookie'][0]).toContain('accessToken=header.payload.signature');
         expect(response.headers['set-cookie'][0]).toContain('HttpOnly');
+        expect(mockedLoginUser).toHaveBeenCalledWith(credentials);
     });
 
     it('returns 502 when the Core omits the Authorization Bearer header', async () => {
-        mockedLoginUser.mockResolvedValue({
-            data: { refresh_token: 'opaque-refresh-token' },
-            headers: {},
-            status: 200,
-        } as never);
+        mockedLoginUser.mockResolvedValue(axiosResponse(loginResponse()));
 
-        const response = await request(app)
-            .post('/auth/login')
-            .send({ email: 'user@example.com', password: 'password', device_info: 'test' });
+        const response = await request(app).post('/auth/login').send(credentials);
 
         expect(response.status).toBe(502);
         expect(response.body).toEqual({
@@ -83,38 +64,27 @@ describe('POST /auth/login', () => {
 describe('POST /auth/force_change_password', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        mockedResolveUserId.mockResolvedValue(42);
         mockedForceChangePassword.mockResolvedValue();
-        mockedPersistPassword.mockResolvedValue();
-        mockedConsumeToken.mockResolvedValue();
     });
 
-    it('persists the new password after the Core validates the token', async () => {
+    it('delegates the one-time token and the new password to Core API', async () => {
         const response = await request(app)
             .post('/auth/force_change_password')
-            .send({ token: 'first-connection-token', new_password: 'Updated-456!' });
+            .send({ token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' });
 
         expect(response.status).toBe(204);
-        expect(mockedResolveUserId).toHaveBeenCalledWith('first-connection-token');
         expect(mockedForceChangePassword).toHaveBeenCalledWith({
-            token: 'first-connection-token',
+            token: FIRST_CONNECTION_TOKEN,
             new_password: 'Updated-456!',
         });
-        expect(mockedPersistPassword).toHaveBeenCalledWith(42, 'Updated-456!');
-        expect(mockedConsumeToken).toHaveBeenCalledWith('first-connection-token', 42);
-        expect(mockedForceChangePassword.mock.invocationCallOrder[0])
-            .toBeLessThan(mockedPersistPassword.mock.invocationCallOrder[0]);
     });
 
-    it('rejects an unknown first-connection token', async () => {
-        mockedResolveUserId.mockResolvedValue(null);
-
+    it('rejects an invalid payload without calling Core API', async () => {
         const response = await request(app)
             .post('/auth/force_change_password')
-            .send({ token: 'unknown-token', new_password: 'Updated-456!' });
+            .send({ token: '' });
 
-        expect(response.status).toBe(403);
+        expect(response.status).toBe(400);
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
-        expect(mockedPersistPassword).not.toHaveBeenCalled();
     });
 });

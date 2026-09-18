@@ -1,26 +1,14 @@
 import axios, { AxiosError } from 'axios';
-import type { AxiosRequestConfig, AxiosResponse } from 'axios';
+import type { AxiosResponse } from 'axios';
 import type { Response } from 'express';
 import type {
-    CreateUserView,
     ForceChangePasswordView,
-    GetUserResponseView,
     LoginResponseView,
     LoginView,
+    RegisterView,
 } from '@mairie360/core-api-openapi/model';
-import { coreAdminUsersClient, coreAuthClient, coreUsersClient } from '../clients/coreClient';
-
-function authOptions(incomingRequestToken?: string): AxiosRequestConfig {
-    if (!incomingRequestToken) {
-        return {};
-    }
-
-    return {
-        headers: {
-            Authorization: incomingRequestToken,
-        },
-    };
-}
+import { coreAuthClient, coreUsersClient } from '../clients/coreClient';
+import type { AboutResponseView } from '../openapi-registry';
 
 function toJsonErrorBody(data: unknown): unknown {
     // Le Core renvoie parfois un corps texte : on le normalise en JSON pour
@@ -64,8 +52,9 @@ export async function loginUser(loginView: LoginView): Promise<AxiosResponse<Log
     return coreAuthClient.login(loginView);
 }
 
-export async function registerUser(registerView: CreateUserView): Promise<void> {
-    await coreAdminUsersClient.adminPostUser(registerView);
+/** Inscription publique : POST /api/v1/auth/register, exempté de JWT par Core API (aucun jeton privilégié). */
+export async function registerUser(registerView: RegisterView): Promise<void> {
+    await coreAuthClient.register(registerView);
 }
 
 export async function forceChangeUserPassword(
@@ -74,10 +63,14 @@ export async function forceChangeUserPassword(
     await coreAuthClient.forceChangePassword(forceChangePasswordView);
 }
 
-export async function fetchUserAbout(
-    userId: number,
-    incomingRequestToken?: string,
-): Promise<GetUserResponseView> {
-    const response = await coreUsersClient.getUser(userId, authOptions(incomingRequestToken));
-    return response.data;
+export async function fetchUserAbout(userId: number, authorization: string): Promise<AboutResponseView> {
+    const { data } = await coreUsersClient.getUser(userId, { headers: { Authorization: authorization } });
+    // Seules les informations publiques du contrat sont exposées : rôle, groupes et archivage restent internes.
+    return {
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        phone: data.phone ?? null,
+        status: data.status,
+    };
 }

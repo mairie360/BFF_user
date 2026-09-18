@@ -25,10 +25,10 @@ export const LoginViewSchema = z.object({
         description: 'Mot de passe de l\'utilisateur',
         example: 'MotDePasse123',
     }),
-  device_info: z.string().min(1).openapi({
-      description: 'Informations sur le périphérique utilisé pour se connecter',
-      example: '',
-  }),
+    device_info: z.string().openapi({
+        description: 'Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)',
+        example: 'Firefox',
+    }),
 }).openapi('LoginView');
 
 export const RegisterViewSchema = z.object({
@@ -78,8 +78,8 @@ export const AboutResponseViewSchema = z.object({
         description: 'Nom de l\'utilisateur',
         example: 'Dupont',
     }),
-    phone: z.string().openapi({
-        description: 'Numéro de téléphone de l\'utilisateur',
+    phone: z.string().nullable().openapi({
+        description: 'Numéro de téléphone de l\'utilisateur (null si non renseigné)',
         example: '+33123456789',
     }),
     status: z.string().openapi({
@@ -87,6 +87,7 @@ export const AboutResponseViewSchema = z.object({
         example: 'active',
     }),
 }).openapi('AboutResponseView');
+export type AboutResponseView = z.infer<typeof AboutResponseViewSchema>;
 
 export const AuthTokenResponse = z.object({
     refresh_token: z.string().openapi({

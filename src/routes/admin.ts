@@ -1,23 +1,16 @@
 import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
-import { Request, Response, Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ApiErrorResponse, registry } from '../openapi-registry';
+import { transmitAccessToken } from '../utils/cookieUtils';
 import {
     coreAdminRolesClient,
     coreAdminUsersClient,
     coreGroupsClient,
     coreSessionsClient,
+    coreUsersClient,
 } from '../clients/coreClient';
-import {
-    addAdministrationGroupMember,
-    listAdministrationGroupMembers,
-    listAdministrationUsers,
-    removeAdministrationGroupMember,
-    isAdministrationUserAdmin,
-    resetAdministrationUserPassword,
-    updateAdministrationGroup,
-} from '../repositories/adminRepository';
 import {
     bearerToken,
     coreRequestOptions,
@@ -27,6 +20,9 @@ import {
 } from './admin_helpers';
 
 const router = Router();
+
+// Un groupe de la mairie ne dépasse pas la page maximale de Core API (500).
+const MAX_GROUP_MEMBERS = 500;
 
 const UserIdParams = z.object({ userId: z.coerce.number().int().positive() }).openapi('AdminUserIdParams');
 const RoleIdParams = z.object({ roleId: z.coerce.number().int().positive() }).openapi('AdminRoleIdParams');
@@ -188,17 +184,17 @@ async function requireAdmin(req: Request, res: Response): Promise<boolean> {
             return false;
         }
 
-    } catch (error) {
-        res.status(401).json({
-            message: error instanceof Error ? error.message : 'Invalid session token',
-        });
+    } catch {
+        // Ne pas renvoyer le détail du parsing (JSON.parse, base64) au client.
+        res.status(401).json({ message: 'Invalid or expired session token' });
         return false;
     }
 
     try {
-        const isAdmin = await isAdministrationUserAdmin(userId);
+        // Le rôle vient de Core API (GET /api/v1/user/me/), qui fait autorité sur les rôles.
+        const { data } = await coreUsersClient.getMe(coreRequestOptions(req));
 
-        if (!isAdmin) {
+        if (data.role?.trim().toLowerCase() !== 'admin') {
             res.status(403).json({ message: 'Administrator role required' });
             return false;
         }
@@ -209,6 +205,13 @@ async function requireAdmin(req: Request, res: Response): Promise<boolean> {
         return false;
     }
 }
+
+// Toutes les routes /bff/admin exigent le rôle admin, vérifié localement : Core API v1.1.1 ne protège ses
+// routes /admin que par le JWT (AdminMiddleware désactivé), et groupes/sessions n'y sont pas réservés aux admins.
+// La vérification précède la validation des paramètres pour ne rien révéler à un appelant non autorisé.
+router.use(async (req: Request, res: Response, next: NextFunction) => {
+    if (await requireAdmin(req, res)) next();
+});
 
 registry.registerPath({
     method: 'get',
@@ -225,15 +228,14 @@ router.get('/users', async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Invalid pagination parameters' });
     }
 
-    if (!(await requireAdmin(req, res))) return;
 
     try {
-        const response = await listAdministrationUsers({
+        const response = await coreAdminUsersClient.adminListUsers({
             page: query.data.page,
-            pageSize: query.data.page_size,
-            search: query.data.search,
-        });
-        return res.status(200).json(response);
+            page_size: query.data.page_size,
+            ...(query.data.search ? { search: query.data.search } : {}),
+        }, coreRequestOptions(req));
+        return res.status(200).json(response.data);
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -308,17 +310,14 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
         });
     }
 
-    if (!(await requireAdmin(req, res))) return;
 
     try {
-        const updated = await resetAdministrationUserPassword(
+        // Core réinitialise le mot de passe, lève la première connexion et révoque les sessions actives.
+        await coreAdminUsersClient.adminResetUserPassword(
             userId,
-            payload.data.new_password,
+            { new_password: payload.data.new_password },
+            coreRequestOptions(req),
         );
-
-        if (!updated) {
-            return res.status(404).json({ message: 'Unknown user' });
-        }
 
         return res.status(204).send();
     } catch (error) {
@@ -341,7 +340,6 @@ router.delete('/users/:userId', async (req: Request, res: Response) => {
         return invalidParam(res, 'userId');
     }
 
-    if (!(await requireAdmin(req, res))) return;
 
     try {
         const response = await coreAdminUsersClient.adminDeleteUser(
@@ -591,14 +589,10 @@ router.patch('/groups/:groupId', async (req: Request, res: Response) => {
     if (!payload.success) {
         return res.status(400).json({ message: 'Invalid group data' });
     }
-    if (!(await requireAdmin(req, res))) return;
 
     try {
-        const group = await updateAdministrationGroup(groupId, payload.data);
-        if (!group) {
-            return res.status(404).json({ message: 'Unknown group' });
-        }
-        return res.status(200).json({ group });
+        const response = await coreGroupsClient.patchGroup(groupId, payload.data, coreRequestOptions(req));
+        return res.status(200).json({ group: response.data });
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -642,10 +636,14 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
         return invalidParam(res, 'groupId');
     }
 
-    if (!(await requireAdmin(req, res))) return;
 
     try {
-        const users = await listAdministrationGroupMembers(groupId);
+        // La liste d'administration filtrée par groupe porte les mêmes champs que la liste globale.
+        const response = await coreAdminUsersClient.adminListUsers(
+            { group_id: groupId, page_size: MAX_GROUP_MEMBERS },
+            coreRequestOptions(req),
+        );
+        const users = response.data.users.map(({ roles: _roles, ...member }) => member);
         return res.status(200).json({ users });
     } catch (error) {
         return handleUnknownError(res, error);
@@ -671,11 +669,16 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
     if (!userId) {
         return invalidParam(res, 'userId');
     }
-    if (!(await requireAdmin(req, res))) return;
 
     try {
-        const created = await addAdministrationGroupMember(groupId, userId);
-        return res.status(created ? 201 : 200).json({ created });
+        // Core ne distingue pas l'ajout d'un doublon : l'appartenance est lue avant d'ajouter.
+        const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
+        if (members.data.users.includes(userId)) {
+            return res.status(200).json({ created: false });
+        }
+
+        await coreGroupsClient.addUserToGroup(groupId, { group_id: groupId, user_id: userId }, coreRequestOptions(req));
+        return res.status(201).json({ created: true });
     } catch (error) {
         return handleUnknownError(res, error);
     }
@@ -700,13 +703,14 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
         return invalidParam(res, 'userId');
     }
 
-    if (!(await requireAdmin(req, res))) return;
 
     try {
-        const removed = await removeAdministrationGroupMember(groupId, userId);
-        if (!removed) {
+        const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
+        if (!members.data.users.includes(userId)) {
             return res.status(404).json({ message: 'Unknown group member' });
         }
+
+        await coreGroupsClient.removeUserFromGroup(groupId, userId, coreRequestOptions(req));
         return res.status(204).send();
     } catch (error) {
         return handleUnknownError(res, error);
@@ -752,13 +756,27 @@ registry.registerPath({
     path: '/bff/admin/sessions/refresh',
     tags: ['Administration'],
     summary: 'Rafraîchit une session via le Core API',
+    description: 'Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.',
     request: { body: jsonBodyRequest },
-    responses: coreResponses,
+    responses: {
+        ...coreResponses,
+        200: {
+            description: 'Session rafraîchie',
+            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: z.object({ message: z.string().openapi({ example: 'JWT refreshed successfully' }) }) } },
+        },
+    },
 });
 
 router.post('/sessions/refresh', async (req: Request, res: Response) => {
     try {
         const response = await coreSessionsClient.refresh(req.body, coreRequestOptions(req));
+        // Core API renvoie le JWT rafraîchi dans l'en-tête Authorization : il remplace le cookie de session,
+        // sinon le client continuerait avec l'ancien jeton.
+        const authorizationHeader = response.headers?.authorization ?? response.headers?.Authorization;
+        if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
+            return res.status(502).json({ message: 'Core API did not return a Bearer token in the Authorization header' });
+        }
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);

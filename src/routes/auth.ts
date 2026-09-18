@@ -11,11 +11,6 @@ import {
 } from '../openapi-registry';
 import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
 import {
-    consumeFirstConnectionToken,
-    persistFirstConnectionPassword,
-    resolveFirstConnectionUserId,
-} from '../repositories/firstConnectionRepository';
-import {
     forceChangeUserPassword,
     handleUnknownError,
     isLoginResponseView,
@@ -51,6 +46,14 @@ registry.registerPath({
                 },
             },
         },
+        400: {
+            description: 'Données invalides',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
         412: {
             description: 'Première connexion : mot de passe à changer',
             content: { 'application/json': { schema: z.object({ token: z.string() }).passthrough() } },
@@ -71,6 +74,14 @@ registry.registerPath({
                 },
             },
         },
+        502: {
+            description: 'Core API indisponible ou réponse amont invalide',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
     },
 });
 
@@ -79,7 +90,7 @@ registry.registerPath({
     path: '/auth/register',
     tags: ['Authentication'],
     summary: 'Crée un utilisateur',
-    description: 'Transmet les informations d\'inscription au Core API.',
+    description: 'Valide puis transmet les informations d\'inscription au Core API (POST /api/v1/auth/register, route publique).',
     request: {
         body: {
             required: true,
@@ -112,6 +123,14 @@ registry.registerPath({
         },
         500: {
             description: 'Erreur serveur',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        502: {
+            description: 'Core API indisponible ou réponse amont invalide',
             content: {
                 'application/json': {
                     schema: ApiErrorResponse,
@@ -157,8 +176,24 @@ registry.registerPath({
                 },
             },
         },
+        403: {
+            description: 'Token de première connexion inconnu ou expiré',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
         500: {
             description: 'Erreur serveur',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        502: {
+            description: 'Core API indisponible ou réponse amont invalide',
             content: {
                 'application/json': {
                     schema: ApiErrorResponse,
@@ -197,8 +232,13 @@ registry.registerPath({
 // =============== Routes ===============
 
 router.post('/login', async (req: Request, res: Response) => {
+    const input = LoginViewSchema.safeParse(req.body);
+    if (!input.success) {
+        return res.status(400).json({ message: 'Invalid login payload' });
+    }
+
     try {
-        const coreResponse = await loginUser(req.body);
+        const coreResponse = await loginUser(input.data);
 
         const authorizationHeader = coreResponse.headers?.authorization
             ?? coreResponse.headers?.Authorization;
@@ -216,8 +256,13 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 router.post('/register', async (req: Request, res: Response) => {
+    const input = RegisterViewSchema.safeParse(req.body);
+    if (!input.success) {
+        return res.status(400).json({ message: 'Invalid registration payload' });
+    }
+
     try {
-        await registerUser(req.body);
+        await registerUser(input.data);
         return res.status(201).send();
     } catch (error) {
         return handleUnknownError(res, error);
@@ -231,16 +276,8 @@ router.post('/force_change_password', async (req: Request, res: Response) => {
     }
 
     try {
-        const userId = await resolveFirstConnectionUserId(input.data.token);
-        if (!userId) {
-            return res.status(403).json({ message: 'Unknown or expired user token' });
-        }
-
-        // The Core validates the one-time token. Persisting again here keeps
-        // development images predating the Core password-persistence fix safe.
+        // Core valide le jeton à usage unique, enregistre le mot de passe et consomme le jeton.
         await forceChangeUserPassword(input.data);
-        await persistFirstConnectionPassword(userId, input.data.new_password);
-        await consumeFirstConnectionToken(input.data.token, userId);
         return res.status(204).send();
     } catch (error) {
         return handleUnknownError(res, error);

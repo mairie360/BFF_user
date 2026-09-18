@@ -69,7 +69,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CheckApiResponse"];
+                    };
                 };
             };
         };
@@ -118,6 +120,15 @@ export interface paths {
                         "application/json": components["schemas"]["AuthTokenResponse"];
                     };
                 };
+                /** @description Données invalides */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
                 /** @description Identifiants invalides */
                 401: {
                     headers: {
@@ -149,6 +160,15 @@ export interface paths {
                         "application/json": components["schemas"]["ApiErrorResponse"];
                     };
                 };
+                /** @description Core API indisponible ou réponse amont invalide */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -168,7 +188,7 @@ export interface paths {
         put?: never;
         /**
          * Crée un utilisateur
-         * @description Transmet les informations d'inscription au Core API.
+         * @description Valide puis transmet les informations d'inscription au Core API (POST /api/v1/auth/register, route publique).
          */
         post: {
             parameters: {
@@ -210,6 +230,15 @@ export interface paths {
                 };
                 /** @description Erreur serveur */
                 500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Core API indisponible ou réponse amont invalide */
+                502: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -276,8 +305,26 @@ export interface paths {
                         "application/json": components["schemas"]["ApiErrorResponse"];
                     };
                 };
+                /** @description Token de première connexion inconnu ou expiré */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
                 /** @description Erreur serveur */
                 500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Core API indisponible ou réponse amont invalide */
+                502: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -350,7 +397,7 @@ export interface paths {
         };
         /**
          * Récupère les informations publiques d'un utilisateur
-         * @description Transmet la demande au Core API sur /api/v1/user/{user_id}/about.
+         * @description Transmet la session (en-tête Authorization, x-session-token ou cookie accessToken) au Core API sur /api/v1/user/{id}/ et ne renvoie que les informations publiques.
          */
         get: {
             parameters: {
@@ -393,6 +440,15 @@ export interface paths {
                 };
                 /** @description Erreur serveur */
                 500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Core API indisponible ou réponse amont invalide */
+                502: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2495,7 +2551,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rafraîchit une session via le Core API */
+        /**
+         * Rafraîchit une session via le Core API
+         * @description Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -2509,13 +2568,18 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Session rafraîchie */
                 200: {
                     headers: {
+                        /** @description Bearer <access token> */
+                        Authorization?: string;
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CoreResponse"];
+                        "application/json": {
+                            /** @example JWT refreshed successfully */
+                            message: string;
+                        };
                     };
                 };
                 /** @description Créé par le Core API */
@@ -2720,6 +2784,15 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Core API indisponible */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -2762,6 +2835,15 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description Core API indisponible */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -2798,8 +2880,8 @@ export interface components {
              */
             password: string;
             /**
-             * @description Informations sur le périphérique utilisé pour se connecter
-             * @example
+             * @description Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)
+             * @example Firefox
              */
             device_info: string;
         };
@@ -2861,10 +2943,10 @@ export interface components {
              */
             last_name: string;
             /**
-             * @description Numéro de téléphone de l'utilisateur
+             * @description Numéro de téléphone de l'utilisateur (null si non renseigné)
              * @example +33123456789
              */
-            phone: string;
+            phone: string | null;
             /**
              * @description Statut du compte utilisateur
              * @example active
@@ -2894,8 +2976,6 @@ export interface components {
             status: string;
             /** @example Connected */
             core_api: string;
-            /** @description Données brutes renvoyées par l'API Core */
-            details?: unknown;
         };
         AdministrationRole: {
             id: number;
