@@ -36,7 +36,7 @@
     "@typescript-eslint/parser": "8.70.0",
     "esbuild": "0.28.2",
     "eslint": "9.39.5",
-    "jest": "30.5.1",
+    "jest": "30.5.2",
     "supertest": "7.2.2",
     "ts-jest": "29.4.12",
     "tsx": "4.23.13",
