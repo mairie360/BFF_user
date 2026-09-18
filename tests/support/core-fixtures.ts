@@ -1,19 +1,54 @@
 import { createHmac } from 'node:crypto';
+import { AxiosHeaders, type AxiosResponse, type RawAxiosResponseHeaders } from 'axios';
+import { getCoreAPIMairie360 } from '@mairie360/core-api-openapi/endpoints/coreAPIMairie360';
+import type {
+  AdminGetRolesResultView,
+  AdminListUsersResultView,
+  AdminUserRow,
+  GetGroupResultView,
+  GetGroupUsersResultView,
+  GetGroupsResultView,
+  GetMeResponseView,
+  GetSessionsResultView,
+  GetUserResponseView,
+  Group,
+  HistoryResponseView,
+  LoginResponseView,
+  PostGroupResultView,
+  Role,
+  SessionSchema,
+} from '@mairie360/core-api-openapi/model';
 import type { OpenApiContract } from './openapi-contract';
 import { loadOrvalContract } from './orval-contract';
 
-// Réponses Core API conformes au contrat du paquet @mairie360/core-api-openapi installé
-// (validées dans upstream-contracts.test.ts) et jetons de session des tests.
+// Réponses Core API typées par les modèles du paquet @mairie360/core-api-openapi installé : un champ ajouté,
+// retiré ou renommé par le contrat fait échouer la compilation des tests. Elles sont en plus validées à
+// l'exécution contre le contrat reconstruit (upstream-contracts.test.ts, mock HTTP). Jetons de session des tests.
 
-export function group(id: number, overrides: Partial<{ name: string; description: string | null; owner_id: number }> = {}) {
+/** Chemins des opérations Core API, tels que les construit le client généré (helpers `get*Url`). */
+export const coreApiUrls = getCoreAPIMairie360();
+
+/** Réponse axios complète telle que la renvoie le client généré (`*Result`), pour les mocks de module. */
+export function axiosResponse<T>(data: T, status = 200, headers: RawAxiosResponseHeaders = {}): AxiosResponse<T> {
+  return { data, status, statusText: 'OK', headers, config: { headers: new AxiosHeaders() } };
+}
+
+export function group(id: number, overrides: Partial<Group> = {}): Group {
   return { id, name: `Groupe ${id}`, description: `Description ${id}`, owner_id: 1, ...overrides };
 }
 
-export function role(id: number, overrides: Partial<{ name: string; description: string }> = {}) {
+export const groupsResult = (groups: Group[]): GetGroupsResultView => ({ groups });
+export const groupResult = (found: Group): GetGroupResultView => ({ group: found });
+export const groupMembers = (users: number[]): GetGroupUsersResultView => ({ users });
+export const postGroupResult = (id: number): PostGroupResultView => ({ id });
+
+export function role(id: number, overrides: Partial<Role> = {}): Role {
   return { id, name: `Rôle ${id}`, description: `Description du rôle ${id}`, ...overrides };
 }
 
-export function session(id: string, overrides: Partial<{ revoked_at: string | null }> = {}) {
+export const rolesResult = (roles: Role[]): AdminGetRolesResultView => ({ roles });
+
+export function session(id: string, overrides: Partial<SessionSchema> = {}): SessionSchema {
   return {
     id,
     device_info: 'Firefox',
@@ -25,7 +60,10 @@ export function session(id: string, overrides: Partial<{ revoked_at: string | nu
   };
 }
 
-export function meResponse(overrides: Partial<{ role: string; phone: string | null; groups: Array<ReturnType<typeof group>> }> = {}) {
+export const sessionsResult = (sessions: SessionSchema[]): GetSessionsResultView => ({ sessions });
+export const historyResult = (sessions: SessionSchema[]): HistoryResponseView => ({ sessions });
+
+export function meResponse(overrides: Partial<GetMeResponseView> = {}): GetMeResponseView {
   return {
     email: 'alice@mairie.test',
     first_name: 'Alice',
@@ -38,8 +76,29 @@ export function meResponse(overrides: Partial<{ role: string; phone: string | nu
   };
 }
 
-export function userResponse(overrides: Partial<{ phone: string | null; is_archived: boolean }> = {}) {
+export function userResponse(overrides: Partial<GetUserResponseView> = {}): GetUserResponseView {
   return { ...meResponse(), is_archived: false, ...overrides };
+}
+
+export const loginResponse = (refresh_token = 'opaque-refresh-token'): LoginResponseView => ({ refresh_token });
+
+export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
+  return {
+    id: 1,
+    first_name: 'Admin',
+    last_name: 'User',
+    email: 'admin@mairie360.fr',
+    phone_number: null,
+    status: 'active',
+    is_archived: false,
+    roles: [{ id: 1, name: 'Admin' }],
+    ...overrides,
+  };
+}
+
+/** Page de `GET /api/v1/admin/users/` (AdminListUsersResultView). */
+export function adminUsersPage(users: AdminUserRow[], overrides: Partial<AdminListUsersResultView> = {}): AdminListUsersResultView {
+  return { users, page: 1, page_size: 20, total: users.length, total_pages: users.length === 0 ? 0 : 1, ...overrides };
 }
 
 export const JWT_SECRET = 'contract-test-secret';

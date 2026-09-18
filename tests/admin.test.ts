@@ -7,27 +7,25 @@ import {
     coreUsersClient,
 } from '../src/clients/coreClient';
 import adminRouter from '../src/routes/admin';
+import { adminUserRow, adminUsersPage, axiosResponse, group, groupMembers, meResponse } from './support/core-fixtures';
 
-// Test unitaire des règles du routeur : Core API est simulée au niveau du client généré. Le parcours
-// complet passe par un vrai serveur HTTP piloté par le contrat (user.upstream-mocks.test.ts).
-jest.mock('../src/clients/coreClient', () => ({
-    coreAdminRolesClient: {},
-    coreAdminUsersClient: {
-        adminListUsers: jest.fn(),
-        adminDeleteUser: jest.fn(),
-        adminResetUserPassword: jest.fn(),
-    },
-    coreGroupsClient: {
-        patchGroup: jest.fn(),
-        getGroupUsers: jest.fn(),
-        addUserToGroup: jest.fn(),
-        removeUserFromGroup: jest.fn(),
-    },
-    coreSessionsClient: {},
-    coreUsersClient: {
-        getMe: jest.fn(),
-    },
-}));
+// Test unitaire des règles du routeur : Core API est simulée au niveau du client généré. Chaque regroupement
+// expose exactement les opérations de getCoreAPIMairie360 (@mairie360/core-api-openapi), avec l'alias
+// historique getGroupUsers → getGroupMembers du BFF. Le parcours complet passe par un vrai serveur HTTP piloté
+// par le contrat (user.upstream-mocks.test.ts).
+jest.mock('../src/clients/coreClient', () => {
+    const { getCoreAPIMairie360 } = jest.requireActual<typeof import('@mairie360/core-api-openapi/endpoints/coreAPIMairie360')>(
+        '@mairie360/core-api-openapi/endpoints/coreAPIMairie360',
+    );
+    const operations = Object.fromEntries(Object.keys(getCoreAPIMairie360()).map((operation) => [operation, jest.fn()]));
+    return {
+        coreAdminRolesClient: operations,
+        coreAdminUsersClient: operations,
+        coreGroupsClient: { ...operations, getGroupUsers: operations.getGroupMembers },
+        coreSessionsClient: operations,
+        coreUsersClient: operations,
+    };
+});
 
 const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedListUsers = jest.mocked(coreAdminUsersClient.adminListUsers);
@@ -37,18 +35,7 @@ const mockedPatchGroup = jest.mocked(coreGroupsClient.patchGroup);
 const mockedGetGroupUsers = jest.mocked(coreGroupsClient.getGroupUsers);
 const mockedAddUserToGroup = jest.mocked(coreGroupsClient.addUserToGroup);
 
-const ok = <T>(data: T, status = 200) => ({ status, data }) as never;
-
-const adminUser = {
-    id: 1,
-    first_name: 'Admin',
-    last_name: 'User',
-    email: 'admin@mairie360.fr',
-    phone_number: null,
-    status: 'active',
-    is_archived: false,
-    roles: [{ id: 1, name: 'Admin' }],
-};
+const adminUser = adminUserRow();
 
 function tokenFor(userId: number) {
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -74,13 +61,11 @@ describe('Administration routes', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockedGetMe.mockResolvedValue(ok({ role: 'Admin' }));
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Admin' })));
     });
 
     it('returns at most 20 users per page', async () => {
-        mockedListUsers.mockResolvedValue(ok({
-            users: [adminUser], page: 1, page_size: 20, total: 1, total_pages: 1,
-        }));
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser])));
 
         const response = await request(app)
             .get('/bff/admin/users?page=1&page_size=20')
@@ -88,11 +73,11 @@ describe('Administration routes', () => {
 
         expect(response.status).toBe(200);
         expect(mockedListUsers).toHaveBeenCalledWith({ page: 1, page_size: 20 }, expect.anything());
-        expect(response.body.users[0].roles).toEqual([{ id: 1, name: 'Admin' }]);
+        expect(response.body.users[0].roles).toEqual(adminUser.roles);
     });
 
     it('forwards the search to Core API', async () => {
-        mockedListUsers.mockResolvedValue(ok({ users: [], page: 1, page_size: 20, total: 0, total_pages: 0 }));
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
 
         const response = await request(app)
             .get('/bff/admin/users?search=martin')
@@ -112,7 +97,7 @@ describe('Administration routes', () => {
     });
 
     it('deletes a user through the Core API for an authenticated administrator', async () => {
-        mockedDeleteUser.mockResolvedValue(ok(undefined, 204));
+        mockedDeleteUser.mockResolvedValue(axiosResponse(undefined, 204));
 
         const token = tokenFor(1);
         const response = await request(app)
@@ -126,7 +111,7 @@ describe('Administration routes', () => {
     });
 
     it('rejects user deletion when the requester is not an administrator', async () => {
-        mockedGetMe.mockResolvedValue(ok({ role: 'User' }));
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 
         const response = await request(app)
             .delete('/bff/admin/users/42')
@@ -137,7 +122,7 @@ describe('Administration routes', () => {
     });
 
     it('sets a new password for an authenticated administrator', async () => {
-        mockedResetUserPassword.mockResolvedValue(ok(undefined, 204));
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(undefined, 204));
 
         const response = await request(app)
             .patch('/bff/admin/users/42/password')
@@ -163,7 +148,7 @@ describe('Administration routes', () => {
     });
 
     it('rejects a password reset when the requester is not an administrator', async () => {
-        mockedGetMe.mockResolvedValue(ok({ role: 'User' }));
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 
         const response = await request(app)
             .patch('/bff/admin/users/42/password')
@@ -175,9 +160,7 @@ describe('Administration routes', () => {
     });
 
     it('updates a group name and description', async () => {
-        mockedPatchGroup.mockResolvedValue(ok({
-            id: 4, owner_id: 1, name: 'Direction générale', description: 'Équipe de direction',
-        }));
+        mockedPatchGroup.mockResolvedValue(axiosResponse(group(4, { name: 'Direction générale', description: 'Équipe de direction' })));
 
         const response = await request(app)
             .patch('/bff/admin/groups/4')
@@ -194,9 +177,7 @@ describe('Administration routes', () => {
     });
 
     it('returns group members without their roles', async () => {
-        mockedListUsers.mockResolvedValue(ok({
-            users: [adminUser], page: 1, page_size: 500, total: 1, total_pages: 1,
-        }));
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser], { page_size: 500 })));
 
         const response = await request(app)
             .get('/bff/admin/groups/4/users')
@@ -204,19 +185,11 @@ describe('Administration routes', () => {
 
         expect(response.status).toBe(200);
         expect(mockedListUsers).toHaveBeenCalledWith({ group_id: 4, page_size: 500 }, expect.anything());
-        expect(response.body.users[0]).toEqual({
-            id: 1,
-            first_name: 'Admin',
-            last_name: 'User',
-            email: 'admin@mairie360.fr',
-            phone_number: null,
-            status: 'active',
-            is_archived: false,
-        });
+        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles')));
     });
 
     it('does not add a member who already belongs to the group', async () => {
-        mockedGetGroupUsers.mockResolvedValue(ok({ users: [7] }));
+        mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([7])));
 
         const response = await request(app)
             .post('/bff/admin/groups/4/users')
@@ -229,8 +202,8 @@ describe('Administration routes', () => {
     });
 
     it('adds a member who does not belong to the group yet', async () => {
-        mockedGetGroupUsers.mockResolvedValue(ok({ users: [] }));
-        mockedAddUserToGroup.mockResolvedValue(ok(undefined));
+        mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([])));
+        mockedAddUserToGroup.mockResolvedValue(axiosResponse('User added to group'));
 
         const response = await request(app)
             .post('/bff/admin/groups/4/users')
@@ -243,7 +216,7 @@ describe('Administration routes', () => {
     });
 
     it('answers 404 when removing a user who is not a member', async () => {
-        mockedGetGroupUsers.mockResolvedValue(ok({ users: [9] }));
+        mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([9])));
 
         const response = await request(app)
             .delete('/bff/admin/groups/4/users/7')

@@ -1,6 +1,6 @@
 import '../config/registerGeneratedOpenApi';
 import axios from 'axios';
-import { getCoreApi } from '@mairie360/core-api-openapi/endpoints/coreApi';
+import { getCoreAPIMairie360 } from '@mairie360/core-api-openapi/endpoints/coreAPIMairie360';
 
 /**
  * Construit l'URL du Core API depuis la configuration Docker ou locale.
@@ -37,10 +37,10 @@ coreClient.interceptors.request.use(
 );
 
 /** API générée à partir du contrat OpenAPI du Core API. */
-export const coreApi = getCoreApi(coreClient);
+export const coreApi = getCoreAPIMairie360(coreClient);
 
 // Les regroupements ci-dessous gardent l'interface consommée par les routes
-// du BFF, tout en utilisant l'unique client généré `getCoreApi`.
+// du BFF, tout en utilisant l'unique client généré `getCoreAPIMairie360`.
 export const coreAuthClient = {
     login: coreApi.login,
     register: coreApi.register,
