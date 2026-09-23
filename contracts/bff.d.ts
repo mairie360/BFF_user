@@ -388,7 +388,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user out
-         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails.
+         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
          */
         post: {
             parameters: {
@@ -403,13 +403,22 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Utilisateur déconnecté */
+                /** @description Cookie cleared; navigate to `logout_url` when present to close the Keycloak session. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["LogoutResponse"];
+                    };
+                };
+                /** @description Invalid payload (`post_logout_redirect_uri` is not a URL) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
                     };
                 };
                 /** @description Erreur serveur */
@@ -3117,6 +3126,12 @@ export interface components {
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             refresh_token?: string;
+            /**
+             * Format: uri
+             * @description Where Keycloak sends the browser once the single sign-on session is closed. Must be one of the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.
+             * @example https://login.mairie360.fr/
+             */
+            post_logout_redirect_uri?: string;
         };
         LogoutResponse: {
             /** @example Logged out successfully */
@@ -3126,6 +3141,12 @@ export interface components {
              * @example true
              */
             session_revoked: boolean;
+            /**
+             * Format: uri
+             * @description Keycloak end-session URL the browser must navigate to so the single sign-on session is closed on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the logout is then complete once the cookie is cleared.
+             * @example https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F
+             */
+            logout_url?: string;
         };
         UserIdParams: {
             /**
