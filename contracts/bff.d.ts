@@ -177,6 +177,105 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/keycloak": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signs a user in with Keycloak
+         * @description Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (httpOnly `accessToken` cookie + `Authorization` header), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["KeycloakLoginView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in Authorization and in the `accessToken` cookie, the body holds the refresh token. */
+                200: {
+                    headers: {
+                        /** @description Bearer <access token> */
+                        Authorization?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthTokenResponse"];
+                    };
+                };
+                /** @description Invalid payload */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Core API or Keycloak unavailable, or invalid upstream response */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Keycloak sign-in is not configured on this instance; use POST /auth/login instead. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -2882,6 +2981,34 @@ export interface components {
             /**
              * @description Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)
              * @example Firefox
+             */
+            device_info: string;
+        };
+        KeycloakLoginView: {
+            /**
+             * @description Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).
+             * @example 7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83
+             */
+            code: string;
+            /**
+             * Format: uri
+             * @description Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.
+             * @example https://login.mairie360.fr/auth/callback
+             */
+            redirect_uri: string;
+            /**
+             * @description PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.
+             * @example dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+             */
+            code_verifier?: string | null;
+            /**
+             * @description Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.
+             * @example n-0S6_WzA2Mj
+             */
+            nonce?: string | null;
+            /**
+             * @description Description of the device, stored on the session (empty string accepted, like the password login).
+             * @example Firefox 142 on Ubuntu 24.04
              */
             device_info: string;
         };

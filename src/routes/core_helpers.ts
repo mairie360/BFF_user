@@ -8,6 +8,7 @@ import type {
     RegisterView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreUsersClient } from '../clients/coreClient';
+import type { KeycloakLoginView } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 function toJsonErrorBody(data: unknown): unknown {
@@ -50,6 +51,13 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
 
 export async function loginUser(loginView: LoginView): Promise<AxiosResponse<LoginResponseView>> {
     return coreAuthClient.login(loginView);
+}
+
+/** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
+export async function keycloakLoginUser(
+    keycloakLoginView: KeycloakLoginView,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.keycloakLogin(keycloakLoginView);
 }
 
 /** Inscription publique : POST /api/v1/auth/register, exempté de JWT par Core API (aucun jeton privilégié). */

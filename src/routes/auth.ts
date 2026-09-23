@@ -1,9 +1,12 @@
 import { z } from 'zod';
+import type { AxiosResponse } from 'axios';
+import axios from 'axios';
 import { Request, Response, Router } from 'express';
 import {
     ApiErrorResponse,
     AuthTokenResponse,
     ForceChangePasswordViewSchema,
+    KeycloakLoginViewSchema,
     LoginViewSchema,
     LogoutResponse,
     RegisterViewSchema,
@@ -14,6 +17,7 @@ import {
     forceChangeUserPassword,
     handleUnknownError,
     isLoginResponseView,
+    keycloakLoginUser,
     loginUser,
     registerUser,
 } from './core_helpers';
@@ -81,6 +85,59 @@ registry.registerPath({
                     schema: ApiErrorResponse,
                 },
             },
+        },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/keycloak',
+    tags: ['Authentication'],
+    summary: 'Signs a user in with Keycloak',
+    description: 'Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the '
+        + 'authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and '
+        + 'opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly '
+        + 'like POST /auth/login (httpOnly `accessToken` cookie + `Authorization` header), so every front and BFF keeps '
+        + 'working unchanged and the user keeps their roles. The password login stays available during the transition.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: KeycloakLoginViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        200: {
+            description: 'Signed in; the access JWT is in Authorization and in the `accessToken` cookie, the body holds the refresh token.',
+            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthTokenResponse } },
+        },
+        400: {
+            description: 'Invalid payload',
+            content: { 'application/json': { schema: ApiErrorResponse } },
+        },
+        401: {
+            description: 'Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak.',
+            content: { 'application/json': { schema: ApiErrorResponse } },
+        },
+        403: {
+            description: 'The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account.',
+            content: { 'application/json': { schema: ApiErrorResponse } },
+        },
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ApiErrorResponse } },
+        },
+        502: {
+            description: 'Core API or Keycloak unavailable, or invalid upstream response',
+            content: { 'application/json': { schema: ApiErrorResponse } },
+        },
+        503: {
+            description: 'Keycloak sign-in is not configured on this instance; use POST /auth/login instead.',
+            content: { 'application/json': { schema: ApiErrorResponse } },
         },
     },
 });
@@ -231,6 +288,20 @@ registry.registerPath({
 
 // =============== Routes ===============
 
+/** Turns a Core sign-in response into the BFF session: `accessToken` cookie, Authorization header, refresh token body. */
+function sendSession(res: Response, coreResponse: AxiosResponse): Response {
+    const authorizationHeader = coreResponse.headers?.authorization
+        ?? coreResponse.headers?.Authorization;
+
+    if (!isLoginResponseView(coreResponse.data) || !transmitAccessToken(res, authorizationHeader)) {
+        return res.status(502).json({
+            message: 'Core API did not return a Bearer token in the Authorization header',
+        });
+    }
+
+    return res.status(coreResponse.status).json(coreResponse.data);
+}
+
 router.post('/login', async (req: Request, res: Response) => {
     const input = LoginViewSchema.safeParse(req.body);
     if (!input.success) {
@@ -238,19 +309,25 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     try {
-        const coreResponse = await loginUser(input.data);
-
-        const authorizationHeader = coreResponse.headers?.authorization
-            ?? coreResponse.headers?.Authorization;
-
-        if (!isLoginResponseView(coreResponse.data) || !transmitAccessToken(res, authorizationHeader)) {
-            return res.status(502).json({
-                message: 'Core API did not return a Bearer token in the Authorization header',
-            });
-        }
-
-        return res.status(coreResponse.status).json(coreResponse.data);
+        return sendSession(res, await loginUser(input.data));
     } catch (error) {
+        return handleUnknownError(res, error);
+    }
+});
+
+router.post('/keycloak', async (req: Request, res: Response) => {
+    const input = KeycloakLoginViewSchema.safeParse(req.body);
+    if (!input.success) {
+        return res.status(400).json({ message: 'Invalid Keycloak login payload' });
+    }
+
+    try {
+        return sendSession(res, await keycloakLoginUser(input.data));
+    } catch (error) {
+        // Core answers 503 when Keycloak is not configured: keep it so the front can fall back to the password login.
+        if (axios.isAxiosError(error) && error.response?.status === 503) {
+            return res.status(503).json({ message: 'Keycloak sign-in is not configured' });
+        }
         return handleUnknownError(res, error);
     }
 });

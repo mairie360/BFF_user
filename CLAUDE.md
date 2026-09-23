@@ -91,6 +91,12 @@ and the legacy `/me` resolve.
   does the same with the refreshed JWT (502 if Core omits it). Login and register bodies are
   validated with Zod (unknown fields stripped) before reaching Core; register uses Core's public
   `POST /api/v1/auth/register`.
+- **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
+  `POST /api/v1/auth/keycloak` and sets the session exactly like `/auth/login`; Core's 503
+  (Keycloak not configured) is kept so the front can fall back to password login. That Core route
+  is absent from `@mairie360/core-api-openapi` 1.2.0, so `coreClient.ts` calls it by hand
+  (`keycloakLogin`) and the upstream-mock test cannot cover it: switch to the generated function
+  and add it to `upstream-contracts.test.ts` once the package that ships it is installed.
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then checks the `admin`
   role in the DB (`isAdministrationUserAdmin`). It is a `router.use` guard on **every**
