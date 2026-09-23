@@ -81,8 +81,8 @@
               "string",
               "null"
             ],
-            "description": "Numéro de téléphone du nouvel utilisateur",
-            "example": "+33123456789"
+            "description": "Phone number of the new user, 10 to 15 digits",
+            "example": "0612345678"
           }
         },
         "required": [
@@ -516,11 +516,15 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 64
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Scan group"
           },
           "description": {
             "type": "string",
-            "maxLength": 2000
+            "maxLength": 2000,
+            "pattern": "^[^<>]*$",
+            "example": "Group edited by the ZAP scan"
           }
         }
       },
@@ -530,16 +534,275 @@
           "new_password": {
             "type": "string",
             "minLength": 8,
-            "maxLength": 255
+            "maxLength": 255,
+            "example": "Temporary-Passw0rd"
           }
         },
         "required": [
           "new_password"
         ]
       },
-      "AdminJsonBody": {
+      "AdminUserCreateBody": {
         "type": "object",
-        "additionalProperties": {}
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "example": "jane.doe@mairie360.fr"
+          },
+          "first_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Jane"
+          },
+          "last_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Doe"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 255,
+            "example": "Temporary-Passw0rd"
+          },
+          "phone_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{10,15}$",
+            "example": "0612345678"
+          }
+        },
+        "required": [
+          "email",
+          "first_name",
+          "last_name",
+          "password"
+        ]
+      },
+      "AdminUserPatchBody": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 320,
+            "format": "email",
+            "example": "scan-target@mairie360.fr"
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Scan"
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Target"
+          },
+          "phone_number": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^\\d{10,15}$",
+            "example": "0612345678"
+          }
+        }
+      },
+      "AdminUserRoleBody": {
+        "type": "object",
+        "properties": {
+          "role_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 3
+          },
+          "user_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Must match the path userId when sent"
+          }
+        },
+        "required": [
+          "role_id"
+        ]
+      },
+      "AdminRoleWriteBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Agent"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^<>]*$",
+            "example": "Municipal agent"
+          },
+          "can_be_deleted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "example": true
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ]
+      },
+      "AdminRoleReplaceBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Scan role"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^<>]*$",
+            "example": "Role edited by the ZAP scan"
+          },
+          "can_be_deleted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "example": true
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ]
+      },
+      "AdminRolePatchBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Scan role"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2000,
+            "pattern": "^[^<>]*$",
+            "example": "Role edited by the ZAP scan"
+          },
+          "can_be_deleted": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "example": true
+          }
+        }
+      },
+      "AdminGroupCreateBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Culture"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^<>]*$",
+            "example": "Culture department"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ]
+      },
+      "AdminGroupUserBody": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 42
+          },
+          "group_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Must match the path groupId when sent"
+          }
+        },
+        "required": [
+          "user_id"
+        ]
+      },
+      "AdminSessionTokenBody": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "example": "opaque-refresh-token"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ]
+      },
+      "AdminSessionRevokeBody": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "example": "opaque-revoked-token"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ]
       },
       "CoreResponse": {},
       "SessionResponse": {
@@ -1162,7 +1425,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminUserCreateBody"
               }
             }
           }
@@ -1266,7 +1529,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminUserPatchBody"
               }
             }
           }
@@ -1356,7 +1619,8 @@
           {
             "schema": {
               "type": "integer",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "example": 11
             },
             "required": true,
             "name": "userId",
@@ -1566,7 +1830,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminUserRoleBody"
               }
             }
           }
@@ -1854,7 +2118,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminRoleWriteBody"
               }
             }
           }
@@ -1958,7 +2222,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminRoleReplaceBody"
               }
             }
           }
@@ -2060,7 +2324,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminRolePatchBody"
               }
             }
           }
@@ -2150,7 +2414,8 @@
           {
             "schema": {
               "type": "integer",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "example": 11
             },
             "required": true,
             "name": "roleId",
@@ -2337,7 +2602,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminGroupCreateBody"
               }
             }
           }
@@ -2631,7 +2896,8 @@
           {
             "schema": {
               "type": "integer",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "example": 11
             },
             "required": true,
             "name": "groupId",
@@ -2840,7 +3106,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminGroupUserBody"
               }
             }
           }
@@ -3225,7 +3491,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminSessionTokenBody"
               }
             }
           }
@@ -3335,7 +3601,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AdminJsonBody"
+                "$ref": "#/components/schemas/AdminSessionRevokeBody"
               }
             }
           }

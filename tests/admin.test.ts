@@ -215,6 +215,77 @@ describe('Administration routes', () => {
         expect(mockedAddUserToGroup).toHaveBeenCalledWith(4, { group_id: 4, user_id: 7 }, expect.anything());
     });
 
+    it.each([
+        ['post', '/bff/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
+        ['post', '/bff/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
+        ['patch', '/bff/admin/users/7', {}],
+        ['post', '/bff/admin/users/7/roles', { role_id: '3' }],
+        ['post', '/bff/admin/roles', { name: 'Agent' }],
+        ['put', '/bff/admin/roles/3', { name: '', description: 'Municipal agent' }],
+        ['patch', '/bff/admin/roles/3', {}],
+        ['post', '/bff/admin/groups', { name: 'Culture' }],
+        ['post', '/bff/admin/roles', { name: '<script>alert(1)</script>', description: 'Municipal agent' }],
+        ['patch', '/bff/admin/groups/4', { description: '<img src=x onerror=alert(1)>' }],
+        ['post', '/bff/admin/groups/4/users', { user_id: 0 }],
+        ['post', '/bff/admin/sessions/refresh', { refresh_token: '' }],
+        ['post', '/bff/admin/sessions/revoke', { token: 'opaque-refresh-token' }],
+    ])('rejects an invalid %s %s body without calling Core API', async (method, path, body) => {
+        const response = await request(app)[method as 'post'](path)
+            .set('Authorization', `Bearer ${tokenFor(1)}`)
+            .set('Content-Type', 'application/json')
+            .send(JSON.stringify(body));
+
+        expect(response.status).toBe(400);
+        // Only the admin role check reached Core API.
+        const coreCalls = Object.values(coreAdminUsersClient).filter((operation) => jest.mocked(operation).mock.calls.length > 0);
+        expect(coreCalls).toEqual([mockedGetMe]);
+    });
+
+    it('rejects a role assignment whose body names another user than the path', async () => {
+        const response = await request(app)
+            .post('/bff/admin/users/7/roles')
+            .set('Authorization', `Bearer ${tokenFor(1)}`)
+            .send({ user_id: 1, role_id: 1 });
+
+        expect(response.status).toBe(400);
+        expect(jest.mocked(coreAdminUsersClient.adminAddRoleToUser)).not.toHaveBeenCalled();
+    });
+
+    it('assigns the role to the path user when the body omits user_id', async () => {
+        jest.mocked(coreAdminUsersClient.adminAddRoleToUser).mockResolvedValue(axiosResponse(undefined, 200));
+
+        const response = await request(app)
+            .post('/bff/admin/users/7/roles')
+            .set('Authorization', `Bearer ${tokenFor(1)}`)
+            .send({ role_id: 3 });
+
+        expect(response.status).toBe(200);
+        expect(jest.mocked(coreAdminUsersClient.adminAddRoleToUser)).toHaveBeenCalledWith(7, { role_id: 3, user_id: 7 }, expect.anything());
+    });
+
+    it('rejects a group membership whose body names another group than the path', async () => {
+        const response = await request(app)
+            .post('/bff/admin/groups/4/users')
+            .set('Authorization', `Bearer ${tokenFor(1)}`)
+            .send({ group_id: 5, user_id: 7 });
+
+        expect(response.status).toBe(400);
+        expect(mockedGetGroupUsers).not.toHaveBeenCalled();
+    });
+
+    it('does not forward a password in a user update', async () => {
+        const mockedPatchUser = jest.mocked(coreAdminUsersClient.adminPatchUser);
+        mockedPatchUser.mockResolvedValue(axiosResponse('User updated', 200));
+
+        const response = await request(app)
+            .patch('/bff/admin/users/7')
+            .set('Authorization', `Bearer ${tokenFor(1)}`)
+            .send({ first_name: 'Jane', password: 'x' });
+
+        expect(response.status).toBe(200);
+        expect(mockedPatchUser).toHaveBeenCalledWith(7, { first_name: 'Jane' }, expect.anything());
+    });
+
     it('answers 404 when removing a user who is not a member', async () => {
         mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([9])));
 
