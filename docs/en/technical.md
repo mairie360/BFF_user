@@ -101,7 +101,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 
 ## Session, permissions and errors
 
-Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
+Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. Every `/bff/admin/*` request body is validated against a Zod schema mirroring the Core API view it is forwarded to (unknown fields stripped, `<` and `>` refused in stored labels, the path identifier wins over the body's `user_id`/`group_id`, no password in a user update); invalid bodies answer 400 without reaching Core. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
 
 ## Synchronization and verification
 
@@ -126,6 +126,8 @@ The `contracts.yml` job uses Node.js 22, `actions/checkout@v7` and `actions/setu
 `cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v1.13.2`, with `cicd_version: v1.13.2` and `node_version: "22"`. Reusable steps and GitHub environments determine actual checks, publications and deployments.
 
 The Dockerfile currently uses `node:20-alpine` for build and runtime; the image command is `["node", "dist/index.js"]`. That version is separate from the Node.js 22 contract job.
+
+`security_test.sh` runs the OWASP ZAP stack of `docker-compose-security.yml`: ZAP replays every operation of `/openapi.json` with a static admin JWT (`sub=1`, HS256, `JWT_SECRET=b"secret"`) and fills bodies and path parameters from the contract examples. `init-test.sql` seeds the resources those examples name (users 1, 2, 10, 11, 42, roles and groups 10 and 11, two sessions); keep examples and seed in sync when adding a route.
 
 Before running Docker, check service variables, build secrets and networks in the repository files. Green CI validates its jobs; it does not prove business-service availability in a remote environment.
 
