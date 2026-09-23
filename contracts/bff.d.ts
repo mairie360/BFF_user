@@ -570,7 +570,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminUserCreateBody"];
                 };
             };
             responses: {
@@ -760,7 +760,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminUserPatchBody"];
                 };
             };
             responses: {
@@ -962,7 +962,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminUserRoleBody"];
                 };
             };
             responses: {
@@ -1246,7 +1246,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminRoleWriteBody"];
                 };
             };
             responses: {
@@ -1348,7 +1348,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminRoleReplaceBody"];
                 };
             };
             responses: {
@@ -1523,7 +1523,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminRolePatchBody"];
                 };
             };
             responses: {
@@ -1703,7 +1703,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminGroupCreateBody"];
                 };
             };
             responses: {
@@ -2162,7 +2162,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminGroupUserBody"];
                 };
             };
             responses: {
@@ -2564,7 +2564,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminSessionTokenBody"];
                 };
             };
             responses: {
@@ -2670,7 +2670,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["AdminJsonBody"];
+                    "application/json": components["schemas"]["AdminSessionRevokeBody"];
                 };
             };
             responses: {
@@ -2908,8 +2908,8 @@ export interface components {
              */
             password: string;
             /**
-             * @description Numéro de téléphone du nouvel utilisateur
-             * @example +33123456789
+             * @description Phone number of the new user, 10 to 15 digits
+             * @example 0612345678
              */
             phone_number?: string | null;
         };
@@ -3051,14 +3051,92 @@ export interface components {
             search?: string;
         };
         AdminGroupPatchBody: {
+            /** @example Scan group */
             name?: string;
+            /** @example Group edited by the ZAP scan */
             description?: string;
         };
         AdminUserPasswordResetBody: {
+            /** @example Temporary-Passw0rd */
             new_password: string;
         };
-        AdminJsonBody: {
-            [key: string]: unknown;
+        AdminUserCreateBody: {
+            /**
+             * Format: email
+             * @example jane.doe@mairie360.fr
+             */
+            email: string;
+            /** @example Jane */
+            first_name: string;
+            /** @example Doe */
+            last_name: string;
+            /** @example Temporary-Passw0rd */
+            password: string;
+            /** @example 0612345678 */
+            phone_number?: string | null;
+        };
+        AdminUserPatchBody: {
+            /**
+             * Format: email
+             * @example scan-target@mairie360.fr
+             */
+            email?: string | null;
+            /** @example Scan */
+            first_name?: string | null;
+            /** @example Target */
+            last_name?: string | null;
+            /** @example 0612345678 */
+            phone_number?: string | null;
+        };
+        AdminUserRoleBody: {
+            /** @example 3 */
+            role_id: number;
+            /** @description Must match the path userId when sent */
+            user_id?: number;
+        };
+        AdminRoleWriteBody: {
+            /** @example Agent */
+            name: string;
+            /** @example Municipal agent */
+            description: string;
+            /** @example true */
+            can_be_deleted?: boolean | null;
+        };
+        AdminRoleReplaceBody: {
+            /** @example Scan role */
+            name: string;
+            /** @example Role edited by the ZAP scan */
+            description: string;
+            /** @example true */
+            can_be_deleted?: boolean | null;
+        };
+        AdminRolePatchBody: {
+            /** @example Scan role */
+            name?: string | null;
+            /** @example Role edited by the ZAP scan */
+            description?: string | null;
+            /** @example true */
+            can_be_deleted?: boolean | null;
+        };
+        AdminGroupCreateBody: {
+            /** @example Culture */
+            name: string;
+            /** @example Culture department */
+            description: string;
+        };
+        AdminGroupUserBody: {
+            /** @example 42 */
+            user_id: number;
+            /** @description Must match the path groupId when sent */
+            group_id?: number;
+        };
+        AdminSessionTokenBody: {
+            /** @example opaque-refresh-token */
+            refresh_token: string;
+        };
+        AdminSessionRevokeBody: {
+            /** @example opaque-revoked-token */
+            refresh_token: string;
         };
         CoreResponse: unknown;
         SessionResponse: {
