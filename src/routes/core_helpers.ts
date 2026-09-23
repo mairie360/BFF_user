@@ -7,6 +7,7 @@ import type {
     LoginView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
+import type { KeycloakLoginView } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 function toJsonErrorBody(data: unknown): unknown {
@@ -65,6 +66,13 @@ export async function refreshSession(refreshToken: string): Promise<AxiosRespons
  */
 export async function revokeSession(refreshToken: string, authorization: string): Promise<void> {
     await coreSessionsClient.revoke({ refresh_token: refreshToken }, { headers: { Authorization: authorization } });
+}
+
+/** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
+export async function keycloakLoginUser(
+    keycloakLoginView: KeycloakLoginView,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.keycloakLogin(keycloakLoginView);
 }
 
 export async function forceChangeUserPassword(
