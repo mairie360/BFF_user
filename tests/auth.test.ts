@@ -177,3 +177,88 @@ describe('POST /auth/keycloak', () => {
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 });
+
+describe('POST /auth/logout', () => {
+    const KEYCLOAK_ENV = ['KEYCLOAK_REALM_URL', 'KEYCLOAK_CLIENT_ID', 'KEYCLOAK_POST_LOGOUT_REDIRECT_URI'] as const;
+    const END_SESSION = 'https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout';
+
+    beforeEach(() => {
+        for (const name of KEYCLOAK_ENV) delete process.env[name];
+    });
+
+    afterAll(() => {
+        for (const name of KEYCLOAK_ENV) delete process.env[name];
+    });
+
+    it('clears the accessToken cookie and stops there when Keycloak is not configured', async () => {
+        const response = await request(app).post('/auth/logout');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully' });
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+    });
+
+    it('returns the Keycloak end-session URL so the browser closes the single sign-on session', async () => {
+        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360/';
+        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
+        process.env.KEYCLOAK_POST_LOGOUT_REDIRECT_URI = 'https://login.mairie360.fr/';
+
+        const response = await request(app).post('/auth/logout');
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Logged out successfully');
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        const logoutUrl = new URL(response.body.logout_url);
+        expect(`${logoutUrl.origin}${logoutUrl.pathname}`).toBe(END_SESSION);
+        expect(logoutUrl.searchParams.get('client_id')).toBe('mairie360');
+        expect(logoutUrl.searchParams.get('post_logout_redirect_uri')).toBe('https://login.mairie360.fr/');
+        expect(logoutUrl.searchParams.has('id_token_hint')).toBe(false);
+    });
+
+    it('lets the front choose where Keycloak sends the browser afterwards', async () => {
+        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
+        process.env.KEYCLOAK_POST_LOGOUT_REDIRECT_URI = 'https://login.mairie360.fr/';
+
+        const response = await request(app)
+            .post('/auth/logout')
+            .send({ post_logout_redirect_uri: 'https://projects.mairie360.fr/login', ignored: true });
+
+        expect(response.status).toBe(200);
+        expect(new URL(response.body.logout_url).searchParams.get('post_logout_redirect_uri'))
+            .toBe('https://projects.mairie360.fr/login');
+    });
+
+    it('omits post_logout_redirect_uri when neither the front nor the environment provides one', async () => {
+        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
+
+        const response = await request(app).post('/auth/logout');
+
+        expect(response.status).toBe(200);
+        expect(response.body.logout_url).toBe(`${END_SESSION}?client_id=mairie360`);
+    });
+
+    it('rejects a post_logout_redirect_uri that is not a URL without clearing the cookie', async () => {
+        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
+
+        const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'not a url' });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({ message: 'Invalid logout payload' });
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('keeps the plain logout when only one of the two Keycloak variables is set', async () => {
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+
+        const response = await request(app).post('/auth/logout');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully' });
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID'));
+        warn.mockRestore();
+    });
+});

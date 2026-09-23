@@ -212,12 +212,29 @@
           "refresh_token"
         ]
       },
+      "LogoutView": {
+        "type": "object",
+        "properties": {
+          "post_logout_redirect_uri": {
+            "type": "string",
+            "format": "uri",
+            "description": "Where Keycloak sends the browser once the single sign-on session is closed. Must be one of the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.",
+            "example": "https://login.mairie360.fr/"
+          }
+        }
+      },
       "LogoutResponse": {
         "type": "object",
         "properties": {
           "message": {
             "type": "string",
             "example": "Logged out successfully"
+          },
+          "logout_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Keycloak end-session URL the browser must navigate to so the single sign-on session is closed on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the logout is then complete once the cookie is cleared.",
+            "example": "https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F"
           }
         },
         "required": [
@@ -1081,11 +1098,21 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Déconnecte un utilisateur",
-        "description": "Supprime le cookie HTTP-only contenant le token d'accès.",
+        "summary": "Signs a user out of Mairie 360 and of the single sign-on",
+        "description": "Clears the httpOnly `accessToken` cookie. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutView"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Utilisateur déconnecté",
+            "description": "Cookie cleared; navigate to `logout_url` when present to close the Keycloak session.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1094,8 +1121,18 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid payload (`post_logout_redirect_uri` is not a URL)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
-            "description": "Erreur serveur",
+            "description": "Server error",
             "content": {
               "application/json": {
                 "schema": {

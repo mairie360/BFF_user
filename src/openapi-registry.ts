@@ -119,9 +119,23 @@ export const AuthTokenResponse = z.object({
     }),
 }).openapi('AuthTokenResponse');
 
+export const LogoutViewSchema = z.object({
+    post_logout_redirect_uri: z.url().optional().openapi({
+        description: 'Where Keycloak sends the browser once the single sign-on session is closed. Must be one of '
+            + 'the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.',
+        example: 'https://login.mairie360.fr/',
+    }),
+}).openapi('LogoutView');
+
 export const LogoutResponse = z.object({
     message: z.string().openapi({
         example: 'Logged out successfully',
+    }),
+    logout_url: z.url().optional().openapi({
+        description: 'Keycloak end-session URL the browser must navigate to so the single sign-on session is closed '
+            + 'on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the '
+            + 'logout is then complete once the cookie is cleared.',
+        example: 'https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F',
     }),
 }).openapi('LogoutResponse');
 
@@ -139,5 +153,6 @@ registry.register('RegisterView', RegisterViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);
 registry.register('AuthTokenResponse', AuthTokenResponse);
+registry.register('LogoutView', LogoutViewSchema);
 registry.register('LogoutResponse', LogoutResponse);
 registry.register('UserIdParams', UserIdParams);

@@ -58,6 +58,9 @@ Values below are local examples or explicitly described behavior, not production
 | `CORE_API_PORT` | 3000 | Port appended when the address has none. |
 | `JWT_SECRET` | — | Core deployment secret required for local administrator checks. |
 | `COOKIE_DOMAIN` | — | Shared cookie domain; omit for a host-only cookie. |
+| `KEYCLOAK_REALM_URL` | https://auth.mairie360.fr/realms/mairie360 | Public URL of the Keycloak realm, as the browser reaches it. With `KEYCLOAK_CLIENT_ID`, enables the single logout. |
+| `KEYCLOAK_CLIENT_ID` | mairie360 | OIDC client the fronts sign in with (the same as Core's). |
+| `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | https://login.mairie360.fr/ | Default page Keycloak sends the browser to after the logout; the client must list it. |
 
 ## Routes and data contract
 
@@ -71,7 +74,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | POST | `/auth/keycloak` | application/json | 200, 400, 401, 403, 500, 502, 503 |
 | POST | `/auth/register` | application/json | 201, 400, 409, 500, 502 |
 | POST | `/auth/force_change_password` | application/json | 204, 400, 401, 403, 500, 502 |
-| POST | `/auth/logout` | — | 200, 500 |
+| POST | `/auth/logout` | application/json (optional) | 200, 400, 500 |
 | GET | `/user/{userId}/about` | — | 200, 400, 401, 500, 502 |
 | GET | `/bff/admin/users` | — | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/users` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
@@ -102,7 +105,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 
 ## Session, permissions and errors
 
-Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. `/auth/keycloak` completes the Keycloak single sign-on: it forwards the authorization code (with `redirect_uri`, and the PKCE `code_verifier` and `nonce` when used) to Core's public `POST /api/v1/auth/keycloak`, which redeems it and opens a session for the account with the same verified e-mail; the session is then set exactly like login (header and `accessToken` cookie), so roles and the other BFFs are unchanged. Core's `503` (Keycloak not configured) is kept so the front can fall back to the password login, which stays available during the transition. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
+Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. `/auth/keycloak` completes the Keycloak single sign-on: it forwards the authorization code (with `redirect_uri`, and the PKCE `code_verifier` and `nonce` when used) to Core's public `POST /api/v1/auth/keycloak`, which redeems it and opens a session for the account with the same verified e-mail; the session is then set exactly like login (header and `accessToken` cookie), so roles and the other BFFs are unchanged. Core's `503` (Keycloak not configured) is kept so the front can fall back to the password login, which stays available during the transition. `/auth/logout` clears the `accessToken` cookie without calling Core; when `KEYCLOAK_REALM_URL` and `KEYCLOAK_CLIENT_ID` are set, it also returns `logout_url`, the realm's OpenID Connect end-session URL (`/protocol/openid-connect/logout`) that the front must send the browser to: Keycloak then closes the single sign-on session and, through its front-channel or back-channel logout, the sessions of the other tools of the realm (n8n). Core keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint` and Keycloak asks the user to confirm; the `post_logout_redirect_uri` comes from the optional body, else from `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`, and must be allowed on the client. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
 
 ## Synchronization and verification
 
