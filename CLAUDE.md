@@ -147,7 +147,10 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` + `cookieAuth` at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Handlers run path by
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Two scenarios: `crud`
+(2 VUs) runs every handler through `coverage.run()` and carries the gate; `reads` (ramp to 20 VUs)
+replays the GET handlers only, so GET handlers must read seeded fixtures, never `state`. Every
+operation gets a `p(95)` threshold from its family (`budgetOf`). In `crud`, handlers run path by
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens

@@ -133,6 +133,8 @@ Le Dockerfile utilise encore `node:20-alpine` pour la construction et l’exécu
 
 Les deux stacks portent la gate de couverture OpenAPI de `mairie360/CICD` (`tests/zap/zap_hooks.py`, `tests/k6/coverage.js`), extraite dans `cicd-repo/` par les jobs CI et clonée au même endroit par les scripts au `cicd_version` épinglé (`CICD_VERSION` le remplace). Après le scan, le hook ZAP échoue si une opération du contrat n’a jamais été atteinte, ou si une opération qui exige `bearerAuth`/`cookieAuth` n’a reçu que des 401/403 ; les opérations publiques déclarent `security: []` dans leur `registerPath`. `load-test.js` contient un handler par opération de `contracts/openapi.json` : k6 s’arrête à l’init s’il en manque un et échoue sur le seuil `operations_uncovered` si un handler n’envoie pas sa requête. **Ajouter une route implique d’ajouter son handler dans `load-test.js`** (et `security: []` si elle est publique).
 
+`load-test.js` lance deux scénarios. `crud` (2 VUs) appelle chaque handler une fois par itération, écritures comprises, sous forme d’un scénario admin autonome qui supprime ce qu’il crée. `reads` (jusqu’à 20 VUs) ne rejoue que les handlers GET sur les fixtures de `init-test.sql`. Chaque opération a un seuil `p(95)` fixé par sa famille : 50 ms pour `/health`, 150 ms pour `/check_apis`, 500 ms pour les lectures, 800 ms pour `/auth/*` et les écritures admin ; `http_req_failed` doit rester sous 1 %.
+
 Avant un lancement Docker, vérifier les variables de service, les secrets de build et les réseaux dans les fichiers du dépôt. Une CI verte valide ses jobs; elle ne prouve pas la disponibilité des services métier dans un environnement distant.
 
 ## Diagnostic
