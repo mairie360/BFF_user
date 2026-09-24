@@ -6,6 +6,21 @@ extendZodWithOpenApi(z);
 
 export const registry = new OpenAPIRegistry();
 
+// Credentials accepted by `bearerToken()` (admin_helpers.ts) and forwarded to Core API. The
+// document requires one of them on every operation (`openapi.ts`); public operations opt out with
+// `security: []`. The ZAP OpenAPI coverage gate reads this to tell which operations must be
+// reached authenticated.
+export const bearerAuth = registry.registerComponent('securitySchemes', 'bearerAuth', {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+});
+export const cookieAuth = registry.registerComponent('securitySchemes', 'cookieAuth', {
+    type: 'apiKey',
+    in: 'cookie',
+    name: 'accessToken',
+});
+
 export const ApiErrorResponse = z.object({
     message: z.string().openapi({
         description: 'Message lisible de l\'erreur',
