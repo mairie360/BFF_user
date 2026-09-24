@@ -123,13 +123,15 @@ The type generator is pinned to `openapi-typescript@7.10.1` in `scripts/contract
 
 The `contracts.yml` job uses Node.js 22, `actions/checkout@v7` and `actions/setup-node@v7`. It runs on pushes, pull requests and manual dispatch; it installs with `npm ci`, checks contracts and runs the associated tests.
 
-`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v1.13.2`, with `cicd_version: v1.13.2` and `node_version: "22"`. Reusable steps and GitHub environments determine actual checks, publications and deployments.
+`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v3.0.0`, with `cicd_version: v3.0.0` and `node_version: "22"`. Reusable steps and GitHub environments determine actual checks, publications and deployments.
 
 The Dockerfile currently uses `node:20-alpine` for build and runtime; the image command is `["node", "dist/index.js"]`. That version is separate from the Node.js 22 contract job.
 
 `security_test.sh` and `performance_test.sh` test the image named by `IMAGE_REF`: in CI, the image `release-dev` has just published, the same artifact that is then promoted to staging and prod. When `IMAGE_REF` is empty (local use), they first build `bff-user:local` from `development.Dockerfile`, which needs `NODE_AUTH_TOKEN` and `./.npmrc`.
 
 `security_test.sh` runs the OWASP ZAP stack of `docker-compose-security.yml`: ZAP replays every operation of `/openapi.json` with a static admin JWT (`sub=1`, HS256, `JWT_SECRET=b"secret"`) and fills bodies and path parameters from the contract examples. `init-test.sql` seeds the resources those examples name (users 1, 2, 10, 11, 42, roles and groups 10 and 11, two sessions); keep examples and seed in sync when adding a route.
+
+Both stacks carry the OpenAPI coverage gate of `mairie360/CICD` (`tests/zap/zap_hooks.py`, `tests/k6/coverage.js`), checked out as `cicd-repo/` by the CI jobs and cloned there by the scripts at the pinned `cicd_version` (`CICD_VERSION` overrides it). After the scan, the ZAP hook fails when an operation of the contract was never reached, or when an operation that requires `bearerAuth`/`cookieAuth` only got 401/403; public operations declare `security: []` in their `registerPath`. `load-test.js` holds one handler per operation of `contracts/openapi.json`: k6 aborts at init when one is missing and fails its `operations_uncovered` threshold when a handler does not send its request. **Adding a route means adding its handler in `load-test.js`** (and `security: []` when it is public).
 
 Before running Docker, check service variables, build secrets and networks in the repository files. Green CI validates its jobs; it does not prove business-service availability in a remote environment.
 

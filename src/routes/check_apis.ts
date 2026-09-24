@@ -10,6 +10,7 @@ const router = Router();
 registry.registerPath({
   method: 'get',
   path: '/check_apis',
+  security: [],
   tags: ['Connectivity'],
   summary: "Vérifie la connexion avec l'API Core (Rust)",
   responses: {

@@ -23,6 +23,7 @@ const router = Router();
 registry.registerPath({
     method: 'post',
     path: '/auth/login',
+    security: [],
     tags: ['Authentication'],
     summary: 'Authentifie un utilisateur',
     description: 'Transmet les identifiants au Core API et retourne le token JWT.',
@@ -88,6 +89,7 @@ registry.registerPath({
 registry.registerPath({
     method: 'post',
     path: '/auth/register',
+    security: [],
     tags: ['Authentication'],
     summary: 'Crée un utilisateur',
     description: 'Valide puis transmet les informations d\'inscription au Core API (POST /api/v1/auth/register, route publique).',
@@ -143,6 +145,7 @@ registry.registerPath({
 registry.registerPath({
     method: 'post',
     path: '/auth/force_change_password',
+    security: [],
     tags: ['Authentication'],
     summary: 'Force le changement de mot de passe',
     description: 'Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force_change_password.',
@@ -206,6 +209,7 @@ registry.registerPath({
 registry.registerPath({
     method: 'post',
     path: '/auth/logout',
+    security: [],
     tags: ['Authentication'],
     summary: 'Déconnecte un utilisateur',
     description: 'Supprime le cookie HTTP-only contenant le token d\'accès.',
