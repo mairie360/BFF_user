@@ -133,6 +133,8 @@ The Dockerfile currently uses `node:20-alpine` for build and runtime; the image 
 
 Both stacks carry the OpenAPI coverage gate of `mairie360/CICD` (`tests/zap/zap_hooks.py`, `tests/k6/coverage.js`), checked out as `cicd-repo/` by the CI jobs and cloned there by the scripts at the pinned `cicd_version` (`CICD_VERSION` overrides it). After the scan, the ZAP hook fails when an operation of the contract was never reached, or when an operation that requires `bearerAuth`/`cookieAuth` only got 401/403; public operations declare `security: []` in their `registerPath`. `load-test.js` holds one handler per operation of `contracts/openapi.json`: k6 aborts at init when one is missing and fails its `operations_uncovered` threshold when a handler does not send its request. **Adding a route means adding its handler in `load-test.js`** (and `security: []` when it is public).
 
+`load-test.js` runs two scenarios. `crud` (2 VUs) calls every handler once per iteration, writes included, as one self-contained admin scenario that deletes what it creates. `reads` (ramp to 20 VUs) replays only the GET handlers against the fixtures seeded by `init-test.sql`. Every operation has a `p(95)` threshold set by its family: 50 ms for `/health`, 150 ms for `/check_apis`, 500 ms for reads, 800 ms for `/auth/*` and admin writes; `http_req_failed` must stay below 1 %.
+
 Before running Docker, check service variables, build secrets and networks in the repository files. Green CI validates its jobs; it does not prove business-service availability in a remote environment.
 
 ## Troubleshooting

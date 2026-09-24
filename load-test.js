@@ -13,12 +13,17 @@ import { createCoverage } from '/coverage.js';
 // `operations_uncovered` threshold when a handler ends without sending its request. Adding a route
 // to the BFF therefore means adding its handler here.
 //
-// `coverage.run()` calls the handlers once per iteration, path by path in contract order and, for
-// one path, in the order get, put, post, delete, options, head, patch, trace (so DELETE runs before
-// PATCH). Each iteration is one self-contained admin scenario: the resources a handler creates
-// (users, roles, groups, refresh token) are kept in `state` for the handlers that follow. The
-// DELETE handlers remove a disposable resource, the kept ones are removed by `cleanup()` at the end
-// of the iteration.
+// Two scenarios share the handlers:
+// - `crud` (2 VUs): `coverage.run()` calls every handler once per iteration, reads and writes, so
+//   it carries the coverage gate. Handlers run path by path in contract order and, for one path,
+//   in the order get, put, post, delete, options, head, patch, trace (so DELETE runs before PATCH).
+//   Each iteration is one self-contained admin scenario: the resources a handler creates (users,
+//   roles, groups, refresh token) are kept in `state` for the handlers that follow. The DELETE
+//   handlers remove a disposable resource, the kept ones are removed by `cleanup()` at the end of
+//   the iteration.
+// - `reads` (up to 20 VUs): replays only the GET handlers, which read seeded fixtures and never
+//   depend on `state`.
+// Every operation gets a p(95) threshold, whose budget depends on its family (`budgetOf`).
 // ---------------------------------------------------------------------------
 
 // Must match the JWT_SECRET of the core-api / bff-user services of the test stack.
@@ -78,7 +83,7 @@ function json(response) {
 // it answers 404 as well. Both are accepted until Core API is fixed; any other status still fails.
 const memberStatuses = { responseCallback: http.expectedStatuses(200, 201, 204, 404) };
 
-const coverage = createCoverage({
+const handlers = {
   // --- Connectivity (public) ---
   'GET /health': ({ request }) =>
     check(request(), { 'health 200': (r) => r.status === 200 }),
@@ -207,7 +212,7 @@ const coverage = createCoverage({
     });
   },
   'GET /bff/admin/groups/{groupId}': ({ request, data }) =>
-    check(request({ path: { groupId: need(state.groupId, 'created group') }, headers: data.admin }), {
+    check(request({ path: { groupId: FIXTURE_GROUP_ID }, headers: data.admin }), {
       'group 200': (r) => r.status === 200,
     }),
   'PATCH /bff/admin/groups/{groupId}': ({ request, data }) =>
@@ -252,7 +257,10 @@ const coverage = createCoverage({
     check(request(), { 'me 200': (r) => r.status === 200 }),
   'GET /session/me': ({ request }) =>
     check(request(), { 'session/me 200': (r) => r.status === 200 }),
-});
+};
+
+const coverage = createCoverage(handlers);
+const readOperations = coverage.operations.filter((o) => o.method === 'GET');
 
 // Deletes the resources kept by the handlers, so that the listings do not grow during the test.
 function cleanup(data) {
@@ -276,21 +284,43 @@ function findUserId(email, data) {
   return user ? user.id : undefined;
 }
 
+// p(95) budget of an operation, per family.
+function budgetOf({ op, method, path }) {
+  if (op === 'GET /health') return 50; // process probe
+  if (op === 'GET /check_apis') return 150; // -> Core /health
+  if (path.startsWith('/auth/')) return 800; // sign-in flow, Core writes the session
+  if (method === 'GET') return 500; // BFF aggregation + Core reads
+  return 800; // admin writes
+}
+
+const perOperationThresholds = {};
+for (const operation of coverage.operations) {
+  perOperationThresholds[`http_req_duration{op:${operation.op}}`] = [`p(95)<${budgetOf(operation)}`];
+}
+
 export const options = {
-  stages: [
-    { duration: '30s', target: 20 }, // ramp-up
-    { duration: '1m', target: 20 }, // steady load
-    { duration: '10s', target: 0 }, // ramp-down
-  ],
+  scenarios: {
+    reads: {
+      executor: 'ramping-vus',
+      exec: 'reads',
+      stages: [
+        { duration: '30s', target: 20 }, // ramp-up
+        { duration: '1m', target: 20 }, // steady load
+        { duration: '10s', target: 0 }, // ramp-down
+      ],
+    },
+    crud: {
+      executor: 'constant-vus',
+      exec: 'crud',
+      vus: 2,
+      duration: '1m40s',
+    },
+  },
   thresholds: {
     ...coverage.thresholds,
+    ...perOperationThresholds,
     http_req_failed: ['rate<0.01'], // < 1% errors
     checks: ['rate>0.99'],
-    http_req_duration: ['p(95)<1000'],
-    'http_req_duration{op:GET /health}': ['p(95)<50'], // process probe
-    'http_req_duration{op:GET /check_apis}': ['p(95)<150'], // /check_apis -> core /health
-    'http_req_duration{op:GET /me}': ['p(95)<500'], // BFF aggregation + upstream
-    'http_req_duration{op:GET /session/me}': ['p(95)<500'],
   },
 };
 
@@ -310,7 +340,20 @@ export function setup() {
   return { adminEmail, admin, user: bearer(mintJwt(USER_ID, 'user')) };
 }
 
-export default function (data) {
+// Every GET handler, with a plain request() (no coverage accounting: `crud` owns the gate).
+export function reads(data) {
+  for (const operation of readOperations) {
+    const request = (call = {}) =>
+      http.get(coverage.url(operation.op, call.path, call.query), {
+        headers: Object.assign({}, data.user, call.headers),
+        tags: { op: operation.op },
+      });
+    handlers[operation.op]({ request, data, op: operation.op, method: operation.method, path: operation.path });
+  }
+  sleep(1);
+}
+
+export function crud(data) {
   state = {};
   // User token by default; the /bff/admin/* handlers pass the admin one.
   coverage.run({ headers: data.user, data });
