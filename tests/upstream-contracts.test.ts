@@ -21,7 +21,6 @@ const pathname = (url: string) => new URL(url, 'http://upstream').pathname;
 // adressées par les helpers d'URL du client généré.
 const CONSUMED = [
   { operationId: 'login', method: 'post', url: coreApiUrls.getLoginUrl() },
-  { operationId: 'register', method: 'post', url: coreApiUrls.getRegisterUrl() },
   { operationId: 'forceChangePassword', method: 'post', url: coreApiUrls.getForceChangePasswordUrl() },
   { operationId: 'adminListUsers', method: 'get', url: coreApiUrls.getAdminListUsersUrl({ page: 2, page_size: 5 }) },
   { operationId: 'adminPostUser', method: 'post', url: coreApiUrls.getAdminPostUserUrl() },

@@ -43,7 +43,6 @@ export const coreApi = getCoreAPIMairie360(coreClient);
 // du BFF, tout en utilisant l'unique client généré `getCoreAPIMairie360`.
 export const coreAuthClient = {
     login: coreApi.login,
-    register: coreApi.register,
     forceChangePassword: coreApi.forceChangePassword,
     forgotPassword: coreApi.forgotPassword,
     resetPassword: coreApi.resetPassword,
