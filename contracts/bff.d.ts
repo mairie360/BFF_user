@@ -177,83 +177,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Crée un utilisateur
-         * @description Valide puis transmet les informations d'inscription au Core API (POST /api/v1/auth/register, route publique).
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["RegisterView"];
-                };
-            };
-            responses: {
-                /** @description Utilisateur créé avec succès */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Données invalides */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
-                    };
-                };
-                /** @description Utilisateur déjà existant */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
-                    };
-                };
-                /** @description Erreur serveur */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
-                    };
-                };
-                /** @description Core API indisponible ou réponse amont invalide */
-                502: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/auth/force_change_password": {
         parameters: {
             query?: never;
@@ -2884,34 +2807,6 @@ export interface components {
              * @example Firefox
              */
             device_info: string;
-        };
-        RegisterView: {
-            /**
-             * Format: email
-             * @description Adresse email du nouvel utilisateur
-             * @example alice.dupont@mairie360.fr
-             */
-            email: string;
-            /**
-             * @description Prénom du nouvel utilisateur
-             * @example Alice
-             */
-            first_name: string;
-            /**
-             * @description Nom du nouvel utilisateur
-             * @example Dupont
-             */
-            last_name: string;
-            /**
-             * @description Mot de passe du nouvel utilisateur
-             * @example MotDePasse123
-             */
-            password: string;
-            /**
-             * @description Numéro de téléphone du nouvel utilisateur
-             * @example +33123456789
-             */
-            phone_number?: string | null;
         };
         ForceChangePasswordView: {
             /**

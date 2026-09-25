@@ -12,7 +12,7 @@ Business domain: Identity and administration.
 
 ## Available capabilities
 
-- Sign-in, registration, first-sign-in password change and logout.
+- Sign-in, first-sign-in password change and logout (no public self-registration: administrators create accounts).
 - Session lookup with identity, groups and roles through `/me` and `/session/me`.
 - User, role, group, membership and session operations under `/bff/admin`.
 

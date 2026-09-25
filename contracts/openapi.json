@@ -49,49 +49,6 @@
           "device_info"
         ]
       },
-      "RegisterView": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "description": "Adresse email du nouvel utilisateur",
-            "example": "alice.dupont@mairie360.fr"
-          },
-          "first_name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Prénom du nouvel utilisateur",
-            "example": "Alice"
-          },
-          "last_name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Nom du nouvel utilisateur",
-            "example": "Dupont"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Mot de passe du nouvel utilisateur",
-            "example": "MotDePasse123"
-          },
-          "phone_number": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Numéro de téléphone du nouvel utilisateur",
-            "example": "+33123456789"
-          }
-        },
-        "required": [
-          "email",
-          "first_name",
-          "last_name",
-          "password"
-        ]
-      },
       "ForceChangePasswordView": {
         "type": "object",
         "properties": {
@@ -767,70 +724,6 @@
                     "token"
                   ],
                   "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erreur serveur",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Core API indisponible ou réponse amont invalide",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/auth/register": {
-      "post": {
-        "tags": [
-          "Authentication"
-        ],
-        "summary": "Crée un utilisateur",
-        "description": "Valide puis transmet les informations d'inscription au Core API (POST /api/v1/auth/register, route publique).",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterView"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Utilisateur créé avec succès"
-          },
-          "400": {
-            "description": "Données invalides",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Utilisateur déjà existant",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
                 }
               }
             }

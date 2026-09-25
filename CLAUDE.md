@@ -61,7 +61,8 @@ script currently has no wired source directory (`source = null` in `scripts/cont
 generated client from `@mairie360/core-api-openapi`. It re-exports grouped sub-clients (`coreAuthClient`,
 `coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, `coreUsersClient`, ...) that the routes
 consume. There is **no fallback bearer**: routes forward only the caller's session (Core's `/api/v1/auth/*`
-is exempt from its JWT middleware, so login/register/force_change_password go anonymous).
+is exempt from its JWT middleware, so login/force_change_password go anonymous). There is no public
+self-registration: accounts are created by administrators through `/bff/admin/users`.
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
@@ -88,9 +89,8 @@ and the legacy `/me` resolve.
   and a `refresh_token` in the body. The BFF stores the access token in an httpOnly
   `accessToken` cookie (`src/utils/cookieUtils.ts`) and re-exposes it via the
   `Authorization` header + `Access-Control-Expose-Headers`. `/bff/admin/sessions/refresh`
-  does the same with the refreshed JWT (502 if Core omits it). Login and register bodies are
-  validated with Zod (unknown fields stripped) before reaching Core; register uses Core's public
-  `POST /api/v1/auth/register`.
+  does the same with the refreshed JWT (502 if Core omits it). Login bodies are
+  validated with Zod (unknown fields stripped) before reaching Core.
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then checks the `admin`
   role in the DB (`isAdministrationUserAdmin`). It is a `router.use` guard on **every**
