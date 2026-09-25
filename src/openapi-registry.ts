@@ -73,6 +73,19 @@ export const AuthTokenResponse = z.object({
     }),
 }).openapi('AuthTokenResponse');
 
+export const RefreshViewSchema = z.object({
+    refresh_token: z.string().min(1).openapi({
+        description: 'Refresh token returned by /auth/login.',
+        example: '8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE',
+    }),
+}).openapi('RefreshView');
+
+export const RefreshResponse = z.object({
+    message: z.string().openapi({
+        example: 'JWT refreshed successfully',
+    }),
+}).openapi('RefreshResponse');
+
 export const LogoutViewSchema = z.object({
     refresh_token: z.string().min(1).optional().openapi({
         description: 'Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.',
@@ -102,6 +115,8 @@ registry.register('LoginView', LoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);
 registry.register('AuthTokenResponse', AuthTokenResponse);
+registry.register('RefreshView', RefreshViewSchema);
+registry.register('RefreshResponse', RefreshResponse);
 registry.register('LogoutView', LogoutViewSchema);
 registry.register('LogoutResponse', LogoutResponse);
 registry.register('UserIdParams', UserIdParams);

@@ -61,7 +61,7 @@ script currently has no wired source directory (`source = null` in `scripts/cont
 generated client from `@mairie360/core-api-openapi`. It re-exports grouped sub-clients (`coreAuthClient`,
 `coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, `coreUsersClient`, ...) that the routes
 consume. There is **no fallback bearer**: routes forward only the caller's session (Core's `/api/v1/auth/*`
-is exempt from its JWT middleware, so login/force_change_password go anonymous). There is no public
+is exempt from its JWT middleware, so login/force_change_password go anonymous; `/api/v1/sessions/refresh` is also served outside it). There is no public
 self-registration: accounts are created by administrators through `/bff/admin/users`.
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
@@ -91,12 +91,17 @@ and the legacy `/me` resolve.
   `Authorization` header + `Access-Control-Expose-Headers`. `/bff/admin/sessions/refresh`
   does the same with the refreshed JWT (502 if Core omits it). Login bodies are
   validated with Zod (unknown fields stripped) before reaching Core.
+- **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
+  `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
+  is forwarded, so an expired JWT can be renewed. The JWT is delivered like login (header + cookie).
+  `/bff/admin/sessions/refresh` is the older admin-scoped variant that forwards the session.
 - **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
   Core publishes no "revoke the current session by JWT" operation, so without a `refresh_token`
   logout only clears the cookie (`session_revoked: false`).
 - **Rate limiting** (`src/middleware/rateLimit.ts`, `express-rate-limit`): failed attempts on
-  `/auth/login` (per IP and per IP + e-mail) and `/auth/force_change_password` (per IP) answer 429.
+  `/auth/login` (per IP and per IP + e-mail), `/auth/force_change_password` (per IP) and
+  `/auth/refresh` (per IP and per SHA-256 of the refresh token) answer 429.
   The IP keys only apply when `TRUST_PROXY` is set; without it every client shares the front pods'
   IP, so only the per-e-mail login limit runs (one startup warning). The ZAP/k6 stacks set
   `AUTH_RATE_LIMIT_ENABLED=false` on bff-user.

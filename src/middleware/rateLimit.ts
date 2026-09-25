@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Request, RequestHandler, Response } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 
@@ -12,6 +13,7 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
  * - `AUTH_RATE_LIMIT_WINDOW_MS`   window length, default 15 minutes.
  * - `AUTH_RATE_LIMIT_MAX`         failed logins per account e-mail (per client IP + e-mail when
  *                                 `TRUST_PROXY` is set) and window, default 10.
+ *                                 Also the failed refreshes per refresh token on `/auth/refresh`.
  * - `AUTH_RATE_LIMIT_IP_MAX`      failed attempts per client IP and window over every limited route,
  *                                 default 100. Only applied when `TRUST_PROXY` is set.
  *
@@ -41,6 +43,14 @@ export interface AuthRateLimiters {
     perIp: RequestHandler;
     /** Failed logins per account e-mail, or per (client IP, e-mail) when `perClientIp`. */
     perAccount: RequestHandler;
+    /**
+     * Failed refreshes per refresh token (SHA-256, the raw token never reaches the store). The
+     * refresh body carries no e-mail; without `TRUST_PROXY` the IP is the front pod's, so the token
+     * is the only key that cannot lock other users out. It stops replaying a revoked or stolen token;
+     * guessing a valid one is out of reach (high-entropy token) and is further capped by `perIp`
+     * when `TRUST_PROXY` is set.
+     */
+    perRefreshToken: RequestHandler;
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -60,6 +70,11 @@ export function authRateLimitOptionsFromEnv(env: NodeJS.ProcessEnv = process.env
 
 function clientIp(req: Request): string {
     return ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown');
+}
+
+function refreshTokenHashOf(req: Request): string {
+    const token: unknown = (req.body as { refresh_token?: unknown } | undefined)?.refresh_token;
+    return createHash('sha256').update(typeof token === 'string' ? token : '').digest('hex');
 }
 
 function accountOf(req: Request): string {
@@ -111,6 +126,13 @@ export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateL
             requestPropertyName: 'authAccountRateLimit',
             limit: options.accountMax,
             keyGenerator: (req) => (options.perClientIp ? `${clientIp(req)}|${accountOf(req)}` : accountOf(req)),
+        }),
+        perRefreshToken: rateLimit({
+            ...common,
+            identifier: 'auth-refresh-token',
+            requestPropertyName: 'authRefreshTokenRateLimit',
+            limit: options.accountMax,
+            keyGenerator: (req) => refreshTokenHashOf(req),
         }),
     };
 }

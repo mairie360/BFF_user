@@ -52,6 +52,14 @@ export async function loginUser(loginView: LoginView): Promise<AxiosResponse<Log
 }
 
 /**
+ * Renews the access JWT from a refresh token alone: Core serves POST /api/v1/sessions/refresh outside
+ * its JWT middleware (>= 1.2.0), so no session is forwarded and an expired JWT is not needed.
+ */
+export async function refreshSession(refreshToken: string): Promise<AxiosResponse<string>> {
+    return coreSessionsClient.refresh({ refresh_token: refreshToken });
+}
+
+/**
  * Revokes the caller's own Core session (POST /api/v1/sessions/revoke): Core checks that the refresh
  * token belongs to the JWT's user, then rejects that JWT on its next session check.
  */

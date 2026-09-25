@@ -196,6 +196,69 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
+  describe('POST /auth/refresh', () => {
+    const payload = { refresh_token: 'opaque-refresh-token' };
+
+    test('renews the JWT through the public Core refresh without forwarding any session', async () => {
+      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+
+      const response = await request(app).post('/auth/refresh').set('Cookie', `accessToken=${SESSION}`).send(payload);
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
+      expect(response.headers.authorization).toBe('Bearer refreshed.jwt.token');
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=refreshed\.jwt\.token;.*HttpOnly/);
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRefreshUrl())]);
+      expect(coreApi.requests[0].body).toEqual(payload);
+      // The refresh token alone identifies the session: an (expired) JWT is never forwarded.
+      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
+    });
+
+    test('relays an unknown, revoked or expired refresh token as a JSON 401', async () => {
+      coreApi.on('post', CORE.sessionsRefresh, coreError(401, 'Session not found'));
+
+      const response = await request(app).post('/auth/refresh').send(payload);
+
+      expect(response.status).toBe(401);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(response.body).toEqual({ message: 'Session not found' });
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    test.each([
+      ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
+      ['a dropped connection', { dropConnection: true }],
+    ] as Array<[string, MockReply]>)('maps %s to a documented 502 without upstream details', async (_label, reply) => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      coreApi.on('post', CORE.sessionsRefresh, reply);
+
+      const response = await request(app).post('/auth/refresh').send(payload);
+
+      expect(response.status).toBe(502);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(JSON.stringify(response.body)).not.toContain('database');
+    });
+
+    test('returns 502 when Core API omits the renewed JWT', async () => {
+      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain' });
+
+      const response = await request(app).post('/auth/refresh').send(payload);
+
+      expect(response.status).toBe(502);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    test('rejects an invalid payload with 400 before calling Core API', async () => {
+      const response = await request(app).post('/auth/refresh').send({ refresh_token: '' });
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+  });
+
   describe('POST /auth/logout', () => {
     test('clears the cookie without calling Core API when no refresh token is sent', async () => {
       const response = await request(app).post('/auth/logout').set('Cookie', `accessToken=${SESSION}`);
