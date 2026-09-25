@@ -58,6 +58,11 @@ Values below are local examples or explicitly described behavior, not production
 | `CORE_API_PORT` | 3000 | Port appended when the address has none. |
 | `JWT_SECRET` | — | Core deployment secret required for local administrator checks. |
 | `COOKIE_DOMAIN` | — | Shared cookie domain; omit for a host-only cookie. |
+| `TRUST_PROXY` | unset (no proxy trusted) | Express `trust proxy`: hop count (`1`), `true`, or trusted addresses/subnets (`loopback, 10.0.0.0/8`). Set it behind the ingress so rate limits apply per client and not per proxy; while it is unset, per-IP limiting is disabled (warning at startup). |
+| `AUTH_RATE_LIMIT_ENABLED` | `true` | `false` disables the authentication rate limits (load tests only). |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `900000` | Rate-limit window (15 minutes). |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Failed logins per account e-mail per window (per client IP + e-mail when `TRUST_PROXY` is set). |
+| `AUTH_RATE_LIMIT_IP_MAX` | `100` | Failed attempts per client IP per window, over `/auth/login` and `/auth/force_change_password`; only applied when `TRUST_PROXY` is set. |
 
 ## Routes and data contract
 
@@ -67,9 +72,9 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | --- | --- | --- | --- |
 | GET | `/health` | — | 200 |
 | GET | `/check_apis` | — | 200, 502 |
-| POST | `/auth/login` | application/json | 200, 400, 401, 412, 500, 502 |
-| POST | `/auth/force_change_password` | application/json | 204, 400, 401, 403, 500, 502 |
-| POST | `/auth/logout` | — | 200, 500 |
+| POST | `/auth/login` | application/json | 200, 400, 401, 412, 429, 500, 502 |
+| POST | `/auth/force_change_password` | application/json | 204, 400, 401, 403, 429, 500, 502 |
+| POST | `/auth/logout` | application/json (optional) | 200, 500 |
 | GET | `/user/{userId}/about` | — | 200, 400, 401, 500, 502 |
 | GET | `/bff/admin/users` | — | 200, 201, 204, 400, 401, 403, 404, 502 |
 | POST | `/bff/admin/users` | application/json | 200, 201, 204, 400, 401, 403, 404, 502 |
@@ -100,7 +105,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 
 ## Session, permissions and errors
 
-Authentication routes handle their own flow: login bodies are validated before reaching Core. There is no public self-registration: accounts are created by administrators through `/bff/admin/users`. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
+Authentication routes handle their own flow: login bodies are validated before reaching Core. There is no public self-registration: accounts are created by administrators through `/bff/admin/users`. `/auth/login` and `/auth/force_change_password` are rate limited (failed attempts only, 429 + `Retry-After`; in-memory counters per replica). Without `TRUST_PROXY` every client shares the front pods' IP, so only the per-e-mail limit applies: a per-IP limit would let one attacker lock every user out. `/auth/logout` revokes the Core session (`POST /api/v1/sessions/revoke`) when it receives both the session and the `refresh_token` returned by login, which makes Core reject the access JWT immediately; it always clears the cookie, even when Core fails, and reports the outcome in `session_revoked`. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
 
 ## Synchronization and verification
 

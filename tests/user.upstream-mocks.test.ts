@@ -196,13 +196,45 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
-  test('POST /auth/logout clears the cookie without calling Core API', async () => {
-    const response = await request(app).post('/auth/logout');
+  describe('POST /auth/logout', () => {
+    test('clears the cookie without calling Core API when no refresh token is sent', async () => {
+      const response = await request(app).post('/auth/logout').set('Cookie', `accessToken=${SESSION}`);
 
-    expect(response.status).toBe(200);
-    expectBffContract('post', '/auth/logout', response);
-    expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-    expect(coreApi.requests).toHaveLength(0);
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+
+    test('revokes the Core session with the caller session and refresh token', async () => {
+      coreApi.on('post', CORE.sessionsRevoke, { status: 200, raw: 'Session revoked', contentType: 'text/plain' });
+
+      const response = await request(app).post('/auth/logout').set('Cookie', `accessToken=${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRevokeUrl())]);
+      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
+    });
+
+    test.each([
+      ['a Core API 401', coreError(401, 'Invalid refresh token')],
+      ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
+      ['a dropped connection', { dropConnection: true }],
+    ] as Array<[string, MockReply]>)('still clears the cookie on %s', async (_label, reply) => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      coreApi.on('post', CORE.sessionsRevoke, reply);
+
+      const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+    });
   });
 
   describe('GET /session/me and /me', () => {
