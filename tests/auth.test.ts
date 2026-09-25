@@ -167,13 +167,18 @@ describe('authentication rate limiting', () => {
     const limitedApp = (options: Partial<Parameters<typeof createAuthRateLimiters>[0]> = {}) => {
         const limited = express();
         limited.use(express.json());
+        // Clients are told apart by X-Forwarded-For, as behind the ingress.
+        limited.set('trust proxy', true);
         limited.use('/auth', createAuthRouter(createAuthRateLimiters({
-            enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, ...options,
+            enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, perClientIp: true, ...options,
         })));
         return limited;
     };
     // Missing password: a 400 that counts as a failed attempt without any Core call.
-    const failedLogin = (target: express.Express, email: string) => request(target).post('/auth/login').send({ email, device_info: 'test' });
+    const failedLogin = (target: express.Express, email: string, clientIp = '203.0.113.1') => request(target)
+        .post('/auth/login')
+        .set('X-Forwarded-For', clientIp)
+        .send({ email, device_info: 'test' });
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -184,7 +189,7 @@ describe('authentication rate limiting', () => {
 
         expect((await failedLogin(target, 'alice@example.com')).status).toBe(400);
         expect((await failedLogin(target, 'ALICE@example.com ')).status).toBe(400);
-        const blocked = await request(target).post('/auth/login').send({ ...credentials, email: 'alice@example.com' });
+        const blocked = await request(target).post('/auth/login').set('X-Forwarded-For', '203.0.113.1').send({ ...credentials, email: 'alice@example.com' });
 
         expect(blocked.status).toBe(429);
         expect(blocked.body).toEqual({ message: RATE_LIMIT_MESSAGE });
@@ -200,11 +205,12 @@ describe('authentication rate limiting', () => {
 
         await failedLogin(target, 'a@example.com');
         await failedLogin(target, 'b@example.com');
-        await request(target).post('/auth/force_change_password').send({ token: '' });
+        await request(target).post('/auth/force_change_password').set('X-Forwarded-For', '203.0.113.1').send({ token: '' });
 
         const login = await failedLogin(target, 'c@example.com');
         const forceChange = await request(target)
             .post('/auth/force_change_password')
+            .set('X-Forwarded-For', '203.0.113.1')
             .send({ token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' });
 
         expect(login.status).toBe(429);
@@ -240,13 +246,68 @@ describe('authentication rate limiting', () => {
         }
     });
 
+    it('keys the per-IP and per-account limits on the client IP when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 2, ipMax: 2 });
+
+        await failedLogin(target, 'alice@example.com', '203.0.113.1');
+        await failedLogin(target, 'bob@example.com', '203.0.113.1');
+
+        // The first client is blocked, another client is not, even for the same account.
+        expect((await failedLogin(target, 'carol@example.com', '203.0.113.1')).status).toBe(429);
+        expect((await failedLogin(target, 'alice@example.com', '198.51.100.7')).status).toBe(400);
+    });
+
+    describe('without TRUST_PROXY (every client shares the front pod IP)', () => {
+        const sharedIpApp = () => limitedApp({ perClientIp: false, accountMax: 2, ipMax: 1 });
+
+        it('does not apply any per-IP limit, so one attacker cannot lock every user out', async () => {
+            const target = sharedIpApp();
+
+            for (const email of ['a@example.com', 'b@example.com', 'c@example.com', 'd@example.com']) {
+                expect((await failedLogin(target, email)).status).toBe(400);
+            }
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                expect((await request(target).post('/auth/force_change_password').send({ token: '' })).status).toBe(400);
+            }
+        });
+
+        it('still limits the failed logins of one e-mail, whatever the client IP', async () => {
+            const target = sharedIpApp();
+
+            await failedLogin(target, 'alice@example.com', '203.0.113.1');
+            await failedLogin(target, 'alice@example.com', '198.51.100.7');
+
+            expect((await failedLogin(target, 'Alice@example.com', '192.0.2.44')).status).toBe(429);
+            expect((await failedLogin(target, 'bob@example.com', '192.0.2.44')).status).toBe(400);
+        });
+
+        it('logs a single startup warning that per-IP limiting is disabled', () => {
+            jest.isolateModules(() => {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const isolated = require('../src/middleware/rateLimit') as typeof import('../src/middleware/rateLimit');
+                const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+                const base = { windowMs: 60_000, accountMax: 10, ipMax: 100 };
+
+                isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: true });
+                isolated.createAuthRateLimiters({ ...base, enabled: false, perClientIp: false });
+                expect(warn).not.toHaveBeenCalled();
+
+                isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
+                isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
+                expect(warn).toHaveBeenCalledTimes(1);
+                expect(warn.mock.calls[0][0]).toContain('TRUST_PROXY is not set');
+                warn.mockRestore();
+            });
+        });
+    });
+
     it('reads its settings from the environment with safe defaults', () => {
-        expect(authRateLimitOptionsFromEnv({})).toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100 });
+        expect(authRateLimitOptionsFromEnv({})).toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, perClientIp: false });
         expect(authRateLimitOptionsFromEnv({
-            AUTH_RATE_LIMIT_ENABLED: 'false', AUTH_RATE_LIMIT_WINDOW_MS: '60000', AUTH_RATE_LIMIT_MAX: '5', AUTH_RATE_LIMIT_IP_MAX: '50',
-        })).toEqual({ enabled: false, windowMs: 60_000, accountMax: 5, ipMax: 50 });
-        expect(authRateLimitOptionsFromEnv({ AUTH_RATE_LIMIT_MAX: '0', AUTH_RATE_LIMIT_IP_MAX: 'abc' }))
-            .toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100 });
+            AUTH_RATE_LIMIT_ENABLED: 'false', AUTH_RATE_LIMIT_WINDOW_MS: '60000', AUTH_RATE_LIMIT_MAX: '5', AUTH_RATE_LIMIT_IP_MAX: '50', TRUST_PROXY: '1',
+        })).toEqual({ enabled: false, windowMs: 60_000, accountMax: 5, ipMax: 50, perClientIp: true });
+        expect(authRateLimitOptionsFromEnv({ AUTH_RATE_LIMIT_MAX: '0', AUTH_RATE_LIMIT_IP_MAX: 'abc', TRUST_PROXY: 'false' }))
+            .toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, perClientIp: false });
     });
 
     it.each([
