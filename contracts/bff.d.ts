@@ -151,6 +151,17 @@ export interface paths {
                         };
                     };
                 };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "message": "Too many attempts, please try again later" }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
                 /** @description Erreur serveur */
                 500: {
                     headers: {
@@ -237,6 +248,17 @@ export interface paths {
                         "application/json": components["schemas"]["ApiErrorResponse"];
                     };
                 };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "message": "Too many attempts, please try again later" }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
                 /** @description Erreur serveur */
                 500: {
                     headers: {
@@ -273,8 +295,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Déconnecte un utilisateur
-         * @description Supprime le cookie HTTP-only contenant le token d'accès.
+         * Signs a user out
+         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails.
          */
         post: {
             parameters: {
@@ -283,7 +305,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["LogoutView"];
+                };
+            };
             responses: {
                 /** @description Utilisateur déconnecté */
                 200: {
@@ -2855,9 +2881,21 @@ export interface components {
              */
             refresh_token: string;
         };
+        LogoutView: {
+            /**
+             * @description Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.
+             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+             */
+            refresh_token?: string;
+        };
         LogoutResponse: {
             /** @example Logged out successfully */
             message: string;
+            /**
+             * @description Whether the Core API session was revoked. `false` when no session or refresh token was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.
+             * @example true
+             */
+            session_revoked: boolean;
         };
         UserIdParams: {
             /**

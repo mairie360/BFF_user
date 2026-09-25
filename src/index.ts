@@ -11,6 +11,7 @@ import userRouter from './routes/user';
 import adminRouter from './routes/admin';
 import sessionRouter from './routes/session';
 import { errorHandler } from './middleware/errorHandler';
+import { parseTrustProxy } from './middleware/rateLimit';
 
 dotenv.config();
 
@@ -19,6 +20,10 @@ const PORT = process.env.PORT || 4000;
 const HOST = '0.0.0.0';
 
 
+
+// Client IP used by the auth rate limiters: behind the ingress/fronts, set TRUST_PROXY (hop count or
+// trusted subnets) so that req.ip comes from X-Forwarded-For; unset = the TCP peer is the client.
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 // --- Middlewares globaux ---
 // En-têtes de sécurité (CSP, X-Content-Type-Options, Permissions-Policy, CORP…)

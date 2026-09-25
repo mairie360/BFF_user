@@ -6,7 +6,7 @@ import type {
     LoginResponseView,
     LoginView,
 } from '@mairie360/core-api-openapi/model';
-import { coreAuthClient, coreUsersClient } from '../clients/coreClient';
+import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 function toJsonErrorBody(data: unknown): unknown {
@@ -49,6 +49,14 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
 
 export async function loginUser(loginView: LoginView): Promise<AxiosResponse<LoginResponseView>> {
     return coreAuthClient.login(loginView);
+}
+
+/**
+ * Revokes the caller's own Core session (POST /api/v1/sessions/revoke): Core checks that the refresh
+ * token belongs to the JWT's user, then rejects that JWT on its next session check.
+ */
+export async function revokeSession(refreshToken: string, authorization: string): Promise<void> {
+    await coreSessionsClient.revoke({ refresh_token: refreshToken }, { headers: { Authorization: authorization } });
 }
 
 export async function forceChangeUserPassword(
