@@ -124,16 +124,33 @@
           "refresh_token"
         ]
       },
+      "LogoutView": {
+        "type": "object",
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          }
+        }
+      },
       "LogoutResponse": {
         "type": "object",
         "properties": {
           "message": {
             "type": "string",
             "example": "Logged out successfully"
+          },
+          "session_revoked": {
+            "type": "boolean",
+            "description": "Whether the Core API session was revoked. `false` when no session or refresh token was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.",
+            "example": true
           }
         },
         "required": [
-          "message"
+          "message",
+          "session_revoked"
         ]
       },
       "UserIdParams": {
@@ -728,6 +745,24 @@
               }
             }
           },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"message\": \"Too many attempts, please try again later\" }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Erreur serveur",
             "content": {
@@ -802,6 +837,24 @@
               }
             }
           },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"message\": \"Too many attempts, please try again later\" }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Erreur serveur",
             "content": {
@@ -830,8 +883,18 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Déconnecte un utilisateur",
-        "description": "Supprime le cookie HTTP-only contenant le token d'accès.",
+        "summary": "Signs a user out",
+        "description": "Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutView"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Utilisateur déconnecté",

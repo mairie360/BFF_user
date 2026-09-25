@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { z } from 'zod';
 import { Request, Response, Router } from 'express';
 import {
@@ -6,17 +7,30 @@ import {
     ForceChangePasswordViewSchema,
     LoginViewSchema,
     LogoutResponse,
+    LogoutViewSchema,
     registry,
 } from '../openapi-registry';
 import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
+import { createAuthRateLimiters, RATE_LIMIT_MESSAGE } from '../middleware/rateLimit';
+import type { AuthRateLimiters } from '../middleware/rateLimit';
+import { bearerToken } from './admin_helpers';
 import {
     forceChangeUserPassword,
     handleUnknownError,
     isLoginResponseView,
     loginUser,
+    revokeSession,
 } from './core_helpers';
 
-const router = Router();
+const tooManyAttempts = {
+    description: `Too many failed attempts from this client (or for this account); retry after the \`Retry-After\` delay. Body: \`{ "message": "${RATE_LIMIT_MESSAGE}" }\`.`,
+    headers: { 'Retry-After': { description: 'Seconds to wait before retrying', schema: { type: 'integer' as const } } },
+    content: {
+        'application/json': {
+            schema: ApiErrorResponse,
+        },
+    },
+};
 
 registry.registerPath({
     method: 'post',
@@ -64,6 +78,7 @@ registry.registerPath({
                 },
             },
         },
+        429: tooManyAttempts,
         500: {
             description: 'Erreur serveur',
             content: {
@@ -127,6 +142,7 @@ registry.registerPath({
                 },
             },
         },
+        429: tooManyAttempts,
         500: {
             description: 'Erreur serveur',
             content: {
@@ -150,8 +166,18 @@ registry.registerPath({
     method: 'post',
     path: '/auth/logout',
     tags: ['Authentication'],
-    summary: 'Déconnecte un utilisateur',
-    description: 'Supprime le cookie HTTP-only contenant le token d\'accès.',
+    summary: 'Signs a user out',
+    description: 'Revokes the caller\'s Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails.',
+    request: {
+        body: {
+            required: false,
+            content: {
+                'application/json': {
+                    schema: LogoutViewSchema,
+                },
+            },
+        },
+    },
     responses: {
         200: {
             description: 'Utilisateur déconnecté',
@@ -174,48 +200,76 @@ registry.registerPath({
 
 // =============== Routes ===============
 
-router.post('/login', async (req: Request, res: Response) => {
-    const input = LoginViewSchema.safeParse(req.body);
-    if (!input.success) {
-        return res.status(400).json({ message: 'Invalid login payload' });
-    }
+/**
+ * Builds the authentication router. Each call gets its own rate-limit counters, so tests can build
+ * isolated routers; the application uses the default export, configured from the environment.
+ */
+export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimiters()): Router {
+    const router = Router();
 
-    try {
-        const coreResponse = await loginUser(input.data);
-
-        const authorizationHeader = coreResponse.headers?.authorization
-            ?? coreResponse.headers?.Authorization;
-
-        if (!isLoginResponseView(coreResponse.data) || !transmitAccessToken(res, authorizationHeader)) {
-            return res.status(502).json({
-                message: 'Core API did not return a Bearer token in the Authorization header',
-            });
+    router.post('/login', limiters.perIp, limiters.perAccount, async (req: Request, res: Response) => {
+        const input = LoginViewSchema.safeParse(req.body);
+        if (!input.success) {
+            return res.status(400).json({ message: 'Invalid login payload' });
         }
 
-        return res.status(coreResponse.status).json(coreResponse.data);
-    } catch (error) {
-        return handleUnknownError(res, error);
-    }
-});
+        try {
+            const coreResponse = await loginUser(input.data);
 
-router.post('/force_change_password', async (req: Request, res: Response) => {
-    const input = ForceChangePasswordViewSchema.safeParse(req.body);
-    if (!input.success) {
-        return res.status(400).json({ message: 'Invalid password-change payload' });
-    }
+            const authorizationHeader = coreResponse.headers?.authorization
+                ?? coreResponse.headers?.Authorization;
 
-    try {
-        // Core valide le jeton à usage unique, enregistre le mot de passe et consomme le jeton.
-        await forceChangeUserPassword(input.data);
-        return res.status(204).send();
-    } catch (error) {
-        return handleUnknownError(res, error);
-    }
-});
+            if (!isLoginResponseView(coreResponse.data) || !transmitAccessToken(res, authorizationHeader)) {
+                return res.status(502).json({
+                    message: 'Core API did not return a Bearer token in the Authorization header',
+                });
+            }
 
-router.post('/logout', (_req: Request, res: Response) => {
-    clearTokenCookie(res);
-    return res.json({ message: 'Logged out successfully' });
-});
+            return res.status(coreResponse.status).json(coreResponse.data);
+        } catch (error) {
+            return handleUnknownError(res, error);
+        }
+    });
 
-export default router;
+    router.post('/force_change_password', limiters.perIp, async (req: Request, res: Response) => {
+        const input = ForceChangePasswordViewSchema.safeParse(req.body);
+        if (!input.success) {
+            return res.status(400).json({ message: 'Invalid password-change payload' });
+        }
+
+        try {
+            // Core validates the one-time token, saves the password and consumes the token.
+            await forceChangeUserPassword(input.data);
+            return res.status(204).send();
+        } catch (error) {
+            return handleUnknownError(res, error);
+        }
+    });
+
+    router.post('/logout', async (req: Request, res: Response) => {
+        const input = LogoutViewSchema.safeParse(req.body ?? {});
+        const refreshToken = input.success ? input.data.refresh_token : undefined;
+        const authorization = bearerToken(req);
+
+        let sessionRevoked = false;
+        if (refreshToken && authorization) {
+            try {
+                // Core only revokes the caller's own session (JWT user + refresh token); once revoked,
+                // the access JWT is refused by Core's session check even before it expires.
+                await revokeSession(refreshToken, authorization);
+                sessionRevoked = true;
+            } catch (error) {
+                // Never log the tokens: the status is enough to diagnose.
+                const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+                console.warn('[BFF Auth] Session revocation failed on logout', { status: status ?? 'network error' });
+            }
+        }
+
+        clearTokenCookie(res);
+        return res.json({ message: 'Logged out successfully', session_revoked: sessionRevoked });
+    });
+
+    return router;
+}
+
+export default createAuthRouter();

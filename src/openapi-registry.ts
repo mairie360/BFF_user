@@ -73,9 +73,20 @@ export const AuthTokenResponse = z.object({
     }),
 }).openapi('AuthTokenResponse');
 
+export const LogoutViewSchema = z.object({
+    refresh_token: z.string().min(1).optional().openapi({
+        description: 'Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.',
+        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    }),
+}).openapi('LogoutView');
+
 export const LogoutResponse = z.object({
     message: z.string().openapi({
         example: 'Logged out successfully',
+    }),
+    session_revoked: z.boolean().openapi({
+        description: 'Whether the Core API session was revoked. `false` when no session or refresh token was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.',
+        example: true,
     }),
 }).openapi('LogoutResponse');
 
@@ -91,5 +102,6 @@ registry.register('LoginView', LoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);
 registry.register('AuthTokenResponse', AuthTokenResponse);
+registry.register('LogoutView', LogoutViewSchema);
 registry.register('LogoutResponse', LogoutResponse);
 registry.register('UserIdParams', UserIdParams);
