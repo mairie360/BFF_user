@@ -285,6 +285,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Renews the access JWT
+         * @description Exchanges the refresh token returned by /auth/login for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is returned in the Authorization header and the HTTP-only accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RefreshView"];
+                };
+            };
+            responses: {
+                /** @description JWT renewed; the new access JWT is in Authorization and in the accessToken cookie. */
+                200: {
+                    headers: {
+                        /** @description Bearer <access token> */
+                        Authorization?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RefreshResponse"];
+                    };
+                };
+                /** @description Invalid payload */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Refresh token unknown, revoked or expired */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "message": "Too many attempts, please try again later" }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ApiErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -2880,6 +2972,17 @@ export interface components {
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             refresh_token: string;
+        };
+        RefreshView: {
+            /**
+             * @description Refresh token returned by /auth/login.
+             * @example 8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE
+             */
+            refresh_token: string;
+        };
+        RefreshResponse: {
+            /** @example JWT refreshed successfully */
+            message: string;
         };
         LogoutView: {
             /**
