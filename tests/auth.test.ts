@@ -3,7 +3,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
-import { forceChangeUserPassword, handleUnknownError, loginUser, revokeSession } from '../src/routes/core_helpers';
+import { forceChangeUserPassword, handleUnknownError, loginUser, refreshSession, revokeSession } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
@@ -21,12 +21,14 @@ jest.mock('../src/routes/core_helpers', () => ({
         && 'refresh_token' in value
     )),
     loginUser: jest.fn(),
+    refreshSession: jest.fn(),
     revokeSession: jest.fn(),
 }));
 
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedRevokeSession = jest.mocked(revokeSession);
+const mockedRefreshSession = jest.mocked(refreshSession);
 
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
@@ -95,6 +97,48 @@ describe('POST /auth/force_change_password', () => {
 
         expect(response.status).toBe(400);
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
+    });
+});
+
+describe('POST /auth/refresh', () => {
+    const REFRESH_TOKEN = 'opaque-refresh-token';
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('returns the renewed JWT like login: Authorization header and httpOnly cookie', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN, role: 'Admin' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
+        expect(response.headers.authorization).toBe('Bearer renewed.payload.signature');
+        expect(response.headers['access-control-expose-headers']).toBe('Authorization');
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=renewed\.payload\.signature;.*HttpOnly/);
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
+    });
+
+    it('returns 502 when Core omits the renewed JWT', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully'));
+
+        const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN });
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([
+        ['no refresh token', {}],
+        ['an empty refresh token', { refresh_token: '' }],
+        ['a non-string refresh token', { refresh_token: 42 }],
+    ])('rejects %s with 400 before calling Core API', async (_label, body) => {
+        const response = await request(app).post('/auth/refresh').send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({ message: 'Invalid refresh payload' });
+        expect(mockedRefreshSession).not.toHaveBeenCalled();
     });
 });
 
@@ -243,6 +287,45 @@ describe('authentication rate limiting', () => {
 
         for (let attempt = 0; attempt < 4; attempt += 1) {
             expect((await failedLogin(target, 'alice@example.com')).status).toBe(400);
+        }
+    });
+
+    const failedRefresh = (target: express.Express, refreshToken: string, clientIp = '203.0.113.1') => {
+        mockedRefreshSession.mockRejectedValue(new Error('401'));
+        jest.mocked(handleUnknownError).mockImplementation((res) => res.status(401).json({ message: 'Session not found' }));
+        return request(target).post('/auth/refresh').set('X-Forwarded-For', clientIp).send({ refresh_token: refreshToken });
+    };
+
+    it('limits the failed refreshes of one refresh token, whatever the client IP, without TRUST_PROXY', async () => {
+        const target = limitedApp({ perClientIp: false, accountMax: 2, ipMax: 1 });
+
+        expect((await failedRefresh(target, 'stolen-token', '203.0.113.1')).status).toBe(401);
+        expect((await failedRefresh(target, 'stolen-token', '198.51.100.7')).status).toBe(401);
+        const blocked = await failedRefresh(target, 'stolen-token', '192.0.2.44');
+
+        expect(blocked.status).toBe(429);
+        expect(blocked.body).toEqual({ message: RATE_LIMIT_MESSAGE });
+        expect(blocked.headers['retry-after']).toBeDefined();
+        // No per-IP lockout: another token from the same (shared) IP still reaches Core.
+        expect((await failedRefresh(target, 'other-token', '192.0.2.44')).status).toBe(401);
+    });
+
+    it('also limits failed refreshes per client IP when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 100, ipMax: 2 });
+
+        await failedRefresh(target, 'token-1');
+        await failedLogin(target, 'alice@example.com');
+
+        expect((await failedRefresh(target, 'token-2')).status).toBe(429);
+        expect((await failedRefresh(target, 'token-3', '198.51.100.7')).status).toBe(401);
+    });
+
+    it('does not count successful refreshes', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        const target = limitedApp({ accountMax: 1, ipMax: 1 });
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            expect((await request(target).post('/auth/refresh').send({ refresh_token: 'valid-token' })).status).toBe(200);
         }
     });
 

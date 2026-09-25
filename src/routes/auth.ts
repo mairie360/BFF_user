@@ -8,6 +8,8 @@ import {
     LoginViewSchema,
     LogoutResponse,
     LogoutViewSchema,
+    RefreshResponse,
+    RefreshViewSchema,
     registry,
 } from '../openapi-registry';
 import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
@@ -19,6 +21,7 @@ import {
     handleUnknownError,
     isLoginResponseView,
     loginUser,
+    refreshSession,
     revokeSession,
 } from './core_helpers';
 
@@ -164,6 +167,68 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
+    path: '/auth/refresh',
+    tags: ['Authentication'],
+    summary: 'Renews the access JWT',
+    description: 'Exchanges the refresh token returned by /auth/login for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is returned in the Authorization header and the HTTP-only accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: RefreshViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        200: {
+            description: 'JWT renewed; the new access JWT is in Authorization and in the accessToken cookie.',
+            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
+            content: {
+                'application/json': {
+                    schema: RefreshResponse,
+                },
+            },
+        },
+        400: {
+            description: 'Invalid payload',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        401: {
+            description: 'Refresh token unknown, revoked or expired',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+        502: {
+            description: 'Core API unavailable or invalid upstream answer',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
     path: '/auth/logout',
     tags: ['Authentication'],
     summary: 'Signs a user out',
@@ -241,6 +306,29 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             // Core validates the one-time token, saves the password and consumes the token.
             await forceChangeUserPassword(input.data);
             return res.status(204).send();
+        } catch (error) {
+            return handleUnknownError(res, error);
+        }
+    });
+
+    router.post('/refresh', limiters.perIp, limiters.perRefreshToken, async (req: Request, res: Response) => {
+        const input = RefreshViewSchema.safeParse(req.body);
+        if (!input.success) {
+            return res.status(400).json({ message: 'Invalid refresh payload' });
+        }
+
+        try {
+            const coreResponse = await refreshSession(input.data.refresh_token);
+            const authorizationHeader = coreResponse.headers?.authorization ?? coreResponse.headers?.Authorization;
+
+            // Same delivery as /auth/login: Authorization header + HTTP-only accessToken cookie.
+            if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
+                return res.status(502).json({
+                    message: 'Core API did not return a Bearer token in the Authorization header',
+                });
+            }
+
+            return res.status(200).json({ message: 'JWT refreshed successfully' });
         } catch (error) {
             return handleUnknownError(res, error);
         }
