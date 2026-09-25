@@ -155,6 +155,9 @@ services:
       PORT: 4000
       JWT_SECRET: 'b"secret"'
       CORE_API_URL: http://core-api:3000
+      # The scanners replay the auth routes from a single IP with invalid credentials and tokens on
+      # purpose: the auth rate limits would answer 429 and hide the real responses of the routes.
+      AUTH_RATE_LIMIT_ENABLED: "false"
     expose:
       - "4000"
     networks:
