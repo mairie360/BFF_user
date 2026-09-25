@@ -10,12 +10,15 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
  * Environment:
  * - `AUTH_RATE_LIMIT_ENABLED`     `false` disables every limiter (load tests), default enabled.
  * - `AUTH_RATE_LIMIT_WINDOW_MS`   window length, default 15 minutes.
- * - `AUTH_RATE_LIMIT_MAX`         failed logins per (client IP, account e-mail) and window, default 10.
+ * - `AUTH_RATE_LIMIT_MAX`         failed logins per account e-mail (per client IP + e-mail when
+ *                                 `TRUST_PROXY` is set) and window, default 10.
  * - `AUTH_RATE_LIMIT_IP_MAX`      failed attempts per client IP and window over every limited route,
- *                                 default 100.
+ *                                 default 100. Only applied when `TRUST_PROXY` is set.
  *
- * The client IP is `req.ip`: behind a reverse proxy, set `TRUST_PROXY` (see `parseTrustProxy`)
- * so that Express reads it from `X-Forwarded-For`, otherwise every client shares the proxy's IP.
+ * The client IP is `req.ip`, which is only the real client when `TRUST_PROXY` (see `parseTrustProxy`)
+ * tells Express to read it from `X-Forwarded-For`. Without it, every client reaches the BFF through
+ * the front pods and shares their IP: a per-IP limit would then be a global lockout any attacker can
+ * trigger, so the IP is left out of every key and only the per-e-mail limit applies.
  */
 
 export const RATE_LIMIT_MESSAGE = 'Too many attempts, please try again later';
@@ -29,12 +32,14 @@ export interface AuthRateLimitOptions {
     windowMs: number;
     accountMax: number;
     ipMax: number;
+    /** Whether `req.ip` identifies the client (`TRUST_PROXY` set): enables the per-IP keys. */
+    perClientIp: boolean;
 }
 
 export interface AuthRateLimiters {
     /** Failed attempts per client IP, shared by every limited authentication route. */
     perIp: RequestHandler;
-    /** Failed logins per (client IP, account e-mail). */
+    /** Failed logins per account e-mail, or per (client IP, e-mail) when `perClientIp`. */
     perAccount: RequestHandler;
 }
 
@@ -49,6 +54,7 @@ export function authRateLimitOptionsFromEnv(env: NodeJS.ProcessEnv = process.env
         windowMs: positiveInteger(env.AUTH_RATE_LIMIT_WINDOW_MS, DEFAULT_WINDOW_MS),
         accountMax: positiveInteger(env.AUTH_RATE_LIMIT_MAX, DEFAULT_ACCOUNT_MAX),
         ipMax: positiveInteger(env.AUTH_RATE_LIMIT_IP_MAX, DEFAULT_IP_MAX),
+        perClientIp: parseTrustProxy(env.TRUST_PROXY) !== false,
     };
 }
 
@@ -69,7 +75,16 @@ function requestWasSuccessful(_req: Request, res: Response): boolean {
     return res.statusCode < 400 || res.statusCode === 412;
 }
 
+let warnedPerIpDisabled = false;
+
+const passThrough: RequestHandler = (_req, _res, next) => next();
+
 export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateLimitOptionsFromEnv()): AuthRateLimiters {
+    if (options.enabled && !options.perClientIp && !warnedPerIpDisabled) {
+        warnedPerIpDisabled = true;
+        console.warn('[BFF Auth] TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies.');
+    }
+
     const common = {
         windowMs: options.windowMs,
         standardHeaders: 'draft-8' as const,
@@ -81,19 +96,21 @@ export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateL
     };
 
     return {
-        perIp: rateLimit({
-            ...common,
-            identifier: 'auth-ip',
-            requestPropertyName: 'authIpRateLimit',
-            limit: options.ipMax,
-            keyGenerator: (req) => clientIp(req),
-        }),
+        perIp: options.perClientIp
+            ? rateLimit({
+                ...common,
+                identifier: 'auth-ip',
+                requestPropertyName: 'authIpRateLimit',
+                limit: options.ipMax,
+                keyGenerator: (req) => clientIp(req),
+            })
+            : passThrough,
         perAccount: rateLimit({
             ...common,
             identifier: 'auth-account',
             requestPropertyName: 'authAccountRateLimit',
             limit: options.accountMax,
-            keyGenerator: (req) => `${clientIp(req)}|${accountOf(req)}`,
+            keyGenerator: (req) => (options.perClientIp ? `${clientIp(req)}|${accountOf(req)}` : accountOf(req)),
         }),
     };
 }

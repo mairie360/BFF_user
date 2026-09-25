@@ -97,6 +97,9 @@ and the legacy `/me` resolve.
   logout only clears the cookie (`session_revoked: false`).
 - **Rate limiting** (`src/middleware/rateLimit.ts`, `express-rate-limit`): failed attempts on
   `/auth/login` (per IP and per IP + e-mail) and `/auth/force_change_password` (per IP) answer 429.
+  The IP keys only apply when `TRUST_PROXY` is set; without it every client shares the front pods'
+  IP, so only the per-e-mail login limit runs (one startup warning). The ZAP/k6 stacks set
+  `AUTH_RATE_LIMIT_ENABLED=false` on bff-user.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then checks the `admin`
