@@ -147,3 +147,7 @@ BFF response is checked against `contracts/openapi.json`.
   Express app and `jest.mock` `coreClient` (upstream-mock tests: see the section above).
 - Prefer adding schemas to `openapi-registry.ts` / `admin_schemas.ts` and letting types
   flow from Zod (`z.infer`) rather than hand-writing interfaces.
+
+## Pull request reviewers
+
+Every PR requests a review from the whole team, minus its author: `CarolinHugo`, `LAURETbenjamin`, `MathTek` and `Quentintnrl` (`gh pr create … --reviewer CarolinHugo,LAURETbenjamin,MathTek`). `.github/CODEOWNERS` makes GitHub request them automatically as well.
