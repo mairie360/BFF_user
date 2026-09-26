@@ -49,8 +49,8 @@ export const RegisterViewSchema = z.object({
         example: 'MotDePasse123',
     }),
     phone_number: z.string().nullable().optional().openapi({
-        description: 'Numéro de téléphone du nouvel utilisateur',
-        example: '+33123456789',
+        description: 'Phone number of the new user, 10 to 15 digits',
+        example: '0612345678',
     }),
 }).openapi('RegisterView');
 
