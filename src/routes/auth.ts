@@ -9,9 +9,11 @@ import {
     KeycloakLoginViewSchema,
     LoginViewSchema,
     LogoutResponse,
+    LogoutViewSchema,
     RegisterViewSchema,
     registry,
 } from '../openapi-registry';
+import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
 import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
 import {
     forceChangeUserPassword,
@@ -264,19 +266,43 @@ registry.registerPath({
     method: 'post',
     path: '/auth/logout',
     tags: ['Authentication'],
-    summary: 'Déconnecte un utilisateur',
-    description: 'Supprime le cookie HTTP-only contenant le token d\'accès.',
+    summary: 'Signs a user out of Mairie 360 and of the single sign-on',
+    description: 'Clears the httpOnly `accessToken` cookie. When Keycloak is configured on the instance '
+        + '(KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
+        + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single '
+        + 'sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools '
+        + 'of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
+        + '`id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to '
+        + '`post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.',
+    request: {
+        body: {
+            required: false,
+            content: {
+                'application/json': {
+                    schema: LogoutViewSchema,
+                },
+            },
+        },
+    },
     responses: {
         200: {
-            description: 'Utilisateur déconnecté',
+            description: 'Cookie cleared; navigate to `logout_url` when present to close the Keycloak session.',
             content: {
                 'application/json': {
                     schema: LogoutResponse,
                 },
             },
         },
+        400: {
+            description: 'Invalid payload (`post_logout_redirect_uri` is not a URL)',
+            content: {
+                'application/json': {
+                    schema: ApiErrorResponse,
+                },
+            },
+        },
         500: {
-            description: 'Erreur serveur',
+            description: 'Server error',
             content: {
                 'application/json': {
                     schema: ApiErrorResponse,
@@ -361,9 +387,25 @@ router.post('/force_change_password', async (req: Request, res: Response) => {
     }
 });
 
-router.post('/logout', (_req: Request, res: Response) => {
+router.post('/logout', (req: Request, res: Response) => {
+    // The body is optional: an empty request (no JSON) logs out like before.
+    const input = LogoutViewSchema.safeParse(req.body ?? {});
+    if (!input.success) {
+        return res.status(400).json({ message: 'Invalid logout payload' });
+    }
+
     clearTokenCookie(res);
-    return res.json({ message: 'Logged out successfully' });
+
+    // Single logout (MAIR-143): the browser must end the Keycloak session itself, the BFF holds no Keycloak token.
+    const keycloak = getKeycloakConfig();
+    if (!keycloak) {
+        return res.json({ message: 'Logged out successfully' });
+    }
+
+    return res.json({
+        message: 'Logged out successfully',
+        logout_url: buildKeycloakLogoutUrl(keycloak, input.data.post_logout_redirect_uri),
+    });
 });
 
 export default router;

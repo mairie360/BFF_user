@@ -225,13 +225,43 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
-  test('POST /auth/logout clears the cookie without calling Core API', async () => {
-    const response = await request(app).post('/auth/logout');
+  describe('POST /auth/logout', () => {
+    afterEach(() => {
+      delete process.env.KEYCLOAK_REALM_URL;
+      delete process.env.KEYCLOAK_CLIENT_ID;
+    });
 
-    expect(response.status).toBe(200);
-    expectBffContract('post', '/auth/logout', response);
-    expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-    expect(coreApi.requests).toHaveLength(0);
+    test('clears the cookie without calling Core API', async () => {
+      const response = await request(app).post('/auth/logout');
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully' });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+
+    test('adds the Keycloak end-session URL when the instance has Keycloak, still without calling Core API', async () => {
+      process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+      process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
+
+      const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'https://login.mairie360.fr/' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(response.body.logout_url).toBe('https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout'
+        + '?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F');
+      expect(coreApi.requests).toHaveLength(0);
+    });
+
+    test('rejects an invalid post_logout_redirect_uri', async () => {
+      const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'login' });
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/logout', response);
+      expect(coreApi.requests).toHaveLength(0);
+    });
   });
 
   describe('GET /session/me and /me', () => {

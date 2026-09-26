@@ -97,6 +97,15 @@ and the legacy `/me` resolve.
   is absent from `@mairie360/core-api-openapi` 1.2.0, so `coreClient.ts` calls it by hand
   (`keycloakLogin`) and the upstream-mock test cannot cover it: switch to the generated function
   and add it to `upstream-contracts.test.ts` once the package that ships it is installed.
+- **`/auth/logout`**: clears the `accessToken` cookie, never calls Core. Single logout (MAIR-143):
+  when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
+  call), the response adds `logout_url`, the realm's OIDC end-session URL
+  (`/protocol/openid-connect/logout?client_id=…&post_logout_redirect_uri=…`) that the front must
+  navigate to so Keycloak closes the SSO session and, via front/back-channel logout, the other
+  tools (n8n). Core keeps no Keycloak token, hence `client_id` instead of `id_token_hint` (Keycloak
+  shows a confirmation page). The redirect comes from the optional body
+  `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
+  if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then checks the `admin`
   role in the DB (`isAdministrationUserAdmin`). It is a `router.use` guard on **every**
@@ -118,7 +127,10 @@ catch-all and only exposes error detail when `NODE_ENV === 'development'`.
 
 `CORE_API_URL` (+ optional `CORE_API_PORT`), `JWT_SECRET` (must match Core, required for
 admin checks), `COOKIE_DOMAIN` (omit for host-only
-cookie), `PORT` (default 4000), `NODE_ENV`.
+cookie), `PORT` (default 4000), `NODE_ENV`. Keycloak single logout (all optional, unset = no
+`logout_url`): `KEYCLOAK_REALM_URL` (public realm URL as the browser reaches it, e.g.
+`https://auth.<domain>/realms/mairie360`, not Core's in-cluster one), `KEYCLOAK_CLIENT_ID` (the
+fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
 
 ## Docker
 
