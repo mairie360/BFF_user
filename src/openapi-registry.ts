@@ -31,6 +31,29 @@ export const LoginViewSchema = z.object({
     }),
 }).openapi('LoginView');
 
+export const KeycloakLoginViewSchema = z.object({
+    code: z.string().min(1).openapi({
+        description: 'Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).',
+        example: '7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83',
+    }),
+    redirect_uri: z.url().openapi({
+        description: 'Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.',
+        example: 'https://login.mairie360.fr/auth/callback',
+    }),
+    code_verifier: z.string().min(1).nullable().optional().openapi({
+        description: 'PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.',
+        example: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+    }),
+    nonce: z.string().min(1).nullable().optional().openapi({
+        description: 'Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.',
+        example: 'n-0S6_WzA2Mj',
+    }),
+    device_info: z.string().openapi({
+        description: 'Description of the device, stored on the session (empty string accepted, like the password login).',
+        example: 'Firefox 142 on Ubuntu 24.04',
+    }),
+}).openapi('KeycloakLoginView');
+
 export const RegisterViewSchema = z.object({
     email: z.email().openapi({
         description: 'Adresse email du nouvel utilisateur',
@@ -111,6 +134,7 @@ export const UserIdParams = z.object({
 
 registry.register('ApiErrorResponse', ApiErrorResponse);
 registry.register('LoginView', LoginViewSchema);
+registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('RegisterView', RegisterViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);

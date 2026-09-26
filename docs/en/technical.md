@@ -68,6 +68,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | GET | `/health` | — | 200 |
 | GET | `/check_apis` | — | 200, 502 |
 | POST | `/auth/login` | application/json | 200, 400, 401, 412, 500, 502 |
+| POST | `/auth/keycloak` | application/json | 200, 400, 401, 403, 500, 502, 503 |
 | POST | `/auth/register` | application/json | 201, 400, 409, 500, 502 |
 | POST | `/auth/force_change_password` | application/json | 204, 400, 401, 403, 500, 502 |
 | POST | `/auth/logout` | — | 200, 500 |
@@ -101,7 +102,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 
 ## Session, permissions and errors
 
-Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
+Authentication routes handle their own flow: login and register bodies are validated before reaching Core, and register uses Core's public `POST /api/v1/auth/register`. `/auth/keycloak` completes the Keycloak single sign-on: it forwards the authorization code (with `redirect_uri`, and the PKCE `code_verifier` and `nonce` when used) to Core's public `POST /api/v1/auth/keycloak`, which redeems it and opens a session for the account with the same verified e-mail; the session is then set exactly like login (header and `accessToken` cookie), so roles and the other BFFs are unchanged. Core's `503` (Keycloak not configured) is kept so the front can fall back to the password login, which stays available during the transition. Every `/bff/admin/*` route goes through `requireAdmin`, which verifies the session with `JWT_SECRET` and the database role before anything else, because Core API v1.1.1 does not check the administrator role. Other adapters forward the caller's session to Core and never use a default token; `/me` and `/user/{userId}/about` answer 401 without a session, and `/user/{userId}/about` only returns public fields (`phone` may be `null`). `/bff/admin/sessions/refresh` relays the refreshed JWT like login (header and cookie). Error details are only exposed when `NODE_ENV=development`; `/check_apis` never returns network details. Cookie behavior depends on `COOKIE_DOMAIN` and `NODE_ENV`; interface permissions do not replace server checks.
 
 ## Synchronization and verification
 

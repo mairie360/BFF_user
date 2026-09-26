@@ -1,6 +1,8 @@
 import '../config/registerGeneratedOpenApi';
 import axios from 'axios';
+import type { AxiosRequestConfig } from 'axios';
 import { getCoreAPIMairie360 } from '@mairie360/core-api-openapi/endpoints/coreAPIMairie360';
+import type { LoginResponseView } from '@mairie360/core-api-openapi/model';
 
 /**
  * Construit l'URL du Core API depuis la configuration Docker ou locale.
@@ -39,10 +41,29 @@ coreClient.interceptors.request.use(
 /** API générée à partir du contrat OpenAPI du Core API. */
 export const coreApi = getCoreAPIMairie360(coreClient);
 
+/** Body of Core's `POST /api/v1/auth/keycloak` (`KeycloakLoginView`). */
+export interface KeycloakLoginView {
+    code: string;
+    redirect_uri: string;
+    code_verifier?: string | null;
+    nonce?: string | null;
+    device_info: string;
+}
+
+/**
+ * Keycloak single sign-on: Core redeems the authorization code and answers like `POST /api/v1/auth/login`.
+ * Hand-written because `@mairie360/core-api-openapi` 1.2.0 predates this route: replace it with
+ * `coreApi.keycloakLogin` once the package that ships it is installed.
+ */
+export const keycloakLogin = (keycloakLoginView: KeycloakLoginView, options?: AxiosRequestConfig) => (
+    coreClient.post<LoginResponseView>('/api/v1/auth/keycloak', keycloakLoginView, options)
+);
+
 // Les regroupements ci-dessous gardent l'interface consommée par les routes
 // du BFF, tout en utilisant l'unique client généré `getCoreAPIMairie360`.
 export const coreAuthClient = {
     login: coreApi.login,
+    keycloakLogin,
     register: coreApi.register,
     forceChangePassword: coreApi.forceChangePassword,
     forgotPassword: coreApi.forgotPassword,
