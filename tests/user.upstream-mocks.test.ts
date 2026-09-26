@@ -18,7 +18,7 @@ import {
 const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract());
 // Gabarits du contrat Core API (clés des mocks) ; les chemins concrets attendus viennent de coreApiUrls.
 const CORE = {
-  login: '/api/v1/auth/login', register: '/api/v1/auth/register', forceChangePassword: '/api/v1/auth/force_change_password',
+  login: '/api/v1/auth/login', forceChangePassword: '/api/v1/auth/force_change_password',
   me: '/api/v1/user/me/', user: '/api/v1/user/{id}/',
   adminUsers: '/api/v1/admin/users/', adminUser: '/api/v1/admin/users/{userId}/', adminUserRoles: '/api/v1/admin/users/{userId}/roles/',
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
@@ -148,43 +148,14 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
-  describe('POST /auth/register', () => {
-    const user = { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123', phone_number: null };
+  describe('POST /auth/register (removed)', () => {
+    test('is no longer served and never reaches Core API', async () => {
+      const response = await request(app)
+        .post('/auth/register')
+        .send({ email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123' });
 
-    test('registers through the public Core endpoint without any token', async () => {
-      coreApi.on('post', CORE.register, { status: 201, raw: 'User registered successfully!', contentType: 'text/plain' });
-
-      const response = await request(app).post('/auth/register').set('Cookie', `accessToken=${SESSION}`).send({ ...user, role: 'Admin' });
-
-      expect(response.status).toBe(201);
-      expectBffContract('post', '/auth/register', response);
-      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRegisterUrl())]);
-      // Seuls les champs de RegisterView sont transmis, et jamais de jeton.
-      expect(coreApi.requests[0].body).toEqual(user);
-      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
-    });
-
-    test.each([
-      ['a missing password', { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand' }],
-      ['an invalid email', { ...user, email: 'bob' }],
-      ['an empty first name', { ...user, first_name: '' }],
-    ])('rejects %s with 400 before calling Core API', async (_label, body) => {
-      const response = await request(app).post('/auth/register').send(body);
-
-      expect(response.status).toBe(400);
-      expectBffContract('post', '/auth/register', response);
-      expect(response.body).toEqual({ message: 'Invalid registration payload' });
+      expect(response.status).toBe(404);
       expect(coreApi.requests).toHaveLength(0);
-    });
-
-    test('relays an existing user as a JSON 409', async () => {
-      coreApi.on('post', CORE.register, coreError(409, 'User already exists'));
-
-      const response = await request(app).post('/auth/register').send(user);
-
-      expect(response.status).toBe(409);
-      expectBffContract('post', '/auth/register', response);
-      expect(response.body).toEqual({ message: 'User already exists' });
     });
   });
 
@@ -527,7 +498,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
     test.each([
       ['POST /auth/login', CORE.login, { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }],
-      ['POST /auth/register', CORE.register, { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123' }],
       ['POST /auth/force_change_password', CORE.forceChangePassword, { token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' }],
       ['GET /user/7/about', CORE.user, undefined],
       ['GET /me', CORE.me, undefined],

@@ -6,7 +6,6 @@ import {
     ForceChangePasswordViewSchema,
     LoginViewSchema,
     LogoutResponse,
-    RegisterViewSchema,
     registry,
 } from '../openapi-registry';
 import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
@@ -15,7 +14,6 @@ import {
     handleUnknownError,
     isLoginResponseView,
     loginUser,
-    registerUser,
 } from './core_helpers';
 
 const router = Router();
@@ -60,61 +58,6 @@ registry.registerPath({
         },
         401: {
             description: 'Identifiants invalides',
-            content: {
-                'application/json': {
-                    schema: ApiErrorResponse,
-                },
-            },
-        },
-        500: {
-            description: 'Erreur serveur',
-            content: {
-                'application/json': {
-                    schema: ApiErrorResponse,
-                },
-            },
-        },
-        502: {
-            description: 'Core API indisponible ou réponse amont invalide',
-            content: {
-                'application/json': {
-                    schema: ApiErrorResponse,
-                },
-            },
-        },
-    },
-});
-
-registry.registerPath({
-    method: 'post',
-    path: '/auth/register',
-    tags: ['Authentication'],
-    summary: 'Crée un utilisateur',
-    description: 'Valide puis transmet les informations d\'inscription au Core API (POST /api/v1/auth/register, route publique).',
-    request: {
-        body: {
-            required: true,
-            content: {
-                'application/json': {
-                    schema: RegisterViewSchema,
-                },
-            },
-        },
-    },
-    responses: {
-        201: {
-            description: 'Utilisateur créé avec succès',
-        },
-        400: {
-            description: 'Données invalides',
-            content: {
-                'application/json': {
-                    schema: ApiErrorResponse,
-                },
-            },
-        },
-        409: {
-            description: 'Utilisateur déjà existant',
             content: {
                 'application/json': {
                     schema: ApiErrorResponse,
@@ -250,20 +193,6 @@ router.post('/login', async (req: Request, res: Response) => {
         }
 
         return res.status(coreResponse.status).json(coreResponse.data);
-    } catch (error) {
-        return handleUnknownError(res, error);
-    }
-});
-
-router.post('/register', async (req: Request, res: Response) => {
-    const input = RegisterViewSchema.safeParse(req.body);
-    if (!input.success) {
-        return res.status(400).json({ message: 'Invalid registration payload' });
-    }
-
-    try {
-        await registerUser(input.data);
-        return res.status(201).send();
     } catch (error) {
         return handleUnknownError(res, error);
     }

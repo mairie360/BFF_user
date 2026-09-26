@@ -31,29 +31,6 @@ export const LoginViewSchema = z.object({
     }),
 }).openapi('LoginView');
 
-export const RegisterViewSchema = z.object({
-    email: z.email().openapi({
-        description: 'Adresse email du nouvel utilisateur',
-        example: 'alice.dupont@mairie360.fr',
-    }),
-    first_name: z.string().min(1).openapi({
-        description: 'Prénom du nouvel utilisateur',
-        example: 'Alice',
-    }),
-    last_name: z.string().min(1).openapi({
-        description: 'Nom du nouvel utilisateur',
-        example: 'Dupont',
-    }),
-    password: z.string().min(1).openapi({
-        description: 'Mot de passe du nouvel utilisateur',
-        example: 'MotDePasse123',
-    }),
-    phone_number: z.string().nullable().optional().openapi({
-        description: 'Numéro de téléphone du nouvel utilisateur',
-        example: '+33123456789',
-    }),
-}).openapi('RegisterView');
-
 export const ForceChangePasswordViewSchema = z.object({
     new_password: z.string().min(1).openapi({
         description: 'Nouveau mot de passe de l\'utilisateur',
@@ -111,7 +88,6 @@ export const UserIdParams = z.object({
 
 registry.register('ApiErrorResponse', ApiErrorResponse);
 registry.register('LoginView', LoginViewSchema);
-registry.register('RegisterView', RegisterViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);
 registry.register('AuthTokenResponse', AuthTokenResponse);

@@ -14,7 +14,6 @@ jest.mock('../src/routes/core_helpers', () => ({
         && 'refresh_token' in value
     )),
     loginUser: jest.fn(),
-    registerUser: jest.fn(),
 }));
 
 const mockedLoginUser = jest.mocked(loginUser);

@@ -5,7 +5,6 @@ import type {
     ForceChangePasswordView,
     LoginResponseView,
     LoginView,
-    RegisterView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreUsersClient } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
@@ -50,11 +49,6 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
 
 export async function loginUser(loginView: LoginView): Promise<AxiosResponse<LoginResponseView>> {
     return coreAuthClient.login(loginView);
-}
-
-/** Inscription publique : POST /api/v1/auth/register, exempté de JWT par Core API (aucun jeton privilégié). */
-export async function registerUser(registerView: RegisterView): Promise<void> {
-    await coreAuthClient.register(registerView);
 }
 
 export async function forceChangeUserPassword(
