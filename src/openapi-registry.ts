@@ -129,6 +129,11 @@ export const LogoutViewSchema = z.object({
         description: 'Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
+    post_logout_redirect_uri: z.url().optional().openapi({
+        description: 'Where Keycloak sends the browser once the single sign-on session is closed. Must be one of '
+            + 'the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.',
+        example: 'https://login.mairie360.fr/',
+    }),
 }).openapi('LogoutView');
 
 export const LogoutResponse = z.object({
@@ -138,6 +143,12 @@ export const LogoutResponse = z.object({
     session_revoked: z.boolean().openapi({
         description: 'Whether the Core API session was revoked. `false` when no session or refresh token was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.',
         example: true,
+    }),
+    logout_url: z.url().optional().openapi({
+        description: 'Keycloak end-session URL the browser must navigate to so the single sign-on session is closed '
+            + 'on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the '
+            + 'logout is then complete once the cookie is cleared.',
+        example: 'https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F',
     }),
 }).openapi('LogoutResponse');
 

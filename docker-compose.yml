@@ -166,6 +166,11 @@ services:
       JWT_SECRET: 'b"secret"'
       # IMPORTANT : On utilise le nom du service Docker pour communiquer
       CORE_API_URL: "http://core:3000"
+      # Keycloak single logout (POST /auth/logout returns logout_url), disabled while these are empty.
+      # Public realm URL as the browser reaches it, same client as Core's KEYCLOAK_CLIENT_ID.
+      KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL:-}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
+      KEYCLOAK_POST_LOGOUT_REDIRECT_URI: ${KEYCLOAK_POST_LOGOUT_REDIRECT_URI:-}
     volumes:
       - /app/node_modules # Isolation des modules pour éviter les conflits OS (Mac/Windows vs Linux)
     # depends_on:
