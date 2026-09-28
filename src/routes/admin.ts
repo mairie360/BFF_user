@@ -35,21 +35,95 @@ const GroupUserParams = z.object({
     groupId: z.coerce.number().int().positive(),
     userId: z.coerce.number().int().positive(),
 }).openapi('AdminGroupUserParams');
+// DELETE routes get their own example ids (seeded by init-test.sql): a scan replaying the examples
+// must not delete the resource that the other routes of the same path read or update.
+const DeletedUserIdParams = z.object({
+    userId: z.coerce.number().int().positive().openapi({ example: 11 }),
+});
+const DeletedRoleIdParams = z.object({
+    roleId: z.coerce.number().int().positive().openapi({ example: 11 }),
+});
+const DeletedGroupIdParams = z.object({
+    groupId: z.coerce.number().int().positive().openapi({ example: 11 }),
+});
 const UserListQuery = z.object({
     page: z.coerce.number().int().positive().default(1),
     page_size: z.coerce.number().int().min(1).max(20).default(20),
     search: z.string().trim().max(100).optional(),
 }).openapi('AdminUserListQuery');
+// Stored labels are rendered by the fronts: `<` and `>` are refused, as Core API does.
+const noMarkup = (schema: z.ZodString) => schema.regex(/^[^<>]*$/, 'Must not contain < or >');
+const GroupName = noMarkup(z.string().trim().min(1).max(64)).openapi({ example: 'Culture' });
+const GroupDescription = noMarkup(z.string().trim().max(2_000)).openapi({ example: 'Culture department' });
+// Update examples name the seeded resource itself, so a replayed example never hits a unique name.
 const GroupPatchBody = z.object({
-    name: z.string().trim().min(1).max(64).optional(),
-    description: z.string().trim().max(2_000).optional(),
+    name: GroupName.optional().openapi({ example: 'Scan group' }),
+    description: GroupDescription.optional().openapi({ example: 'Group edited by the ZAP scan' }),
 }).refine((value) => value.name !== undefined || value.description !== undefined, {
     message: 'At least one field is required',
 }).openapi('AdminGroupPatchBody');
 const UserPasswordResetBody = z.object({
-    new_password: z.string().min(8).max(255),
+    new_password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
 }).openapi('AdminUserPasswordResetBody');
-const JsonBody = z.record(z.string(), z.unknown()).openapi('AdminJsonBody');
+// Request bodies mirror the Core API views they are forwarded to (@mairie360/core-api-openapi); unknown
+// fields are stripped. The examples are valid values, so a generated request (Swagger UI, ZAP) is accepted.
+const atLeastOneField = (value: Record<string, unknown>) => Object.values(value).some((field) => field !== undefined);
+const Email = z.string().trim().email().max(320).openapi({ example: 'jane.doe@mairie360.fr' });
+const PersonName = noMarkup(z.string().trim().min(1).max(64));
+const PhoneNumber = z.string().regex(/^\d{10,15}$/).openapi({ example: '0612345678' });
+const UserCreateBody = z.object({
+    email: Email,
+    first_name: PersonName.openapi({ example: 'Jane' }),
+    last_name: PersonName.openapi({ example: 'Doe' }),
+    password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
+    phone_number: PhoneNumber.nullable().optional(),
+}).openapi('AdminUserCreateBody');
+// The password is not accepted here: Core writes it without any length check, the
+// PATCH /bff/admin/users/{userId}/password route enforces the policy and revokes the sessions.
+const UserPatchBody = z.object({
+    email: Email.nullable().optional().openapi({ example: 'scan-target@mairie360.fr' }),
+    first_name: PersonName.nullable().optional().openapi({ example: 'Scan' }),
+    last_name: PersonName.nullable().optional().openapi({ example: 'Target' }),
+    phone_number: PhoneNumber.nullable().optional(),
+}).refine(atLeastOneField, { message: 'At least one field is required' }).openapi('AdminUserPatchBody');
+const UserRoleBody = z.object({
+    role_id: z.number().int().positive().openapi({ example: 3 }),
+    user_id: z.number().int().positive().optional().openapi({ description: 'Must match the path userId when sent' }),
+}).openapi('AdminUserRoleBody');
+const RoleName = noMarkup(z.string().trim().min(1).max(64)).openapi({ example: 'Agent' });
+const RoleDescription = noMarkup(z.string().trim().max(2_000)).openapi({ example: 'Municipal agent' });
+const RoleWriteBody = z.object({
+    name: RoleName,
+    description: RoleDescription,
+    can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+}).openapi('AdminRoleWriteBody');
+// Not RoleWriteBody.extend(): it would be published as an allOf, which generated clients fill poorly.
+const RoleReplaceBody = z.object({
+    name: RoleName.openapi({ example: 'Scan role' }),
+    description: RoleDescription.openapi({ example: 'Role edited by the ZAP scan' }),
+    can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+}).openapi('AdminRoleReplaceBody');
+const RolePatchBody = z.object({
+    name: RoleName.nullable().optional().openapi({ example: 'Scan role' }),
+    description: RoleDescription.nullable().optional().openapi({ example: 'Role edited by the ZAP scan' }),
+    can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+}).refine(atLeastOneField, { message: 'At least one field is required' }).openapi('AdminRolePatchBody');
+const GroupCreateBody = z.object({
+    name: GroupName,
+    description: GroupDescription,
+}).openapi('AdminGroupCreateBody');
+const GroupUserBody = z.object({
+    user_id: z.number().int().positive().openapi({ example: 42 }),
+    group_id: z.number().int().positive().optional().openapi({ description: 'Must match the path groupId when sent' }),
+}).openapi('AdminGroupUserBody');
+const RefreshToken = z.string().min(1).max(512);
+const SessionTokenBody = z.object({
+    refresh_token: RefreshToken.openapi({ example: 'opaque-refresh-token' }),
+}).openapi('AdminSessionTokenBody');
+// Refreshing rotates the session, so revoking uses another seeded session.
+const SessionRevokeBody = z.object({
+    refresh_token: RefreshToken.openapi({ example: 'opaque-revoked-token' }),
+}).openapi('AdminSessionRevokeBody');
 const CoreResponse = z.unknown().openapi('CoreResponse');
 
 registry.register('AdminUserIdParams', UserIdParams);
@@ -60,17 +134,21 @@ registry.register('AdminGroupUserParams', GroupUserParams);
 registry.register('AdminUserListQuery', UserListQuery);
 registry.register('AdminGroupPatchBody', GroupPatchBody);
 registry.register('AdminUserPasswordResetBody', UserPasswordResetBody);
-registry.register('AdminJsonBody', JsonBody);
+registry.register('AdminUserCreateBody', UserCreateBody);
+registry.register('AdminUserPatchBody', UserPatchBody);
+registry.register('AdminUserRoleBody', UserRoleBody);
+registry.register('AdminRoleWriteBody', RoleWriteBody);
+registry.register('AdminRoleReplaceBody', RoleReplaceBody);
+registry.register('AdminRolePatchBody', RolePatchBody);
+registry.register('AdminGroupCreateBody', GroupCreateBody);
+registry.register('AdminGroupUserBody', GroupUserBody);
+registry.register('AdminSessionTokenBody', SessionTokenBody);
+registry.register('AdminSessionRevokeBody', SessionRevokeBody);
 registry.register('CoreResponse', CoreResponse);
 
-const jsonBodyRequest = {
-    required: true,
-    content: {
-        'application/json': {
-            schema: JsonBody,
-        },
-    },
-};
+function jsonBodyRequest(schema: z.ZodType) {
+    return { required: true, content: { 'application/json': { schema } } };
+}
 
 const coreResponses = {
     200: {
@@ -136,6 +214,16 @@ const coreResponses = {
 
 function invalidParam(res: Response, name: string): Response {
     return res.status(400).json({ message: `Invalid ${name}` });
+}
+
+// Answers 400 and returns undefined when the body does not match the schema.
+function parseBody<T>(schema: z.ZodType<T>, req: Request, res: Response): T | undefined {
+    const payload = schema.safeParse(req.body);
+    if (!payload.success) {
+        res.status(400).json({ message: 'Invalid request body' });
+        return undefined;
+    }
+    return payload.data;
 }
 
 async function requireAdmin(req: Request, res: Response): Promise<boolean> {
@@ -246,13 +334,16 @@ registry.registerPath({
     path: '/bff/admin/users',
     tags: ['Administration'],
     summary: 'Crée un utilisateur via le Core API',
-    request: { body: jsonBodyRequest },
+    request: { body: jsonBodyRequest(UserCreateBody) },
     responses: coreResponses,
 });
 
 router.post('/users', async (req: Request, res: Response) => {
+    const body = parseBody(UserCreateBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreAdminUsersClient.adminPostUser(req.body, coreRequestOptions(req));
+        const response = await coreAdminUsersClient.adminPostUser(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -264,7 +355,7 @@ registry.registerPath({
     path: '/bff/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Met à jour un utilisateur via le Core API',
-    request: { params: UserIdParams, body: jsonBodyRequest },
+    request: { params: UserIdParams, body: jsonBodyRequest(UserPatchBody) },
     responses: coreResponses,
 });
 
@@ -274,8 +365,11 @@ router.patch('/users/:userId', async (req: Request, res: Response) => {
         return invalidParam(res, 'userId');
     }
 
+    const body = parseBody(UserPatchBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreAdminUsersClient.adminPatchUser(userId, req.body, coreRequestOptions(req));
+        const response = await coreAdminUsersClient.adminPatchUser(userId, body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -330,7 +424,7 @@ registry.registerPath({
     path: '/bff/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Supprime définitivement un utilisateur via le Core API',
-    request: { params: UserIdParams },
+    request: { params: DeletedUserIdParams },
     responses: coreResponses,
 });
 
@@ -357,7 +451,7 @@ registry.registerPath({
     path: '/bff/admin/users/{userId}/roles',
     tags: ['Administration'],
     summary: 'Ajoute un rôle à un utilisateur via le Core API',
-    request: { params: UserIdParams, body: jsonBodyRequest },
+    request: { params: UserIdParams, body: jsonBodyRequest(UserRoleBody) },
     responses: coreResponses,
 });
 
@@ -367,8 +461,19 @@ router.post('/users/:userId/roles', async (req: Request, res: Response) => {
         return invalidParam(res, 'userId');
     }
 
+    const body = parseBody(UserRoleBody, req, res);
+    if (!body) return;
+    // Core trusts the user_id of the body, not the one of its path: it must name the path user.
+    if (body.user_id !== undefined && body.user_id !== userId) {
+        return invalidParam(res, 'user_id');
+    }
+
     try {
-        const response = await coreAdminUsersClient.adminAddRoleToUser(userId, req.body, coreRequestOptions(req));
+        const response = await coreAdminUsersClient.adminAddRoleToUser(
+            userId,
+            { role_id: body.role_id, user_id: userId },
+            coreRequestOptions(req),
+        );
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -424,13 +529,16 @@ registry.registerPath({
     path: '/bff/admin/roles',
     tags: ['Administration'],
     summary: 'Crée un rôle via le Core API',
-    request: { body: jsonBodyRequest },
+    request: { body: jsonBodyRequest(RoleWriteBody) },
     responses: coreResponses,
 });
 
 router.post('/roles', async (req: Request, res: Response) => {
+    const body = parseBody(RoleWriteBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreAdminRolesClient.adminPostRole(req.body, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminPostRole(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -442,7 +550,7 @@ registry.registerPath({
     path: '/bff/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Remplace un rôle via le Core API',
-    request: { params: RoleIdParams, body: jsonBodyRequest },
+    request: { params: RoleIdParams, body: jsonBodyRequest(RoleReplaceBody) },
     responses: coreResponses,
 });
 
@@ -452,8 +560,11 @@ router.put('/roles/:roleId', async (req: Request, res: Response) => {
         return invalidParam(res, 'roleId');
     }
 
+    const body = parseBody(RoleReplaceBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreAdminRolesClient.adminPutRole(roleId, req.body, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminPutRole(roleId, body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -465,7 +576,7 @@ registry.registerPath({
     path: '/bff/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Met à jour un rôle via le Core API',
-    request: { params: RoleIdParams, body: jsonBodyRequest },
+    request: { params: RoleIdParams, body: jsonBodyRequest(RolePatchBody) },
     responses: coreResponses,
 });
 
@@ -475,8 +586,11 @@ router.patch('/roles/:roleId', async (req: Request, res: Response) => {
         return invalidParam(res, 'roleId');
     }
 
+    const body = parseBody(RolePatchBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreAdminRolesClient.adminPatchRole(roleId, req.body, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminPatchRole(roleId, body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -488,7 +602,7 @@ registry.registerPath({
     path: '/bff/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Supprime un rôle via le Core API',
-    request: { params: RoleIdParams },
+    request: { params: DeletedRoleIdParams },
     responses: coreResponses,
 });
 
@@ -528,13 +642,16 @@ registry.registerPath({
     path: '/bff/admin/groups',
     tags: ['Administration'],
     summary: 'Crée un groupe via le Core API',
-    request: { body: jsonBodyRequest },
+    request: { body: jsonBodyRequest(GroupCreateBody) },
     responses: coreResponses,
 });
 
 router.post('/groups', async (req: Request, res: Response) => {
+    const body = parseBody(GroupCreateBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreGroupsClient.postGroup(req.body, coreRequestOptions(req));
+        const response = await coreGroupsClient.postGroup(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
@@ -603,7 +720,7 @@ registry.registerPath({
     path: '/bff/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Supprime un groupe via le Core API',
-    request: { params: GroupIdParams },
+    request: { params: DeletedGroupIdParams },
     responses: coreResponses,
 });
 
@@ -655,7 +772,7 @@ registry.registerPath({
     path: '/bff/admin/groups/{groupId}/users',
     tags: ['Administration'],
     summary: 'Ajoute un utilisateur à un groupe via le Core API',
-    request: { params: GroupIdParams, body: jsonBodyRequest },
+    request: { params: GroupIdParams, body: jsonBodyRequest(GroupUserBody) },
     responses: coreResponses,
 });
 
@@ -665,10 +782,12 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
         return invalidParam(res, 'groupId');
     }
 
-    const userId = parsePositiveInteger(String(req.body?.user_id ?? ''));
-    if (!userId) {
-        return invalidParam(res, 'userId');
+    const body = parseBody(GroupUserBody, req, res);
+    if (!body) return;
+    if (body.group_id !== undefined && body.group_id !== groupId) {
+        return invalidParam(res, 'group_id');
     }
+    const userId = body.user_id;
 
     try {
         // Core ne distingue pas l'ajout d'un doublon : l'appartenance est lue avant d'ajouter.
@@ -757,7 +876,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Rafraîchit une session via le Core API',
     description: 'Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.',
-    request: { body: jsonBodyRequest },
+    request: { body: jsonBodyRequest(SessionTokenBody) },
     responses: {
         ...coreResponses,
         200: {
@@ -769,8 +888,11 @@ registry.registerPath({
 });
 
 router.post('/sessions/refresh', async (req: Request, res: Response) => {
+    const body = parseBody(SessionTokenBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreSessionsClient.refresh(req.body, coreRequestOptions(req));
+        const response = await coreSessionsClient.refresh(body, coreRequestOptions(req));
         // Core API renvoie le JWT rafraîchi dans l'en-tête Authorization : il remplace le cookie de session,
         // sinon le client continuerait avec l'ancien jeton.
         const authorizationHeader = response.headers?.authorization ?? response.headers?.Authorization;
@@ -788,13 +910,16 @@ registry.registerPath({
     path: '/bff/admin/sessions/revoke',
     tags: ['Administration'],
     summary: 'Révoque une session via le Core API',
-    request: { body: jsonBodyRequest },
+    request: { body: jsonBodyRequest(SessionRevokeBody) },
     responses: coreResponses,
 });
 
 router.post('/sessions/revoke', async (req: Request, res: Response) => {
+    const body = parseBody(SessionRevokeBody, req, res);
+    if (!body) return;
+
     try {
-        const response = await coreSessionsClient.revoke(req.body, coreRequestOptions(req));
+        const response = await coreSessionsClient.revoke(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
         return handleUnknownError(res, error);
