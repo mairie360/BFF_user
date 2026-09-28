@@ -12,6 +12,7 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | GET | `/check_apis` | 200 CheckApiResponse |
 | POST | `/auth/login` | 200 AuthTokenResponse |
 | POST | `/auth/force_change_password` | 204 Mot de passe changé avec succès |
+| POST | `/auth/refresh` | 200 RefreshResponse |
 | POST | `/auth/logout` | 200 LogoutResponse |
 | GET | `/user/{userId}/about` | 200 AboutResponseView |
 | GET | `/bff/admin/users` | 200 AdministrationUsersPage ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
