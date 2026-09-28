@@ -11,7 +11,6 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | GET | `/health` | 200 OK |
 | GET | `/check_apis` | 200 CheckApiResponse |
 | POST | `/auth/login` | 200 AuthTokenResponse |
-| POST | `/auth/register` | 201 Utilisateur créé avec succès |
 | POST | `/auth/force_change_password` | 204 Mot de passe changé avec succès |
 | POST | `/auth/logout` | 200 LogoutResponse |
 | GET | `/user/{userId}/about` | 200 AboutResponseView |
