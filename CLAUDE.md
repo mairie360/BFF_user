@@ -139,6 +139,20 @@ BFF response is checked against `contracts/openapi.json`.
 - `openapi-contract.ts`, `contract-mock-server.ts` and `orval-contract.ts` are shared verbatim with
   `BFF_Calendar` and `BFF_Dashboard`; keep the copies identical.
 
+## ZAP / k6 OpenAPI coverage gate
+
+`security_test.sh` / `performance_test.sh` clone `mairie360/CICD` into `cicd-repo/` (gitignored) at
+the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `zap_hooks.py` with
+`--hook`: every operation of the served spec must be reached, and non-public ones with a
+non-401/403 answer. The spec declares `bearerAuth` + `cookieAuth` at the top level (`openapi.ts`);
+public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
+`load-test.js` builds on `coverage.js` with **one handler per operation** of
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Handlers run path by
+path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
+a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
+admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens
+are not rotated, group membership calls answer 404 (Core swaps `user_id`/`group_id`).
+
 ## Conventions
 
 - ESLint: `@typescript-eslint/no-explicit-any` is an **error**. Unused args must be
