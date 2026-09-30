@@ -1,9 +1,11 @@
+import { HttpError } from '@mairie360/bffs-lib';
 import { z } from 'zod';
-import { ApiErrorResponse, registry } from '../openapi-registry';
+import { ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import type { AxiosRequestConfig } from 'axios';
 import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
-import { bearerToken, handleUnknownError } from './admin_helpers';
+import { bearerToken } from './admin_helpers';
+import { coreError } from '../utils/httpErrors';
 
 type UserWithRoles = {
     roles?: unknown;
@@ -24,8 +26,8 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
 for (const path of ['/me', '/session/me']) {
     registry.registerPath({ method: 'get', path, responses: {
         200: { description: 'Identité, groupes et rôles de la session', content: { 'application/json': { schema: SessionResponseSchema } } },
-        401: { description: 'Session invalide' },
-        502: { description: 'Core API indisponible', content: { 'application/json': { schema: ApiErrorResponse } } },
+        401: { description: 'Missing, invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable, failed or answered another error', content: { 'application/json': { schema: ErrorResponse } } },
     } });
 }
 
@@ -33,7 +35,7 @@ router.get('/me', async (req: Request, res: Response) => {
     const authorization = bearerToken(req);
 
     if (!authorization) {
-        return res.status(401).json({ message: 'Invalid or missing session token' });
+        throw new HttpError(401, 'Invalid or missing session token');
     }
 
     const options: AxiosRequestConfig = {
@@ -58,7 +60,7 @@ router.get('/me', async (req: Request, res: Response) => {
             roles,
         });
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, [401]);
     }
 });
 

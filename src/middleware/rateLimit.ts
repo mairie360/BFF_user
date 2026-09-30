@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { buildErrorResponse } from '@mairie360/bffs-lib';
 import type { Request, RequestHandler, Response } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 
@@ -107,7 +108,7 @@ export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateL
         skipSuccessfulRequests: true,
         requestWasSuccessful,
         skip: () => !options.enabled,
-        message: { message: RATE_LIMIT_MESSAGE },
+        message: buildErrorResponse('TOO_MANY_REQUESTS', RATE_LIMIT_MESSAGE),
     };
 
     return {

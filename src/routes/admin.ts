@@ -1,8 +1,9 @@
 import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
+import { HttpError } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { ApiErrorResponse, registry } from '../openapi-registry';
+import { ErrorResponse, registry } from '../openapi-registry';
 import { transmitAccessToken } from '../utils/cookieUtils';
 import {
     coreAdminRolesClient,
@@ -15,9 +16,9 @@ import {
     bearerToken,
     coreRequestOptions,
     forwardCoreResponse,
-    handleUnknownError,
     parsePositiveInteger,
 } from './admin_helpers';
+import { coreError, invalidInput, invalidParameter } from '../utils/httpErrors';
 
 const router = Router();
 
@@ -174,7 +175,7 @@ const coreResponses = {
         description: 'Erreur Core API',
         content: {
             'application/json': {
-                schema: ApiErrorResponse,
+                schema: ErrorResponse,
             },
         },
     },
@@ -182,7 +183,7 @@ const coreResponses = {
         description: 'Non authentifié',
         content: {
             'application/json': {
-                schema: ApiErrorResponse,
+                schema: ErrorResponse,
             },
         },
     },
@@ -190,7 +191,7 @@ const coreResponses = {
         description: 'Accès refusé',
         content: {
             'application/json': {
-                schema: ApiErrorResponse,
+                schema: ErrorResponse,
             },
         },
     },
@@ -198,47 +199,66 @@ const coreResponses = {
         description: 'Introuvable',
         content: {
             'application/json': {
-                schema: ApiErrorResponse,
+                schema: ErrorResponse,
+            },
+        },
+    },
+    500: {
+        description: 'Server error (JWT_SECRET not configured, unexpected error)',
+        content: {
+            'application/json': {
+                schema: ErrorResponse,
             },
         },
     },
     502: {
-        description: 'Erreur upstream',
+        description: 'Core API unavailable, failed or answered an undeclared error',
         content: {
             'application/json': {
-                schema: ApiErrorResponse,
+                schema: ErrorResponse,
             },
         },
     },
 };
 
-function invalidParam(res: Response, name: string): Response {
-    return res.status(400).json({ message: `Invalid ${name}` });
-}
+// Writes also relay Core's 409 (unique name or e-mail already taken, resource still referenced).
+const coreWriteResponses = {
+    ...coreResponses,
+    409: {
+        description: 'Conflict with the current state of the resource',
+        content: {
+            'application/json': {
+                schema: ErrorResponse,
+            },
+        },
+    },
+};
 
-// Answers 400 and returns undefined when the body does not match the schema.
-function parseBody<T>(schema: z.ZodType<T>, req: Request, res: Response): T | undefined {
+// Core 4xx kept by the admin routes (the statuses of coreResponses / coreWriteResponses); anything else is a 502.
+const READ_STATUSES = [400, 401, 403, 404] as const;
+const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
+
+// Throws a 400 listing the invalid fields when the body does not match the schema.
+function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
     const payload = schema.safeParse(req.body);
     if (!payload.success) {
-        res.status(400).json({ message: 'Invalid request body' });
-        return undefined;
+        throw invalidInput('Invalid request body', payload.error, 'body');
     }
     return payload.data;
 }
 
-async function requireAdmin(req: Request, res: Response): Promise<boolean> {
+// Throws 401 (no or invalid session), 403 (not an administrator) or 500 (JWT_SECRET missing).
+async function requireAdmin(req: Request): Promise<void> {
     const authorization = bearerToken(req);
     if (!authorization) {
-        res.status(401).json({ message: 'Invalid or missing session token' });
-        return false;
+        throw new HttpError(401, 'Invalid or missing session token');
     }
 
     const token = authorization.replace(/^Bearer\s+/i, '');
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {
-        res.status(500).json({ message: 'JWT_SECRET is not configured' });
-        return false;
+        throw new HttpError(500, 'JWT_SECRET is not configured');
     }
 
     let userId: number;
@@ -268,37 +288,32 @@ async function requireAdmin(req: Request, res: Response): Promise<boolean> {
             typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000);
 
         if (!validSignature || !validExpiration || !Number.isInteger(userId) || userId <= 0) {
-            res.status(401).json({ message: 'Invalid or expired session token' });
-            return false;
+            throw new Error('Invalid token');
         }
-
     } catch {
-        // Ne pas renvoyer le détail du parsing (JSON.parse, base64) au client.
-        res.status(401).json({ message: 'Invalid or expired session token' });
-        return false;
+        // Never send the parsing detail (JSON.parse, base64) to the client.
+        throw new HttpError(401, 'Invalid or expired session token');
     }
 
+    let role: string | undefined;
     try {
-        // Le rôle vient de Core API (GET /api/v1/user/me/), qui fait autorité sur les rôles.
-        const { data } = await coreUsersClient.getMe(coreRequestOptions(req));
-
-        if (data.role?.trim().toLowerCase() !== 'admin') {
-            res.status(403).json({ message: 'Administrator role required' });
-            return false;
-        }
-
-        return true;
+        // The role comes from Core API (GET /api/v1/user/me/), the authority on roles.
+        ({ data: { role } } = await coreUsersClient.getMe(coreRequestOptions(req)));
     } catch (error) {
-        handleUnknownError(res, error);
-        return false;
+        throw coreError(error, READ_STATUSES);
+    }
+
+    if (role?.trim().toLowerCase() !== 'admin') {
+        throw new HttpError(403, 'Administrator role required');
     }
 }
 
 // Toutes les routes /bff/admin exigent le rôle admin, vérifié localement : Core API v1.1.1 ne protège ses
 // routes /admin que par le JWT (AdminMiddleware désactivé), et groupes/sessions n'y sont pas réservés aux admins.
 // La vérification précède la validation des paramètres pour ne rien révéler à un appelant non autorisé.
-router.use(async (req: Request, res: Response, next: NextFunction) => {
-    if (await requireAdmin(req, res)) next();
+router.use(async (req: Request, _res: Response, next: NextFunction) => {
+    await requireAdmin(req);
+    next();
 });
 
 registry.registerPath({
@@ -313,7 +328,7 @@ registry.registerPath({
 router.get('/users', async (req: Request, res: Response) => {
     const query = UserListQuery.safeParse(req.query);
     if (!query.success) {
-        return res.status(400).json({ message: 'Invalid pagination parameters' });
+        throw invalidInput('Invalid pagination parameters', query.error, 'query');
     }
 
 
@@ -325,7 +340,7 @@ router.get('/users', async (req: Request, res: Response) => {
         }, coreRequestOptions(req));
         return res.status(200).json(response.data);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -335,18 +350,17 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Crée un utilisateur via le Core API',
     request: { body: jsonBodyRequest(UserCreateBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.post('/users', async (req: Request, res: Response) => {
-    const body = parseBody(UserCreateBody, req, res);
-    if (!body) return;
+    const body = parseBody(UserCreateBody, req);
 
     try {
         const response = await coreAdminUsersClient.adminPostUser(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -356,23 +370,22 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Met à jour un utilisateur via le Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserPatchBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.patch('/users/:userId', async (req: Request, res: Response) => {
     const userId = parsePositiveInteger(req.params.userId);
     if (!userId) {
-        return invalidParam(res, 'userId');
+        throw invalidParameter('params', 'userId');
     }
 
-    const body = parseBody(UserPatchBody, req, res);
-    if (!body) return;
+    const body = parseBody(UserPatchBody, req);
 
     try {
         const response = await coreAdminUsersClient.adminPatchUser(userId, body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -388,20 +401,18 @@ registry.registerPath({
             content: { 'application/json': { schema: UserPasswordResetBody } },
         },
     },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.patch('/users/:userId/password', async (req: Request, res: Response) => {
     const userId = parsePositiveInteger(req.params.userId);
     if (!userId) {
-        return invalidParam(res, 'userId');
+        throw invalidParameter('params', 'userId');
     }
 
     const payload = UserPasswordResetBody.safeParse(req.body);
     if (!payload.success) {
-        return res.status(400).json({
-            message: 'The password must contain between 8 and 255 characters',
-        });
+        throw invalidInput('The password must contain between 8 and 255 characters', payload.error, 'body');
     }
 
 
@@ -415,7 +426,7 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
 
         return res.status(204).send();
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -425,13 +436,13 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Supprime définitivement un utilisateur via le Core API',
     request: { params: DeletedUserIdParams },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.delete('/users/:userId', async (req: Request, res: Response) => {
     const userId = parsePositiveInteger(req.params.userId);
     if (!userId) {
-        return invalidParam(res, 'userId');
+        throw invalidParameter('params', 'userId');
     }
 
 
@@ -442,7 +453,7 @@ router.delete('/users/:userId', async (req: Request, res: Response) => {
         );
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -452,20 +463,19 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Ajoute un rôle à un utilisateur via le Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserRoleBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.post('/users/:userId/roles', async (req: Request, res: Response) => {
     const userId = parsePositiveInteger(req.params.userId);
     if (!userId) {
-        return invalidParam(res, 'userId');
+        throw invalidParameter('params', 'userId');
     }
 
-    const body = parseBody(UserRoleBody, req, res);
-    if (!body) return;
+    const body = parseBody(UserRoleBody, req);
     // Core trusts the user_id of the body, not the one of its path: it must name the path user.
     if (body.user_id !== undefined && body.user_id !== userId) {
-        return invalidParam(res, 'user_id');
+        throw invalidParameter('body', 'user_id');
     }
 
     try {
@@ -476,7 +486,7 @@ router.post('/users/:userId/roles', async (req: Request, res: Response) => {
         );
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -486,24 +496,24 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Retire un rôle à un utilisateur via le Core API',
     request: { params: UserRoleParams },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.delete('/users/:userId/roles/:roleId', async (req: Request, res: Response) => {
     const userId = parsePositiveInteger(req.params.userId);
     const roleId = parsePositiveInteger(req.params.roleId);
     if (!userId) {
-        return invalidParam(res, 'userId');
+        throw invalidParameter('params', 'userId');
     }
     if (!roleId) {
-        return invalidParam(res, 'roleId');
+        throw invalidParameter('params', 'roleId');
     }
 
     try {
         const response = await coreAdminUsersClient.adminDeleteUserRole(userId, roleId, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -520,7 +530,7 @@ router.get('/roles', async (req: Request, res: Response) => {
         const response = await coreAdminRolesClient.adminGetRole(coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -530,18 +540,17 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Crée un rôle via le Core API',
     request: { body: jsonBodyRequest(RoleWriteBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.post('/roles', async (req: Request, res: Response) => {
-    const body = parseBody(RoleWriteBody, req, res);
-    if (!body) return;
+    const body = parseBody(RoleWriteBody, req);
 
     try {
         const response = await coreAdminRolesClient.adminPostRole(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -551,23 +560,22 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Remplace un rôle via le Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RoleReplaceBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.put('/roles/:roleId', async (req: Request, res: Response) => {
     const roleId = parsePositiveInteger(req.params.roleId);
     if (!roleId) {
-        return invalidParam(res, 'roleId');
+        throw invalidParameter('params', 'roleId');
     }
 
-    const body = parseBody(RoleReplaceBody, req, res);
-    if (!body) return;
+    const body = parseBody(RoleReplaceBody, req);
 
     try {
         const response = await coreAdminRolesClient.adminPutRole(roleId, body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -577,23 +585,22 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Met à jour un rôle via le Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RolePatchBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.patch('/roles/:roleId', async (req: Request, res: Response) => {
     const roleId = parsePositiveInteger(req.params.roleId);
     if (!roleId) {
-        return invalidParam(res, 'roleId');
+        throw invalidParameter('params', 'roleId');
     }
 
-    const body = parseBody(RolePatchBody, req, res);
-    if (!body) return;
+    const body = parseBody(RolePatchBody, req);
 
     try {
         const response = await coreAdminRolesClient.adminPatchRole(roleId, body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -603,20 +610,20 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Supprime un rôle via le Core API',
     request: { params: DeletedRoleIdParams },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.delete('/roles/:roleId', async (req: Request, res: Response) => {
     const roleId = parsePositiveInteger(req.params.roleId);
     if (!roleId) {
-        return invalidParam(res, 'roleId');
+        throw invalidParameter('params', 'roleId');
     }
 
     try {
         const response = await coreAdminRolesClient.adminDeleteRole(roleId, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -633,7 +640,7 @@ router.get('/groups', async (req: Request, res: Response) => {
         const response = await coreGroupsClient.getGroups(coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -643,18 +650,17 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Crée un groupe via le Core API',
     request: { body: jsonBodyRequest(GroupCreateBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.post('/groups', async (req: Request, res: Response) => {
-    const body = parseBody(GroupCreateBody, req, res);
-    if (!body) return;
+    const body = parseBody(GroupCreateBody, req);
 
     try {
         const response = await coreGroupsClient.postGroup(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -670,14 +676,14 @@ registry.registerPath({
 router.get('/groups/:groupId', async (req: Request, res: Response) => {
     const groupId = parsePositiveInteger(req.params.groupId);
     if (!groupId) {
-        return invalidParam(res, 'groupId');
+        throw invalidParameter('params', 'groupId');
     }
 
     try {
         const response = await coreGroupsClient.getGroup(groupId, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -693,25 +699,25 @@ registry.registerPath({
             content: { 'application/json': { schema: GroupPatchBody } },
         },
     },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.patch('/groups/:groupId', async (req: Request, res: Response) => {
     const groupId = parsePositiveInteger(req.params.groupId);
     if (!groupId) {
-        return invalidParam(res, 'groupId');
+        throw invalidParameter('params', 'groupId');
     }
 
     const payload = GroupPatchBody.safeParse(req.body);
     if (!payload.success) {
-        return res.status(400).json({ message: 'Invalid group data' });
+        throw invalidInput('Invalid group data', payload.error, 'body');
     }
 
     try {
         const response = await coreGroupsClient.patchGroup(groupId, payload.data, coreRequestOptions(req));
         return res.status(200).json({ group: response.data });
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -721,20 +727,20 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Supprime un groupe via le Core API',
     request: { params: DeletedGroupIdParams },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.delete('/groups/:groupId', async (req: Request, res: Response) => {
     const groupId = parsePositiveInteger(req.params.groupId);
     if (!groupId) {
-        return invalidParam(res, 'groupId');
+        throw invalidParameter('params', 'groupId');
     }
 
     try {
         const response = await coreGroupsClient.deleteGroup(groupId, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -750,7 +756,7 @@ registry.registerPath({
 router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
     const groupId = parsePositiveInteger(req.params.groupId);
     if (!groupId) {
-        return invalidParam(res, 'groupId');
+        throw invalidParameter('params', 'groupId');
     }
 
 
@@ -763,7 +769,7 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
         const users = response.data.users.map(({ roles: _roles, ...member }) => member);
         return res.status(200).json({ users });
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -773,19 +779,18 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Ajoute un utilisateur à un groupe via le Core API',
     request: { params: GroupIdParams, body: jsonBodyRequest(GroupUserBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
     const groupId = parsePositiveInteger(req.params.groupId);
     if (!groupId) {
-        return invalidParam(res, 'groupId');
+        throw invalidParameter('params', 'groupId');
     }
 
-    const body = parseBody(GroupUserBody, req, res);
-    if (!body) return;
+    const body = parseBody(GroupUserBody, req);
     if (body.group_id !== undefined && body.group_id !== groupId) {
-        return invalidParam(res, 'group_id');
+        throw invalidParameter('body', 'group_id');
     }
     const userId = body.user_id;
 
@@ -799,7 +804,7 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
         await coreGroupsClient.addUserToGroup(groupId, { group_id: groupId, user_id: userId }, coreRequestOptions(req));
         return res.status(201).json({ created: true });
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -809,30 +814,30 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Retire un utilisateur d’un groupe via le Core API',
     request: { params: GroupUserParams },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Response) => {
     const groupId = parsePositiveInteger(req.params.groupId);
     const userId = parsePositiveInteger(req.params.userId);
     if (!groupId) {
-        return invalidParam(res, 'groupId');
+        throw invalidParameter('params', 'groupId');
     }
     if (!userId) {
-        return invalidParam(res, 'userId');
+        throw invalidParameter('params', 'userId');
     }
 
 
     try {
         const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
         if (!members.data.users.includes(userId)) {
-            return res.status(404).json({ message: 'Unknown group member' });
+            throw new HttpError(404, 'Unknown group member');
         }
 
         await coreGroupsClient.removeUserFromGroup(groupId, userId, coreRequestOptions(req));
         return res.status(204).send();
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -849,7 +854,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
         const response = await coreSessionsClient.getActiveSessions(coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -866,7 +871,7 @@ router.get('/sessions/history', async (req: Request, res: Response) => {
         const response = await coreSessionsClient.history(coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, READ_STATUSES);
     }
 });
 
@@ -878,7 +883,7 @@ registry.registerPath({
     description: 'Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.',
     request: { body: jsonBodyRequest(SessionTokenBody) },
     responses: {
-        ...coreResponses,
+        ...coreWriteResponses,
         200: {
             description: 'Session rafraîchie',
             headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
@@ -888,8 +893,7 @@ registry.registerPath({
 });
 
 router.post('/sessions/refresh', async (req: Request, res: Response) => {
-    const body = parseBody(SessionTokenBody, req, res);
-    if (!body) return;
+    const body = parseBody(SessionTokenBody, req);
 
     try {
         const response = await coreSessionsClient.refresh(body, coreRequestOptions(req));
@@ -897,11 +901,11 @@ router.post('/sessions/refresh', async (req: Request, res: Response) => {
         // sinon le client continuerait avec l'ancien jeton.
         const authorizationHeader = response.headers?.authorization ?? response.headers?.Authorization;
         if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
-            return res.status(502).json({ message: 'Core API did not return a Bearer token in the Authorization header' });
+            throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
         }
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 
@@ -911,18 +915,17 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Révoque une session via le Core API',
     request: { body: jsonBodyRequest(SessionRevokeBody) },
-    responses: coreResponses,
+    responses: coreWriteResponses,
 });
 
 router.post('/sessions/revoke', async (req: Request, res: Response) => {
-    const body = parseBody(SessionRevokeBody, req, res);
-    if (!body) return;
+    const body = parseBody(SessionRevokeBody, req);
 
     try {
         const response = await coreSessionsClient.revoke(body, coreRequestOptions(req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, WRITE_STATUSES);
     }
 });
 

@@ -126,7 +126,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Identifiants invalides */
@@ -135,7 +135,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Première connexion : mot de passe à changer */
@@ -151,7 +151,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "message": "Too many attempts, please try again later" }`. */
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
                 429: {
                     headers: {
                         /** @description Seconds to wait before retrying */
@@ -159,7 +159,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Erreur serveur */
@@ -168,7 +168,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Core API indisponible ou réponse amont invalide */
@@ -177,7 +177,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -227,7 +227,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Token invalide ou expiré */
@@ -236,7 +236,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Token de première connexion inconnu ou expiré */
@@ -245,10 +245,10 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "message": "Too many attempts, please try again later" }`. */
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
                 429: {
                     headers: {
                         /** @description Seconds to wait before retrying */
@@ -256,7 +256,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Erreur serveur */
@@ -265,7 +265,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Core API indisponible ou réponse amont invalide */
@@ -274,7 +274,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -328,7 +328,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Refresh token unknown, revoked or expired */
@@ -337,10 +337,10 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "message": "Too many attempts, please try again later" }`. */
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
                 429: {
                     headers: {
                         /** @description Seconds to wait before retrying */
@@ -348,7 +348,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Server error */
@@ -357,7 +357,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Core API unavailable or invalid upstream answer */
@@ -366,7 +366,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -418,7 +418,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Erreur serveur */
@@ -427,7 +427,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -481,7 +481,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak. */
@@ -490,7 +490,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account. */
@@ -499,7 +499,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Server error */
@@ -508,7 +508,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Core API or Keycloak unavailable, or invalid upstream response */
@@ -517,7 +517,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Keycloak sign-in is not configured on this instance; use POST /auth/login instead. */
@@ -526,7 +526,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -575,7 +575,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Utilisateur non authentifié ou ID invalide */
@@ -584,7 +584,16 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown user */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Erreur serveur */
@@ -593,7 +602,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Core API indisponible ou réponse amont invalide */
@@ -602,7 +611,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -667,7 +676,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -676,7 +685,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -685,7 +694,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -694,16 +703,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -754,7 +772,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -763,7 +781,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -772,7 +790,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -781,16 +799,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -854,7 +890,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -863,7 +899,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -872,7 +908,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -881,16 +917,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -944,7 +998,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -953,7 +1007,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -962,7 +1016,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -971,16 +1025,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1047,7 +1119,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1056,7 +1128,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1065,7 +1137,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1074,16 +1146,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1146,7 +1236,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1155,7 +1245,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1164,7 +1254,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1173,16 +1263,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1247,7 +1355,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1256,7 +1364,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1265,7 +1373,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1274,16 +1382,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1343,7 +1469,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1352,7 +1478,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1361,7 +1487,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1370,16 +1496,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1430,7 +1565,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1439,7 +1574,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1448,7 +1583,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1457,16 +1592,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1532,7 +1685,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1541,7 +1694,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1550,7 +1703,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1559,16 +1712,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1617,7 +1788,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1626,7 +1797,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1635,7 +1806,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1644,16 +1815,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1707,7 +1896,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1716,7 +1905,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1725,7 +1914,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1734,16 +1923,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1800,7 +2007,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1809,7 +2016,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1818,7 +2025,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1827,16 +2034,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1887,7 +2103,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1896,7 +2112,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -1905,7 +2121,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -1914,16 +2130,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1986,7 +2220,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -1995,7 +2229,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2004,7 +2238,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2013,16 +2247,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2072,7 +2315,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2081,7 +2324,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2090,7 +2333,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2099,16 +2342,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2162,7 +2423,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2171,7 +2432,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2180,7 +2441,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2189,16 +2450,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2257,7 +2536,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2266,7 +2545,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2275,7 +2554,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2284,16 +2563,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2346,7 +2634,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2355,7 +2643,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2364,7 +2652,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2373,16 +2661,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2447,7 +2753,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2456,7 +2762,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2465,7 +2771,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2474,16 +2780,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2543,7 +2867,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2552,7 +2876,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2561,7 +2885,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2570,16 +2894,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2642,7 +2975,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2651,7 +2984,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2660,7 +2993,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2669,16 +3002,25 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2753,7 +3095,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2762,7 +3104,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2771,7 +3113,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2780,16 +3122,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2854,7 +3214,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Non authentifié */
@@ -2863,7 +3223,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Accès refusé */
@@ -2872,7 +3232,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Introuvable */
@@ -2881,16 +3241,34 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur upstream */
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2926,20 +3304,22 @@ export interface paths {
                         "application/json": components["schemas"]["SessionResponse"];
                     };
                 };
-                /** @description Session invalide */
+                /** @description Missing, invalid or expired session */
                 401: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
                 };
-                /** @description Core API indisponible */
+                /** @description Core API unavailable, failed or answered another error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -2977,20 +3357,22 @@ export interface paths {
                         "application/json": components["schemas"]["SessionResponse"];
                     };
                 };
-                /** @description Session invalide */
+                /** @description Missing, invalid or expired session */
                 401: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
                 };
-                /** @description Core API indisponible */
+                /** @description Core API unavailable, failed or answered another error */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["ApiErrorResponse"];
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -3007,14 +3389,16 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ApiErrorResponse: {
-            /**
-             * @description Message lisible de l'erreur
-             * @example Invalid credentials provided.
-             */
-            message: string;
-            /** @description Détail technique optionnel de l'erreur */
-            error?: unknown;
+        ErrorResponse: {
+            error: {
+                /** @enum {string} */
+                code: "BAD_REQUEST" | "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "PAYLOAD_TOO_LARGE" | "UNPROCESSABLE_ENTITY" | "TOO_MANY_REQUESTS" | "INTERNAL_ERROR" | "BAD_GATEWAY" | "SERVICE_UNAVAILABLE" | "GATEWAY_TIMEOUT";
+                message: string;
+                details: {
+                    path?: string;
+                    message: string;
+                }[];
+            };
         };
         LoginView: {
             /**

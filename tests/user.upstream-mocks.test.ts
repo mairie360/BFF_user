@@ -103,7 +103,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(400);
       expectBffContract('post', '/auth/login', response);
-      expect(response.body).toEqual({ message: 'Invalid login payload' });
+      expect(response.body.error).toMatchObject({ code: 'BAD_REQUEST', message: 'Invalid login payload' });
+      expect(response.body.error.details).not.toHaveLength(0);
       expect(coreApi.requests).toHaveLength(0);
     });
 
@@ -122,7 +123,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('post', '/auth/login', response);
-      expect(response.body).toEqual({ message: 'Invalid credentials provided.' });
+      // Generic message: the Core body is never relayed.
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
@@ -181,7 +183,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('post', '/auth/force_change_password', response);
-      expect(response.body).toEqual({ message: 'Unauthorized' });
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
     });
 
     test.each([
@@ -222,7 +224,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('post', '/auth/refresh', response);
-      expect(response.body).toEqual({ message: 'Session not found' });
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
@@ -366,7 +368,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('get', '/me', response);
-      expect(response.body).toEqual({ message: 'Unauthorized' });
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
     });
   });
 
@@ -406,17 +408,22 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(status);
       expectBffContract('get', url, response);
-      expect(response.body).not.toHaveProperty('error');
       expect(coreApi.requests).toHaveLength(0);
     });
 
-    test('relays a Core API 401', async () => {
-      coreApi.on('get', CORE.user, coreError(401, 'Unauthorized'));
+    test.each([
+      [401, 401],
+      [404, 404],
+      [403, 502],
+      [409, 502],
+    ])('answers a Core API %i with %i', async (coreStatus, status) => {
+      coreApi.on('get', CORE.user, coreError(coreStatus, 'Unknown user 7 in table users'));
 
       const response = await request(app).get('/user/7/about').set('x-session-token', SESSION);
 
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(status);
       expectBffContract('get', '/user/7/about', response);
+      expect(JSON.stringify(response.body)).not.toContain('table users');
     });
   });
 
@@ -480,7 +487,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(403);
       expectBffContract(method, pathname, response);
-      expect(response.body).toEqual({ message: 'Administrator role required' });
+      expect(response.body).toEqual({ error: { code: 'FORBIDDEN', message: 'Administrator role required', details: [] } });
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
 
@@ -533,7 +540,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('get', '/bff/admin/groups', response);
-      expect(response.body).toEqual({ message: expect.stringMatching(/^Invalid (or missing|or expired) session token$/) });
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (or missing|or expired) session token$/), details: [] } });
       expect(coreApi.requests).toHaveLength(0);
     });
 
@@ -549,7 +556,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(400);
       expectBffContract(method, pathname, response);
-      expect(response.body).toEqual({ message: `Invalid ${name}` });
+      expect(response.body).toEqual({ error: { code: 'BAD_REQUEST', message: `Invalid ${name}`, details: [{ path: `params.${name}`, message: 'Must be a positive integer' }] } });
       // Le rôle est vérifié avant les paramètres, pour ne rien révéler à un appelant non autorisé.
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
@@ -603,11 +610,12 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
   describe('Core API failures', () => {
     test.each([
-      ['400', coreError(400, 'Bad request'), 400, { message: 'Bad request' }],
-      ['403', coreError(403, 'Forbidden: User is not an admin.'), 403, { message: 'Forbidden: User is not an admin.' }],
-      ['404', coreError(404, 'Not found'), 404, { message: 'Not found' }],
-      ['500', coreError(500, 'An error occurred while accessing the database.'), 502, { message: 'Upstream service error' }],
-      ['dropped connection', { dropConnection: true }, 502, { message: 'Upstream service error' }],
+      ['400', coreError(400, 'Bad request'), 400, { error: { code: 'BAD_REQUEST', message: 'Invalid request', details: [] } }],
+      ['403', coreError(403, 'Forbidden: User is not an admin.'), 403, { error: { code: 'FORBIDDEN', message: 'Access denied', details: [] } }],
+      ['404', coreError(404, 'Not found'), 404, { error: { code: 'NOT_FOUND', message: 'Resource not found', details: [] } }],
+      ['409 (not declared by a read)', coreError(409, 'duplicate key'), 502, { error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } }],
+      ['500', coreError(500, 'An error occurred while accessing the database.'), 502, { error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } }],
+      ['dropped connection', { dropConnection: true }, 502, { error: { code: 'BAD_GATEWAY', message: 'The Core API service is unavailable.', details: [] } }],
     ] as Array<[string, MockReply, number, object]>)('maps a Core API %s on an admin proxy route without leaking upstream details', async (_label, reply, status, body) => {
       jest.spyOn(console, 'error').mockImplementation(() => undefined);
       coreApi.on('get', CORE.group, reply);
@@ -636,7 +644,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(502);
       expectBffContract(method, pathname, response);
-      expect(response.body).toEqual({ message: 'Upstream service error' });
+      expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
     });
 
     test('hides the details of a Core API failure on the administration listing', async () => {
@@ -646,7 +654,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       const response = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(502);
-      expect(response.body).toEqual({ message: 'Upstream service error' });
+      expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
       expect(consoleError).toHaveBeenCalled();
     });
   });

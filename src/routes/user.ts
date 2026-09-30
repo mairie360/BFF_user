@@ -1,11 +1,13 @@
+import { HttpError } from '@mairie360/bffs-lib';
 import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
-    ApiErrorResponse,
+    ErrorResponse,
     registry,
     UserIdParams,
 } from '../openapi-registry';
-import { fetchUserAbout, handleUnknownError } from './core_helpers';
+import { fetchUserAbout } from './core_helpers';
+import { coreError, invalidInput } from '../utils/httpErrors';
 import { bearerToken } from './admin_helpers';
 
 const router = Router();
@@ -32,7 +34,7 @@ registry.registerPath({
             description: 'Identifiant utilisateur invalide',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -40,7 +42,15 @@ registry.registerPath({
             description: 'Utilisateur non authentifié ou ID invalide',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
+                },
+            },
+        },
+        404: {
+            description: 'Unknown user',
+            content: {
+                'application/json': {
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -48,7 +58,7 @@ registry.registerPath({
             description: 'Erreur serveur',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -56,7 +66,7 @@ registry.registerPath({
             description: 'Core API indisponible ou réponse amont invalide',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -67,19 +77,19 @@ router.get('/:userId/about', async (req: Request, res: Response) => {
     const paramsResult = UserIdParams.safeParse(req.params);
 
     if (!paramsResult.success) {
-        return res.status(400).json({ message: 'Invalid user ID' });
+        throw invalidInput('Invalid user ID', paramsResult.error, 'params');
     }
 
     const authorization = bearerToken(req);
     if (!authorization) {
-        return res.status(401).json({ message: 'Invalid or missing session token' });
+        throw new HttpError(401, 'Invalid or missing session token');
     }
 
     try {
         const userInfo = await fetchUserAbout(paramsResult.data.userId, authorization);
         return res.status(200).json(userInfo);
     } catch (error) {
-        return handleUnknownError(res, error);
+        throw coreError(error, [401, 404]);
     }
 });
 
