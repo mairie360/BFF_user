@@ -1,4 +1,6 @@
 import { createHmac } from 'node:crypto';
+import { errorHandler } from '@mairie360/bffs-lib';
+import { AxiosError, AxiosHeaders } from 'axios';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -53,6 +55,12 @@ function tokenFor(userId: number) {
 const app = express();
 app.use(express.json());
 app.use('/bff/admin', adminRouter);
+app.use(errorHandler({ onError: () => undefined }));
+
+/** Core API error as the generated axios client rejects it. */
+const coreError = (status: number, data: unknown = 'Core error') => new AxiosError(`Request failed with status code ${status}`, undefined, undefined, undefined, {
+    data, status, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
+});
 
 describe('Administration routes', () => {
     beforeAll(() => {
@@ -93,6 +101,11 @@ describe('Administration routes', () => {
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(400);
+        expect(response.body.error).toEqual({
+            code: 'BAD_REQUEST',
+            message: 'Invalid pagination parameters',
+            details: [expect.objectContaining({ path: 'query.page_size' })],
+        });
         expect(mockedListUsers).not.toHaveBeenCalled();
     });
 
@@ -118,7 +131,73 @@ describe('Administration routes', () => {
             .set('Authorization', `Bearer ${tokenFor(2)}`);
 
         expect(response.status).toBe(403);
+        expect(response.body).toEqual({ error: { code: 'FORBIDDEN', message: 'Administrator role required', details: [] } });
         expect(mockedDeleteUser).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['no session', undefined, 'Invalid or missing session token'],
+        ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token'],
+    ])('answers 401 with %s before calling Core API', async (_label, authorization, message) => {
+        const call = request(app).delete('/bff/admin/users/42');
+        const response = await (authorization ? call.set('Authorization', authorization) : call);
+
+        expect(response.status).toBe(401);
+        expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message, details: [] } });
+        expect(mockedGetMe).not.toHaveBeenCalled();
+    });
+
+    it('answers 500 without calling Core API when JWT_SECRET is not configured', async () => {
+        const token = tokenFor(1);
+        const secret = process.env.JWT_SECRET;
+        delete process.env.JWT_SECRET;
+        try {
+            const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${token}`);
+
+            expect(response.status).toBe(500);
+            expect(response.body.error.code).toBe('INTERNAL_ERROR');
+            expect(mockedGetMe).not.toHaveBeenCalled();
+        } finally {
+            process.env.JWT_SECRET = secret;
+        }
+    });
+
+    it.each([
+        [404, 404],
+        [409, 409],
+        [422, 502],
+        [500, 502],
+    ])('answers a Core %i on a write with %i, without relaying the Core body', async (coreStatus, status) => {
+        mockedDeleteUser.mockRejectedValue(coreError(coreStatus, 'duplicate key value violates unique constraint "users_email_key"'));
+
+        const response = await request(app)
+            .delete('/bff/admin/users/42')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(status);
+        expect(JSON.stringify(response.body)).not.toContain('duplicate key');
+    });
+
+    it('answers 502 for a Core 409 on a read, which does not declare it', async () => {
+        mockedListUsers.mockRejectedValue(coreError(409));
+
+        const response = await request(app)
+            .get('/bff/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(502);
+        expect(response.body.error.code).toBe('BAD_GATEWAY');
+    });
+
+    it('answers 502 when the admin role check cannot reach Core API', async () => {
+        mockedGetMe.mockRejectedValue(new AxiosError('connect ECONNREFUSED'));
+
+        const response = await request(app)
+            .get('/bff/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(502);
+        expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The Core API service is unavailable.', details: [] } });
     });
 
     it('sets a new password for an authenticated administrator', async () => {
@@ -236,6 +315,8 @@ describe('Administration routes', () => {
             .send(JSON.stringify(body));
 
         expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe('BAD_REQUEST');
+        expect(response.body.error.details.length).toBeGreaterThan(0);
         // Only the admin role check reached Core API.
         const coreCalls = Object.values(coreAdminUsersClient).filter((operation) => jest.mocked(operation).mock.calls.length > 0);
         expect(coreCalls).toEqual([mockedGetMe]);
@@ -248,6 +329,7 @@ describe('Administration routes', () => {
             .send({ user_id: 1, role_id: 1 });
 
         expect(response.status).toBe(400);
+        expect(response.body.error).toEqual({ code: 'BAD_REQUEST', message: 'Invalid user_id', details: [expect.objectContaining({ path: 'body.user_id' })] });
         expect(jest.mocked(coreAdminUsersClient.adminAddRoleToUser)).not.toHaveBeenCalled();
     });
 
@@ -294,6 +376,7 @@ describe('Administration routes', () => {
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(404);
+        expect(response.body).toEqual({ error: { code: 'NOT_FOUND', message: 'Unknown group member', details: [] } });
         expect(jest.mocked(coreGroupsClient.removeUserFromGroup)).not.toHaveBeenCalled();
     });
 });

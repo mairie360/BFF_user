@@ -1,10 +1,11 @@
+import { errorHandler } from '@mairie360/bffs-lib';
 import { AxiosError, AxiosHeaders } from 'axios';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
-import { forceChangeUserPassword, handleUnknownError, keycloakLoginUser, loginUser, refreshSession, revokeSession } from '../src/routes/core_helpers';
+import { forceChangeUserPassword, keycloakLoginUser, loginUser, refreshSession, revokeSession } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
@@ -15,7 +16,6 @@ import { axiosResponse, loginResponse } from './support/core-fixtures';
 
 jest.mock('../src/routes/core_helpers', () => ({
     forceChangeUserPassword: jest.fn(),
-    handleUnknownError: jest.fn(),
     isLoginResponseView: jest.fn((value: unknown) => (
         typeof value === 'object'
         && value !== null
@@ -32,16 +32,26 @@ const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedRevokeSession = jest.mocked(revokeSession);
 const mockedRefreshSession = jest.mocked(refreshSession);
 const mockedKeycloakLogin = jest.mocked(keycloakLoginUser);
-const mockedHandleUnknownError = jest.mocked(handleUnknownError);
 
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 const credentials: LoginView = { email: 'user@example.com', password: 'password', device_info: 'test' };
 
+/** Core API error as the generated axios client rejects it. */
+const coreError = (status: number, data: unknown = 'Core error') => new AxiosError(`Request failed with status code ${status}`, undefined, undefined, undefined, {
+    data, status, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
+});
+
+/** 400 envelope of a Zod validation failure: the message of the route, one detail per invalid field. */
+const invalidPayload = (message: string) => ({
+    error: { code: 'BAD_REQUEST', message, details: expect.arrayContaining([expect.objectContaining({ path: expect.stringMatching(/^body/) })]) },
+});
+
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use('/auth', authRouter);
+app.use(errorHandler({ onError: () => undefined }));
 
 describe('POST /auth/login', () => {
     beforeEach(() => {
@@ -68,11 +78,56 @@ describe('POST /auth/login', () => {
         const response = await request(app).post('/auth/login').send(credentials);
 
         expect(response.status).toBe(502);
-        expect(response.body).toEqual({
-            message: 'Core API did not return a Bearer token in the Authorization header',
-        });
+        expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Core API did not return a Bearer token in the Authorization header', details: [] } });
         expect(response.headers.authorization).toBeUndefined();
         expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('relays only the one-time token of a first sign-in (Core 412)', async () => {
+        mockedLoginUser.mockRejectedValue(coreError(412, { token: FIRST_CONNECTION_TOKEN, internal: 'hidden' }));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(412);
+        expect(response.body).toEqual({ token: FIRST_CONNECTION_TOKEN });
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 502 for a Core 412 without a one-time token', async () => {
+        mockedLoginUser.mockRejectedValue(coreError(412, 'First connection'));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(502);
+        expect(response.body.error.code).toBe('BAD_GATEWAY');
+    });
+
+    it('keeps a Core 401 with a generic message, without relaying the Core body', async () => {
+        mockedLoginUser.mockRejectedValue(coreError(401, 'Invalid credentials provided.'));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(401);
+        expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
+    });
+
+    it.each([403, 404, 409])('turns an undeclared Core %i into a 502', async (status) => {
+        mockedLoginUser.mockRejectedValue(coreError(status, 'Core detail'));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(502);
+        expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
+    });
+
+    it('answers 400 with one detail per invalid field', async () => {
+        const response = await request(app).post('/auth/login').send({ email: 'not-an-email', device_info: 'test' });
+
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe('BAD_REQUEST');
+        expect(response.body.error.message).toBe('Invalid login payload');
+        expect(response.body.error.details.map((detail: { path: string }) => detail.path).sort()).toEqual(['body.email', 'body.password']);
+        expect(mockedLoginUser).not.toHaveBeenCalled();
     });
 });
 
@@ -100,7 +155,32 @@ describe('POST /auth/force_change_password', () => {
             .send({ token: '' });
 
         expect(response.status).toBe(400);
+        expect(response.body).toEqual(invalidPayload('Invalid password-change payload'));
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [401, 'UNAUTHORIZED'],
+        [403, 'FORBIDDEN'],
+    ])('keeps a declared Core %i', async (status, code) => {
+        mockedForceChangePassword.mockRejectedValue(coreError(status));
+
+        const response = await request(app)
+            .post('/auth/force_change_password')
+            .send({ token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' });
+
+        expect(response.status).toBe(status);
+        expect(response.body.error.code).toBe(code);
+    });
+
+    it('turns a Core 404 into a 502', async () => {
+        mockedForceChangePassword.mockRejectedValue(coreError(404));
+
+        const response = await request(app)
+            .post('/auth/force_change_password')
+            .send({ token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' });
+
+        expect(response.status).toBe(502);
     });
 });
 
@@ -141,7 +221,7 @@ describe('POST /auth/refresh', () => {
         const response = await request(app).post('/auth/refresh').send(body);
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual({ message: 'Invalid refresh payload' });
+        expect(response.body).toEqual(invalidPayload('Invalid refresh payload'));
         expect(mockedRefreshSession).not.toHaveBeenCalled();
     });
 });
@@ -220,6 +300,7 @@ describe('authentication rate limiting', () => {
         limited.use('/auth', createAuthRouter(createAuthRateLimiters({
             enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, perClientIp: true, ...options,
         })));
+        limited.use(errorHandler({ onError: () => undefined }));
         return limited;
     };
     // Missing password: a 400 that counts as a failed attempt without any Core call.
@@ -240,7 +321,7 @@ describe('authentication rate limiting', () => {
         const blocked = await request(target).post('/auth/login').set('X-Forwarded-For', '203.0.113.1').send({ ...credentials, email: 'alice@example.com' });
 
         expect(blocked.status).toBe(429);
-        expect(blocked.body).toEqual({ message: RATE_LIMIT_MESSAGE });
+        expect(blocked.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: RATE_LIMIT_MESSAGE, details: [] } });
         expect(blocked.headers['retry-after']).toBeDefined();
         expect(blocked.headers.ratelimit).toBeDefined();
         expect(mockedLoginUser).not.toHaveBeenCalled();
@@ -276,9 +357,8 @@ describe('authentication rate limiting', () => {
     });
 
     it('does not count a first sign-in that asks for a password change (412)', async () => {
-        // Core answers 412 as an error, relayed by handleUnknownError.
-        mockedLoginUser.mockRejectedValue(new Error('412'));
-        jest.mocked(handleUnknownError).mockImplementation((res) => res.status(412).json({ token: FIRST_CONNECTION_TOKEN }));
+        // Core answers 412 as an error; the route relays it with the one-time token.
+        mockedLoginUser.mockRejectedValue(coreError(412, { token: FIRST_CONNECTION_TOKEN }));
         const target = limitedApp({ accountMax: 1, ipMax: 1 });
 
         for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -295,8 +375,7 @@ describe('authentication rate limiting', () => {
     });
 
     const failedRefresh = (target: express.Express, refreshToken: string, clientIp = '203.0.113.1') => {
-        mockedRefreshSession.mockRejectedValue(new Error('401'));
-        jest.mocked(handleUnknownError).mockImplementation((res) => res.status(401).json({ message: 'Session not found' }));
+        mockedRefreshSession.mockRejectedValue(coreError(401, 'Session not found'));
         return request(target).post('/auth/refresh').set('X-Forwarded-For', clientIp).send({ refresh_token: refreshToken });
     };
 
@@ -308,7 +387,7 @@ describe('authentication rate limiting', () => {
         const blocked = await failedRefresh(target, 'stolen-token', '192.0.2.44');
 
         expect(blocked.status).toBe(429);
-        expect(blocked.body).toEqual({ message: RATE_LIMIT_MESSAGE });
+        expect(blocked.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: RATE_LIMIT_MESSAGE, details: [] } });
         expect(blocked.headers['retry-after']).toBeDefined();
         // No per-IP lockout: another token from the same (shared) IP still reaches Core.
         expect((await failedRefresh(target, 'other-token', '192.0.2.44')).status).toBe(401);
@@ -418,10 +497,6 @@ describe('POST /auth/keycloak', () => {
         device_info: 'Firefox',
     };
 
-    const coreError = (status: number, message: string) => new AxiosError(message, undefined, undefined, undefined, {
-        data: message, status, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
-    });
-
     beforeEach(() => {
         jest.clearAllMocks();
     });
@@ -458,7 +533,7 @@ describe('POST /auth/keycloak', () => {
         const response = await request(app).post('/auth/keycloak').send(body);
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual({ message: 'Invalid Keycloak login payload' });
+        expect(response.body).toEqual(invalidPayload('Invalid Keycloak login payload'));
         expect(mockedKeycloakLogin).not.toHaveBeenCalled();
     });
 
@@ -477,20 +552,30 @@ describe('POST /auth/keycloak', () => {
         const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
 
         expect(response.status).toBe(503);
-        expect(response.body).toEqual({ message: 'Keycloak sign-in is not configured' });
-        expect(mockedHandleUnknownError).not.toHaveBeenCalled();
+        expect(response.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Keycloak sign-in is not configured', details: [] } });
     });
 
-    it('delegates the other Core errors (401, 403, 502...) to the shared error handler', async () => {
-        const error = coreError(403, 'No Mairie 360 account matches this Keycloak e-mail address.');
-        mockedKeycloakLogin.mockRejectedValue(error);
-        mockedHandleUnknownError.mockImplementation((res) => res.status(403).json({ message: 'forbidden' }));
+    it.each([
+        [401, 'UNAUTHORIZED'],
+        [403, 'FORBIDDEN'],
+    ])('keeps a declared Core %i without relaying the Core message', async (status, code) => {
+        mockedKeycloakLogin.mockRejectedValue(coreError(status, 'No Mairie 360 account matches this Keycloak e-mail address.'));
 
         const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
 
-        expect(response.status).toBe(403);
-        expect(mockedHandleUnknownError).toHaveBeenCalledWith(expect.anything(), error);
+        expect(response.status).toBe(status);
+        expect(response.body.error.code).toBe(code);
+        expect(JSON.stringify(response.body)).not.toContain('Keycloak e-mail');
         expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([404, 500])('turns a Core %i into a 502', async (status) => {
+        mockedKeycloakLogin.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
+
+        expect(response.status).toBe(502);
+        expect(response.body.error.code).toBe('BAD_GATEWAY');
     });
 });
 
@@ -562,7 +647,7 @@ describe('POST /auth/logout', () => {
         const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'not a url' });
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual({ message: 'Invalid logout payload' });
+        expect(response.body).toEqual(invalidPayload('Invalid logout payload'));
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 

@@ -1,4 +1,5 @@
 import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
+import { ErrorResponseSchema } from '@mairie360/bffs-lib';
 import { z } from 'zod';
 
 // On ajoute les méthodes .openapi() à Zod
@@ -21,15 +22,10 @@ export const cookieAuth = registry.registerComponent('securitySchemes', 'cookieA
     name: 'accessToken',
 });
 
-export const ApiErrorResponse = z.object({
-    message: z.string().openapi({
-        description: 'Message lisible de l\'erreur',
-        example: 'Invalid credentials provided.',
-    }),
-    error: z.unknown().optional().openapi({
-        description: 'Détail technique optionnel de l\'erreur',
-    }),
-}).openapi('ApiErrorResponse');
+// Body of every error answer, shared by every BFF (`@mairie360/bffs-lib`): `{ error: { code, message, details } }`.
+// clone(): the lib builds its schemas on import, before extendZodWithOpenApi() above, and zod 4 only
+// adds .openapi() to schemas created after the extension.
+export const ErrorResponse = registry.register('ErrorResponse', ErrorResponseSchema.clone());
 
 export const LoginViewSchema = z.object({
     email: z.email().openapi({
@@ -159,7 +155,6 @@ export const UserIdParams = z.object({
     }),
 }).openapi('UserIdParams');
 
-registry.register('ApiErrorResponse', ApiErrorResponse);
 registry.register('LoginView', LoginViewSchema);
 registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);

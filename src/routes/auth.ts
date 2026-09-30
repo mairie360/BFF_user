@@ -1,9 +1,10 @@
+import { HttpError } from '@mairie360/bffs-lib';
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { z } from 'zod';
 import { Request, Response, Router } from 'express';
 import {
-    ApiErrorResponse,
+    ErrorResponse,
     AuthTokenResponse,
     ForceChangePasswordViewSchema,
     KeycloakLoginViewSchema,
@@ -19,9 +20,9 @@ import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
 import { createAuthRateLimiters, RATE_LIMIT_MESSAGE } from '../middleware/rateLimit';
 import type { AuthRateLimiters } from '../middleware/rateLimit';
 import { bearerToken } from './admin_helpers';
+import { coreError, invalidInput } from '../utils/httpErrors';
 import {
     forceChangeUserPassword,
-    handleUnknownError,
     isLoginResponseView,
     keycloakLoginUser,
     loginUser,
@@ -30,11 +31,11 @@ import {
 } from './core_helpers';
 
 const tooManyAttempts = {
-    description: `Too many failed attempts from this client (or for this account); retry after the \`Retry-After\` delay. Body: \`{ "message": "${RATE_LIMIT_MESSAGE}" }\`.`,
+    description: `Too many failed attempts from this client (or for this account); retry after the \`Retry-After\` delay. Body: \`{ "error": { "code": "TOO_MANY_REQUESTS", "message": "${RATE_LIMIT_MESSAGE}", "details": [] } }\`.`,
     headers: { 'Retry-After': { description: 'Seconds to wait before retrying', schema: { type: 'integer' as const } } },
     content: {
         'application/json': {
-            schema: ApiErrorResponse,
+            schema: ErrorResponse,
         },
     },
 };
@@ -70,7 +71,7 @@ registry.registerPath({
             description: 'Données invalides',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -82,7 +83,7 @@ registry.registerPath({
             description: 'Identifiants invalides',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -91,7 +92,7 @@ registry.registerPath({
             description: 'Erreur serveur',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -99,7 +100,7 @@ registry.registerPath({
             description: 'Core API indisponible ou réponse amont invalide',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -131,7 +132,7 @@ registry.registerPath({
             description: 'Données invalides',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -139,7 +140,7 @@ registry.registerPath({
             description: 'Token invalide ou expiré',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -147,7 +148,7 @@ registry.registerPath({
             description: 'Token de première connexion inconnu ou expiré',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -156,7 +157,7 @@ registry.registerPath({
             description: 'Erreur serveur',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -164,7 +165,7 @@ registry.registerPath({
             description: 'Core API indisponible ou réponse amont invalide',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -201,7 +202,7 @@ registry.registerPath({
             description: 'Invalid payload',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -209,7 +210,7 @@ registry.registerPath({
             description: 'Refresh token unknown, revoked or expired',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -218,7 +219,7 @@ registry.registerPath({
             description: 'Server error',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -226,7 +227,7 @@ registry.registerPath({
             description: 'Core API unavailable or invalid upstream answer',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -268,7 +269,7 @@ registry.registerPath({
             description: 'Invalid payload (`post_logout_redirect_uri` is not a URL)',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -276,7 +277,7 @@ registry.registerPath({
             description: 'Erreur serveur',
             content: {
                 'application/json': {
-                    schema: ApiErrorResponse,
+                    schema: ErrorResponse,
                 },
             },
         },
@@ -311,32 +312,39 @@ registry.registerPath({
         },
         400: {
             description: 'Invalid payload',
-            content: { 'application/json': { schema: ApiErrorResponse } },
+            content: { 'application/json': { schema: ErrorResponse } },
         },
         401: {
             description: 'Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak.',
-            content: { 'application/json': { schema: ApiErrorResponse } },
+            content: { 'application/json': { schema: ErrorResponse } },
         },
         403: {
             description: 'The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account.',
-            content: { 'application/json': { schema: ApiErrorResponse } },
+            content: { 'application/json': { schema: ErrorResponse } },
         },
         500: {
             description: 'Server error',
-            content: { 'application/json': { schema: ApiErrorResponse } },
+            content: { 'application/json': { schema: ErrorResponse } },
         },
         502: {
             description: 'Core API or Keycloak unavailable, or invalid upstream response',
-            content: { 'application/json': { schema: ApiErrorResponse } },
+            content: { 'application/json': { schema: ErrorResponse } },
         },
         503: {
             description: 'Keycloak sign-in is not configured on this instance; use POST /auth/login instead.',
-            content: { 'application/json': { schema: ApiErrorResponse } },
+            content: { 'application/json': { schema: ErrorResponse } },
         },
     },
 });
 
 // =============== Routes ===============
+
+/** One-time token of a Core 412 (first sign-in, password to change), or undefined for any other error. */
+function firstConnectionToken(error: unknown): string | undefined {
+    if (!axios.isAxiosError(error) || error.response?.status !== 412) return undefined;
+    const token: unknown = (error.response.data as { token?: unknown } | undefined)?.token;
+    return typeof token === 'string' ? token : undefined;
+}
 
 /** Turns a Core sign-in response into the BFF session: `accessToken` cookie, Authorization header, refresh token body. */
 function sendSession(res: Response, coreResponse: AxiosResponse): Response {
@@ -344,9 +352,7 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
         ?? coreResponse.headers?.Authorization;
 
     if (!isLoginResponseView(coreResponse.data) || !transmitAccessToken(res, authorizationHeader)) {
-        return res.status(502).json({
-            message: 'Core API did not return a Bearer token in the Authorization header',
-        });
+        throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
     }
 
     return res.status(coreResponse.status).json(coreResponse.data);
@@ -362,20 +368,26 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
     router.post('/login', limiters.perIp, limiters.perAccount, async (req: Request, res: Response) => {
         const input = LoginViewSchema.safeParse(req.body);
         if (!input.success) {
-            return res.status(400).json({ message: 'Invalid login payload' });
+            throw invalidInput('Invalid login payload', input.error, 'body');
         }
 
         try {
             return sendSession(res, await loginUser(input.data));
         } catch (error) {
-            return handleUnknownError(res, error);
+            // First sign-in: Core answers 412 with the one-time token of the password change. It is a regular
+            // answer the front needs, not an error: only the token is relayed.
+            const token = firstConnectionToken(error);
+            if (token !== undefined) {
+                return res.status(412).json({ token });
+            }
+            throw coreError(error, [400, 401]);
         }
     });
 
     router.post('/keycloak', async (req: Request, res: Response) => {
         const input = KeycloakLoginViewSchema.safeParse(req.body);
         if (!input.success) {
-            return res.status(400).json({ message: 'Invalid Keycloak login payload' });
+            throw invalidInput('Invalid Keycloak login payload', input.error, 'body');
         }
 
         try {
@@ -383,16 +395,16 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         } catch (error) {
             // Core answers 503 when Keycloak is not configured: keep it so the front can fall back to the password login.
             if (axios.isAxiosError(error) && error.response?.status === 503) {
-                return res.status(503).json({ message: 'Keycloak sign-in is not configured' });
+                throw new HttpError(503, 'Keycloak sign-in is not configured');
             }
-            return handleUnknownError(res, error);
+            throw coreError(error, [400, 401, 403]);
         }
     });
 
     router.post('/force_change_password', limiters.perIp, async (req: Request, res: Response) => {
         const input = ForceChangePasswordViewSchema.safeParse(req.body);
         if (!input.success) {
-            return res.status(400).json({ message: 'Invalid password-change payload' });
+            throw invalidInput('Invalid password-change payload', input.error, 'body');
         }
 
         try {
@@ -400,14 +412,14 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             await forceChangeUserPassword(input.data);
             return res.status(204).send();
         } catch (error) {
-            return handleUnknownError(res, error);
+            throw coreError(error, [400, 401, 403]);
         }
     });
 
     router.post('/refresh', limiters.perIp, limiters.perRefreshToken, async (req: Request, res: Response) => {
         const input = RefreshViewSchema.safeParse(req.body);
         if (!input.success) {
-            return res.status(400).json({ message: 'Invalid refresh payload' });
+            throw invalidInput('Invalid refresh payload', input.error, 'body');
         }
 
         try {
@@ -416,14 +428,12 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
             // Same delivery as /auth/login: Authorization header + HTTP-only accessToken cookie.
             if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
-                return res.status(502).json({
-                    message: 'Core API did not return a Bearer token in the Authorization header',
-                });
+                throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
             }
 
             return res.status(200).json({ message: 'JWT refreshed successfully' });
         } catch (error) {
-            return handleUnknownError(res, error);
+            throw coreError(error, [400, 401]);
         }
     });
 
@@ -431,7 +441,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         // The body is optional: an empty request (no JSON) only clears the cookie.
         const input = LogoutViewSchema.safeParse(req.body ?? {});
         if (!input.success) {
-            return res.status(400).json({ message: 'Invalid logout payload' });
+            throw invalidInput('Invalid logout payload', input.error, 'body');
         }
 
         const refreshToken = input.data.refresh_token;

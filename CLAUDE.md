@@ -9,8 +9,8 @@ session context, and account/role/group administration for the Mairie360 fronten
 adapting the upstream **Core API**. It is an Express 5 + TypeScript HTTP service with no
 UI of its own.
 
-Codebase comments, log lines, and user-facing messages are a mix of French and English;
-docs under `docs/` are bilingual (en/fr). Match the surrounding language when editing.
+Codebase comments, log lines, and user-facing messages are a mix of French and English; write new
+text in English (see `../../CLAUDE.md`). Docs under `docs/` are bilingual (en/fr): update both.
 
 ## Commands
 
@@ -133,10 +133,19 @@ and the legacy `/me` resolve.
 
 ### Error handling
 
-Route handlers catch and call `handleUnknownError` (there are two near-identical copies —
-`core_helpers.ts` and `admin_helpers.ts`), which maps Axios errors to the Core status +
-body. A global `errorHandler` middleware (`src/middleware/errorHandler.ts`) is the final
-catch-all and only exposes error detail when `NODE_ENV === 'development'`.
+Every error is `{ error: { code, message, details } }` (`@mairie360/bffs-lib`), registered once as
+`ErrorResponse` in `openapi-registry.ts` (`ErrorResponseSchema.clone()`: the lib builds it before
+`extendZodWithOpenApi`) and referenced by every 4xx/5xx of the contract. Routes **throw**
+(`HttpError`, Express 5 forwards async rejections); `notFoundHandler` + `errorHandler()` close
+`src/index.ts`, keep the status and hide unexpected errors behind a generic 500. `src/utils/httpErrors.ts`:
+`invalidInput` (Zod failure -> 400 with one `{ path: 'body.email', message }` detail per issue),
+`invalidParameter`, and `coreError(error, declared)`: only the Core 4xx the route declares are kept (generic
+message), any other status or a network failure -> 502, the Core body is never relayed, a non-axios error
+is rethrown as is (500). Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
+`{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
+`[400, 401, 403]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
+`READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
+must add `errorHandler()` after it. The rate limiters answer 429 in the same envelope.
 
 ## Environment variables
 

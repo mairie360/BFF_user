@@ -1,4 +1,5 @@
 import { openApiDocument as openApiSpec } from './openapi';
+import { errorHandler, notFoundHandler } from '@mairie360/bffs-lib';
 import express from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
@@ -10,7 +11,6 @@ import authRouter from './routes/auth';
 import userRouter from './routes/user';
 import adminRouter from './routes/admin';
 import sessionRouter from './routes/session';
-import { errorHandler } from './middleware/errorHandler';
 import { parseTrustProxy } from './middleware/rateLimit';
 
 dotenv.config();
@@ -59,13 +59,11 @@ app.use('/session', sessionRouter);
 app.use('/', sessionRouter);
 app.use('/bff/admin', adminRouter);
 
-// --- Route inconnue : 404 JSON (le fallback Express répond en text/html) ---
-app.use((_req, res) => {
-    res.status(404).json({ message: 'Not found' });
-});
-
-// --- Middleware de gestion des erreurs ---
-app.use(errorHandler);
+// --- Unknown routes and errors: the shared envelope { error: { code, message, details } } ---
+// The status of the error is kept (400 unparsable body, 401, 404, 409, 502...); anything unexpected
+// becomes a generic 500 whose message never reaches the client.
+app.use(notFoundHandler);
+app.use(errorHandler());
 
 // --- Démarrage du serveur ---
 if (require.main === module) app.listen(Number(PORT), HOST, () => {

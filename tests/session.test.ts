@@ -1,3 +1,5 @@
+import { errorHandler } from '@mairie360/bffs-lib';
+import { AxiosError, AxiosHeaders } from 'axios';
 import express from 'express';
 import request from 'supertest';
 import sessionRouter from '../src/routes/session';
@@ -27,6 +29,11 @@ function tokenFor(userId: number) {
 const app = express();
 app.use('/session', sessionRouter);
 app.use('/', sessionRouter);
+app.use(errorHandler({ onError: () => undefined }));
+
+const coreError = (status: number) => new AxiosError(`Request failed with status code ${status}`, undefined, undefined, undefined, {
+    data: 'Core error', status, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
+});
 
 describe('GET /session/me', () => {
     beforeEach(() => {
@@ -52,7 +59,22 @@ describe('GET /session/me', () => {
         const response = await request(app).get('/session/me');
 
         expect(response.status).toBe(401);
+        expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing session token', details: [] } });
         expect(mockedGetMe).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [401, 401],
+        [404, 502],
+        [500, 502],
+    ])('answers a Core %i with %i', async (coreStatus, status) => {
+        mockedGetMe.mockRejectedValue(coreError(coreStatus));
+        mockedGetGroups.mockResolvedValue(axiosResponse(groupsResult([])));
+
+        const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(status);
+        expect(response.body.error.details).toEqual([]);
     });
 
     it('keeps the current-user context available at /me', async () => {
