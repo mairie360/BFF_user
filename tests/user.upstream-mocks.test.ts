@@ -78,17 +78,18 @@ describe('BFF User with a contract-driven Core API mock', () => {
   describe('POST /auth/login', () => {
     const credentials = { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' };
 
-    test('sends an anonymous contract-valid login and turns the Core JWT into a Bearer header and httpOnly cookie', async () => {
+    test('sends an anonymous contract-valid login and only delivers the tokens in HttpOnly cookies', async () => {
       coreApi.on('post', CORE.login, { body: loginResponse(), headers: { Authorization: 'Bearer core.jwt.token' } });
 
       const response = await request(app).post('/auth/login').send(credentials);
 
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/login', response);
-      expect(response.body).toEqual(loginResponse());
-      expect(response.headers.authorization).toBe('Bearer core.jwt.token');
-      expect(response.headers['access-control-expose-headers']).toBe('Authorization');
-      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly/);
+      expect(response.body).toEqual({ message: 'Logged in successfully' });
+      expect(response.headers.authorization).toBeUndefined();
+      expect(response.headers['access-control-expose-headers']).toBeUndefined();
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly.*SameSite=Strict/);
+      expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly.*SameSite=Strict`));
       const [login] = coreApi.calls(CORE.login);
       expect(login.body).toEqual(credentials);
       // Le login reste anonyme, même si le client envoie une session.
@@ -189,6 +190,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test.each([
       ['an invalid payload', { token: '' }, 400],
       ['an empty password', { token: FIRST_CONNECTION_TOKEN, new_password: '' }, 400],
+      ['a one-character password', { token: FIRST_CONNECTION_TOKEN, new_password: 'x' }, 400],
+      ['a 7-character password', { token: FIRST_CONNECTION_TOKEN, new_password: 'Short-7' }, 400],
     ])('rejects %s before calling Core API', async (_label, body, status) => {
       const response = await request(app).post('/auth/force_change_password').send(body);
 
@@ -209,7 +212,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/refresh', response);
       expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
-      expect(response.headers.authorization).toBe('Bearer refreshed.jwt.token');
+      expect(response.headers.authorization).toBeUndefined();
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=refreshed\.jwt\.token;.*HttpOnly/);
       expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRefreshUrl())]);
       expect(coreApi.requests[0].body).toEqual(payload);
@@ -252,8 +255,21 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
-    test('rejects an invalid payload with 400 before calling Core API', async () => {
-      const response = await request(app).post('/auth/refresh').send({ refresh_token: '' });
+    test('reads the refresh token from the HttpOnly refreshToken cookie when the body has none', async () => {
+      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+
+      const response = await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=opaque-refresh-token');
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(coreApi.requests[0].body).toEqual(payload);
+    });
+
+    test.each([
+      ['an empty refresh token', { refresh_token: '' }],
+      ['no refresh token at all', {}],
+    ])('rejects %s with 400 before calling Core API', async (_label, body) => {
+      const response = await request(app).post('/auth/refresh').send(body);
 
       expect(response.status).toBe(400);
       expectBffContract('post', '/auth/refresh', response);
@@ -275,6 +291,19 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
       expect(coreApi.requests).toHaveLength(0);
+    });
+
+    test('revokes the Core session with the refresh token of the refreshToken cookie and clears both cookies', async () => {
+      coreApi.on('post', CORE.sessionsRevoke, { status: 200, raw: 'Session revoked', contentType: 'text/plain' });
+
+      const response = await request(app).post('/auth/logout').set('Cookie', [`accessToken=${SESSION}`, 'refreshToken=opaque-refresh-token']);
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=;.*Path=\/auth/);
+      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
     });
 
     test('revokes the Core session with the caller session and refresh token', async () => {
@@ -338,14 +367,17 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
     test.each([
       ['/session/me', 'the accessToken cookie', (call: request.Test) => call.set('Cookie', `accessToken=${SESSION}`)],
-      ['/me', 'the x-session-token header', (call: request.Test) => call.set('x-session-token', SESSION)],
+      ['/me', 'the Authorization header', (call: request.Test) => call.set('Authorization', `Bearer ${SESSION}`)],
     ])('%s reads the session from %s and aggregates Core user and groups', async (pathname, _source, authenticate) => {
       const response = await authenticate(request(app).get(pathname));
 
       expect(response.status).toBe(200);
       expectBffContract('get', pathname, response);
+      // Contract fields only: the groups nested in Core's /user/me answer are not relayed under `user`.
+      const user: Partial<ReturnType<typeof meResponse>> = { ...meResponse({ role: 'Responsable' }) };
+      delete user.groups;
       expect(response.body).toEqual({
-        user: meResponse({ role: 'Responsable' }),
+        user,
         groups: [group(1), group(2, { description: null })],
         roles: ['Responsable'],
       });
@@ -419,7 +451,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     ])('answers a Core API %i with %i', async (coreStatus, status) => {
       coreApi.on('get', CORE.user, coreError(coreStatus, 'Unknown user 7 in table users'));
 
-      const response = await request(app).get('/user/7/about').set('x-session-token', SESSION);
+      const response = await request(app).get('/user/7/about').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(status);
       expectBffContract('get', '/user/7/about', response);
@@ -491,35 +523,17 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
 
-    test('POST /bff/admin/sessions/refresh relays the refreshed JWT as Bearer header and httpOnly cookie', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
-
+    test('POST /bff/admin/sessions/refresh is no longer served and never reaches Core API', async () => {
       const response = await request(app).post('/bff/admin/sessions/refresh').set('Cookie', `accessToken=${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
 
-      expect(response.status).toBe(200);
-      expectBffContract('post', '/bff/admin/sessions/refresh', response);
-      expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
-      expect(response.headers.authorization).toBe('Bearer refreshed.jwt.token');
-      expect(response.headers['access-control-expose-headers']).toBe('Authorization');
-      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=refreshed\.jwt\.token;.*HttpOnly/);
-      expect(coreApi.requests[1]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
-    });
-
-    test('POST /bff/admin/sessions/refresh returns 502 when Core API omits the refreshed JWT', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain' });
-
-      const response = await request(app).post('/bff/admin/sessions/refresh').set('Cookie', `accessToken=${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
-
-      expect(response.status).toBe(502);
-      expectBffContract('post', '/bff/admin/sessions/refresh', response);
+      expect(response.status).toBe(404);
+      expect(coreApi.calls(CORE.sessionsRefresh)).toHaveLength(0);
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
     test.each([
       ['the Authorization header', (call: request.Test) => call.set('Authorization', `Bearer ${SESSION}`)],
-      ['the x-session-token header', (call: request.Test) => call.set('x-session-token', SESSION)],
       ['the accessToken cookie', (call: request.Test) => call.set('Cookie', `accessToken=${SESSION}`)],
-      ['the legacy session cookie', (call: request.Test) => call.set('Cookie', `session=${SESSION}`)],
     ])('forwards %s to Core API as a Bearer token', async (_source, authenticate) => {
       coreApi.on('get', CORE.groups, { body: groupsResult([]) });
 
@@ -527,6 +541,27 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(200);
       expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
+    });
+
+    test.each([
+      ['the x-session-token header', (call: request.Test) => call.set('x-session-token', SESSION)],
+      ['the legacy session cookie', (call: request.Test) => call.set('Cookie', `session=${SESSION}`)],
+      ['an Authorization header with another scheme', (call: request.Test) => call.set('Authorization', `Token ${SESSION}`)],
+    ])('ignores %s: 401 without calling Core API', async (_source, authenticate) => {
+      const response = await authenticate(request(app).get('/bff/admin/groups'));
+
+      expect(response.status).toBe(401);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+
+    test('drops the fields Core API adds beyond the contract on a read route', async () => {
+      coreApi.on('get', CORE.groups, { body: groupsResult([{ ...group(1), internal_note: 'not for the fronts' } as ReturnType<typeof group>]) });
+
+      const response = await request(app).get('/bff/admin/groups').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(200);
+      expectBffContract('get', '/bff/admin/groups', response);
+      expect(Object.keys(response.body.groups[0]).sort()).toEqual(['description', 'id', 'name', 'owner_id']);
     });
 
     test.each([

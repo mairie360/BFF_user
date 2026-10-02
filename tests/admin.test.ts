@@ -156,6 +156,8 @@ describe('Administration routes', () => {
 
             expect(response.status).toBe(500);
             expect(response.body.error.code).toBe('INTERNAL_ERROR');
+            // The cause is only logged server side, never sent to the client.
+            expect(JSON.stringify(response.body)).not.toContain('JWT_SECRET');
             expect(mockedGetMe).not.toHaveBeenCalled();
         } finally {
             process.env.JWT_SECRET = secret;
@@ -306,7 +308,6 @@ describe('Administration routes', () => {
         ['post', '/bff/admin/roles', { name: '<script>alert(1)</script>', description: 'Municipal agent' }],
         ['patch', '/bff/admin/groups/4', { description: '<img src=x onerror=alert(1)>' }],
         ['post', '/bff/admin/groups/4/users', { user_id: 0 }],
-        ['post', '/bff/admin/sessions/refresh', { refresh_token: '' }],
         ['post', '/bff/admin/sessions/revoke', { token: 'opaque-refresh-token' }],
     ])('rejects an invalid %s %s body without calling Core API', async (method, path, body) => {
         const response = await request(app)[method as 'post'](path)

@@ -93,8 +93,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Authentifie un utilisateur
-         * @description Transmet les identifiants au Core API et retourne le token JWT.
+         * Signs a user in
+         * @description Forwards the credentials to Core API. The session is only delivered in HttpOnly, SameSite=Strict cookies: `accessToken` (the access JWT, path /) and `refreshToken` (path /auth, read by /auth/refresh and /auth/logout). No token is returned in the body or in a response header.
          */
         post: {
             parameters: {
@@ -109,15 +109,15 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Utilisateur authentifié ; le JWT d’accès est dans Authorization, le corps contient le refresh token. */
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
                 200: {
                     headers: {
-                        /** @description Bearer <access token> */
-                        Authorization?: string;
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AuthTokenResponse"];
+                        "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
                 /** @description Données invalides */
@@ -296,7 +296,7 @@ export interface paths {
         put?: never;
         /**
          * Renews the access JWT
-         * @description Exchanges the refresh token returned by /auth/login for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is returned in the Authorization header and the HTTP-only accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set.
+         * @description Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is only delivered in the HttpOnly accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.
          */
         post: {
             parameters: {
@@ -305,24 +305,24 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody: {
+            requestBody?: {
                 content: {
                     "application/json": components["schemas"]["RefreshView"];
                 };
             };
             responses: {
-                /** @description JWT renewed; the new access JWT is in Authorization and in the accessToken cookie. */
+                /** @description JWT renewed; the new access JWT is in the accessToken cookie. */
                 200: {
                     headers: {
-                        /** @description Bearer <access token> */
-                        Authorization?: string;
+                        /** @description HttpOnly `accessToken` cookie */
+                        "Set-Cookie"?: string;
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": components["schemas"]["RefreshResponse"];
                     };
                 };
-                /** @description Invalid payload */
+                /** @description Invalid payload, or no refresh token in the body nor in the refreshToken cookie */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -388,7 +388,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user out
-         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
+         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
          */
         post: {
             parameters: {
@@ -449,7 +449,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user in with Keycloak
-         * @description Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (httpOnly `accessToken` cookie + `Authorization` header), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.
+         * @description Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.
          */
         post: {
             parameters: {
@@ -464,15 +464,15 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Signed in; the access JWT is in Authorization and in the `accessToken` cookie, the body holds the refresh token. */
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
                 200: {
                     headers: {
-                        /** @description Bearer <access token> */
-                        Authorization?: string;
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AuthTokenResponse"];
+                        "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
                 /** @description Invalid payload */
@@ -706,7 +706,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -811,7 +811,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -929,7 +929,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1037,7 +1037,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1158,7 +1158,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1275,7 +1275,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1394,7 +1394,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1499,7 +1499,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1604,7 +1604,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1724,7 +1724,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1827,7 +1827,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1935,7 +1935,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2037,7 +2037,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2142,7 +2142,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2250,7 +2250,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2354,7 +2354,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2462,7 +2462,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2566,7 +2566,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2673,7 +2673,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2792,7 +2792,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2897,7 +2897,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -3005,7 +3005,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -3033,133 +3033,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rafraîchit une session via le Core API
-         * @description Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["AdminSessionTokenBody"];
-                };
-            };
-            responses: {
-                /** @description Session rafraîchie */
-                200: {
-                    headers: {
-                        /** @description Bearer <access token> */
-                        Authorization?: string;
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @example JWT refreshed successfully */
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Créé par le Core API */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CoreResponse"];
-                    };
-                };
-                /** @description Aucun contenu retourné par le Core API */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Erreur Core API */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Non authentifié */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Accès refusé */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Introuvable */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Conflict with the current state of the resource */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Core API unavailable, failed or answered an undeclared error */
-                502: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/bff/admin/sessions/revoke": {
         parameters: {
             query?: never;
@@ -3169,7 +3042,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Révoque une session via le Core API */
+        /**
+         * Revokes a session through Core API
+         * @description Core POST /api/v1/sessions/revoke: Core only revokes a session of the caller (the refresh token must belong to the JWT user). Refreshing a session from the administration console is not offered: it used to replace the administrator's own accessToken cookie.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -3253,7 +3129,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (JWT_SECRET not configured, unexpected error) */
+                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -3295,7 +3171,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Identité, groupes et rôles de la session */
+                /** @description Identity, groups and roles of the session (contract fields only) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3348,7 +3224,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Identité, groupes et rôles de la session */
+                /** @description Identity, groups and roles of the session (contract fields only) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3448,12 +3324,12 @@ export interface components {
         };
         ForceChangePasswordView: {
             /**
-             * @description Nouveau mot de passe de l'utilisateur
+             * @description New password of the user (8 to 255 characters).
              * @example NouveauMotDePasse123
              */
             new_password: string;
             /**
-             * @description Token de changement forcé du mot de passe
+             * @description One-time token of the forced password change (412 answer of /auth/login).
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             token: string;
@@ -3486,19 +3362,16 @@ export interface components {
              */
             status: string;
         };
-        AuthTokenResponse: {
-            /**
-             * @description Refresh token retourné par le Core API
-             * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-             */
-            refresh_token: string;
+        AuthSessionResponse: {
+            /** @example Logged in successfully */
+            message: string;
         };
         RefreshView: {
             /**
-             * @description Refresh token returned by /auth/login.
+             * @description Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.
              * @example 8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE
              */
-            refresh_token: string;
+            refresh_token?: string;
         };
         RefreshResponse: {
             /** @example JWT refreshed successfully */
@@ -3506,7 +3379,7 @@ export interface components {
         };
         LogoutView: {
             /**
-             * @description Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.
+             * @description Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. When available with the session, the Core API session is revoked, which invalidates the access JWT immediately.
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             refresh_token?: string;
@@ -3698,10 +3571,6 @@ export interface components {
             /** @description Must match the path groupId when sent */
             group_id?: number;
         };
-        AdminSessionTokenBody: {
-            /** @example opaque-refresh-token */
-            refresh_token: string;
-        };
         AdminSessionRevokeBody: {
             /** @example opaque-revoked-token */
             refresh_token: string;
@@ -3716,23 +3585,17 @@ export interface components {
                 phone?: string | null;
                 status: string;
                 role?: string;
-            } & {
-                [key: string]: unknown;
             };
-            groups: ({
+            groups: {
                 id: number;
                 name: string;
                 owner_id: number;
                 description?: string | null;
-            } & {
-                [key: string]: unknown;
-            })[];
-            roles: (string | ({
+            }[];
+            roles: (string | {
                 id?: number;
                 name: string;
-            } & {
-                [key: string]: unknown;
-            }))[];
+            })[];
         };
     };
     responses: never;

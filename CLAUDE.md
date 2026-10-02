@@ -86,15 +86,16 @@ and the legacy `/me` resolve.
 ### Auth model
 
 - **`/auth/login`**: Core returns the access JWT in the `Authorization` response header
-  and a `refresh_token` in the body. The BFF stores the access token in an httpOnly
-  `accessToken` cookie (`src/utils/cookieUtils.ts`) and re-exposes it via the
-  `Authorization` header + `Access-Control-Expose-Headers`. `/bff/admin/sessions/refresh`
-  does the same with the refreshed JWT (502 if Core omits it). Login bodies are
-  validated with Zod (unknown fields stripped) before reaching Core.
+  and a `refresh_token` in the body. The BFF only delivers them in HttpOnly, `SameSite=Strict`
+  cookies (`src/utils/cookieUtils.ts`): `accessToken` (path `/`) and `refreshToken` (path `/auth`).
+  No token goes to the response body or a response header (MAIR-397); the body is
+  `{ message }`. Login bodies are validated with Zod (unknown fields stripped) before reaching Core.
+  `/auth/force_change_password` requires an 8-255 character password, like the admin routes.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
-  is forwarded, so an expired JWT can be renewed. The JWT is delivered like login (header + cookie).
-  `/bff/admin/sessions/refresh` is the older admin-scoped variant that forwards the session.
+  is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
+  `refreshToken` cookie; the JWT is delivered like login (cookie only). `/bff/admin/sessions/refresh`
+  was removed (it replaced the admin's own cookie with the refreshed JWT; Core has no revoke-by-session-id).
 - **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
   Core publishes no "revoke the current session by JWT" operation, so without a `refresh_token`
@@ -102,8 +103,9 @@ and the legacy `/me` resolve.
 - **Rate limiting** (`src/middleware/rateLimit.ts`, `express-rate-limit`): failed attempts on
   `/auth/login` (per IP and per IP + e-mail), `/auth/force_change_password` (per IP) and
   `/auth/refresh` (per IP and per SHA-256 of the refresh token) answer 429.
-  The IP keys only apply when `TRUST_PROXY` is set; without it every client shares the front pods'
-  IP, so only the per-e-mail login limit runs (one startup warning). The ZAP/k6 stacks set
+  The IP keys only apply when `TRUST_PROXY` is set **and** the request carries `X-Forwarded-For`;
+  otherwise every client shares the front pods' IP, so only the per-e-mail login limit runs (one
+  startup warning when `TRUST_PROXY` is unset). The ZAP/k6 stacks set
   `AUTH_RATE_LIMIT_ENABLED=false` on bff-user.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.
 - **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
@@ -122,14 +124,16 @@ and the legacy `/me` resolve.
   `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
-  *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then checks the `admin`
-  role in the DB (`isAdministrationUserAdmin`). It is a `router.use` guard on **every**
+  *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the `admin`
+  role from Core `GET /api/v1/user/me/`. A missing `JWT_SECRET` is a plain `Error` (generic 500). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
-- **Everything else**: `bearerToken()` (`admin_helpers.ts`) pulls the credential from the
-  `Authorization` header, `x-session-token` header, or `accessToken`/`session` cookie and
-  forwards it to Core unchanged; `/me` and `/user/{userId}/about` answer 401 without one.
+- **Everything else**: `bearerToken()` (`admin_helpers.ts`) pulls the credential from an
+  `Authorization: Bearer` header or the `accessToken` cookie only, and forwards it to Core as
+  `Bearer <jwt>`; `/me` and `/user/{userId}/about` answer 401 without one.
   `/user/{userId}/about` only returns the public fields of its contract (no role/groups).
+  Read routes (`/me`, admin GET lists) pass Core's answer through `whitelist(schema, data)`: only
+  contract fields are returned, a non-matching answer is a 502. Never log tokens or Core URLs.
 
 ### Error handling
 

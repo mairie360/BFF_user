@@ -65,13 +65,14 @@ export const KeycloakLoginViewSchema = z.object({
     }),
 }).openapi('KeycloakLoginView');
 
+// Same password policy as the admin routes (AdminUserCreateBody, AdminUserPasswordResetBody).
 export const ForceChangePasswordViewSchema = z.object({
-    new_password: z.string().min(1).openapi({
-        description: 'Nouveau mot de passe de l\'utilisateur',
+    new_password: z.string().min(8).max(255).openapi({
+        description: 'New password of the user (8 to 255 characters).',
         example: 'NouveauMotDePasse123',
     }),
     token: z.string().min(1).openapi({
-        description: 'Token de changement forcé du mot de passe',
+        description: 'One-time token of the forced password change (412 answer of /auth/login).',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
 }).openapi('ForceChangePasswordView');
@@ -100,16 +101,17 @@ export const AboutResponseViewSchema = z.object({
 }).openapi('AboutResponseView');
 export type AboutResponseView = z.infer<typeof AboutResponseViewSchema>;
 
-export const AuthTokenResponse = z.object({
-    refresh_token: z.string().openapi({
-        description: 'Refresh token retourné par le Core API',
-        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+// The tokens of a sign-in are only delivered in HttpOnly cookies (`accessToken`, `refreshToken`), never in
+// the body or a response header readable by the browser's JavaScript.
+export const AuthSessionResponse = z.object({
+    message: z.string().openapi({
+        example: 'Logged in successfully',
     }),
-}).openapi('AuthTokenResponse');
+}).openapi('AuthSessionResponse');
 
 export const RefreshViewSchema = z.object({
-    refresh_token: z.string().min(1).openapi({
-        description: 'Refresh token returned by /auth/login.',
+    refresh_token: z.string().min(1).optional().openapi({
+        description: 'Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.',
         example: '8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE',
     }),
 }).openapi('RefreshView');
@@ -122,7 +124,7 @@ export const RefreshResponse = z.object({
 
 export const LogoutViewSchema = z.object({
     refresh_token: z.string().min(1).optional().openapi({
-        description: 'Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.',
+        description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. When available with the session, the Core API session is revoked, which invalidates the access JWT immediately.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
     post_logout_redirect_uri: z.url().optional().openapi({
@@ -159,7 +161,7 @@ registry.register('LoginView', LoginViewSchema);
 registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);
-registry.register('AuthTokenResponse', AuthTokenResponse);
+registry.register('AuthSessionResponse', AuthSessionResponse);
 registry.register('RefreshView', RefreshViewSchema);
 registry.register('RefreshResponse', RefreshResponse);
 registry.register('LogoutView', LogoutViewSchema);

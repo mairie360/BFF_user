@@ -9,8 +9,9 @@
 --   * user 10, role 10, group 10 (with user 10 as member) are read and updated;
 --   * user 11, role 11, group 11 are the examples of the DELETE routes;
 --   * user 42 is the example of /user/{userId}/about and of a new group member;
---   * two sessions hold the example refresh tokens of /bff/admin/sessions/refresh (user 2) and
---     /bff/admin/sessions/revoke (user 1: Core API only revokes the caller's own sessions).
+--   * two sessions hold example refresh tokens: user 2's (the former /bff/admin/sessions/refresh
+--     example, kept as a valid session) and the one of /bff/admin/sessions/revoke (user 1: Core API
+--     only revokes the caller's own sessions).
 --     Core API stores the refresh token itself in token_hash.
 
 INSERT INTO users (id, first_name, last_name, email, password, status)

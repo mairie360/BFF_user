@@ -158,14 +158,15 @@
         "properties": {
           "new_password": {
             "type": "string",
-            "minLength": 1,
-            "description": "Nouveau mot de passe de l'utilisateur",
+            "minLength": 8,
+            "maxLength": 255,
+            "description": "New password of the user (8 to 255 characters).",
             "example": "NouveauMotDePasse123"
           },
           "token": {
             "type": "string",
             "minLength": 1,
-            "description": "Token de changement forcé du mot de passe",
+            "description": "One-time token of the forced password change (412 answer of /auth/login).",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
           }
         },
@@ -215,17 +216,16 @@
           "status"
         ]
       },
-      "AuthTokenResponse": {
+      "AuthSessionResponse": {
         "type": "object",
         "properties": {
-          "refresh_token": {
+          "message": {
             "type": "string",
-            "description": "Refresh token retourné par le Core API",
-            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            "example": "Logged in successfully"
           }
         },
         "required": [
-          "refresh_token"
+          "message"
         ]
       },
       "RefreshView": {
@@ -234,13 +234,10 @@
           "refresh_token": {
             "type": "string",
             "minLength": 1,
-            "description": "Refresh token returned by /auth/login.",
+            "description": "Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.",
             "example": "8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE"
           }
-        },
-        "required": [
-          "refresh_token"
-        ]
+        }
       },
       "RefreshResponse": {
         "type": "object",
@@ -260,7 +257,7 @@
           "refresh_token": {
             "type": "string",
             "minLength": 1,
-            "description": "Refresh token returned by /auth/login. When sent with the session, the Core API session is revoked, which invalidates the access JWT immediately.",
+            "description": "Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. When available with the session, the Core API session is revoked, which invalidates the access JWT immediately.",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
           },
           "post_logout_redirect_uri": {
@@ -892,20 +889,6 @@
           "user_id"
         ]
       },
-      "AdminSessionTokenBody": {
-        "type": "object",
-        "properties": {
-          "refresh_token": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512,
-            "example": "opaque-refresh-token"
-          }
-        },
-        "required": [
-          "refresh_token"
-        ]
-      },
       "AdminSessionRevokeBody": {
         "type": "object",
         "properties": {
@@ -964,8 +947,7 @@
               "last_name",
               "email",
               "status"
-            ],
-            "additionalProperties": {}
+            ]
           },
           "groups": {
             "type": "array",
@@ -992,8 +974,7 @@
                 "id",
                 "name",
                 "owner_id"
-              ],
-              "additionalProperties": {}
+              ]
             }
           },
           "roles": {
@@ -1015,8 +996,7 @@
                   },
                   "required": [
                     "name"
-                  ],
-                  "additionalProperties": {}
+                  ]
                 }
               ]
             }
@@ -1083,8 +1063,8 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Authentifie un utilisateur",
-        "description": "Transmet les identifiants au Core API et retourne le token JWT.",
+        "summary": "Signs a user in",
+        "description": "Forwards the credentials to Core API. The session is only delivered in HttpOnly, SameSite=Strict cookies: `accessToken` (the access JWT, path /) and `refreshToken` (path /auth, read by /auth/refresh and /auth/logout). No token is returned in the body or in a response header.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1097,10 +1077,10 @@
         },
         "responses": {
           "200": {
-            "description": "Utilisateur authentifié ; le JWT d’accès est dans Authorization, le corps contient le refresh token.",
+            "description": "Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.",
             "headers": {
-              "Authorization": {
-                "description": "Bearer <access token>",
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
                 "schema": {
                   "type": "string"
                 }
@@ -1109,7 +1089,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthTokenResponse"
+                  "$ref": "#/components/schemas/AuthSessionResponse"
                 }
               }
             }
@@ -1293,9 +1273,9 @@
           "Authentication"
         ],
         "summary": "Renews the access JWT",
-        "description": "Exchanges the refresh token returned by /auth/login for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is returned in the Authorization header and the HTTP-only accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set.",
+        "description": "Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is only delivered in the HttpOnly accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.",
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -1306,10 +1286,10 @@
         },
         "responses": {
           "200": {
-            "description": "JWT renewed; the new access JWT is in Authorization and in the accessToken cookie.",
+            "description": "JWT renewed; the new access JWT is in the accessToken cookie.",
             "headers": {
-              "Authorization": {
-                "description": "Bearer <access token>",
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` cookie",
                 "schema": {
                   "type": "string"
                 }
@@ -1324,7 +1304,7 @@
             }
           },
           "400": {
-            "description": "Invalid payload",
+            "description": "Invalid payload, or no refresh token in the body nor in the refreshToken cookie",
             "content": {
               "application/json": {
                 "schema": {
@@ -1391,7 +1371,7 @@
           "Authentication"
         ],
         "summary": "Signs a user out",
-        "description": "Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.",
+        "description": "Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.",
         "requestBody": {
           "required": false,
           "content": {
@@ -1442,7 +1422,7 @@
           "Authentication"
         ],
         "summary": "Signs a user in with Keycloak",
-        "description": "Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (httpOnly `accessToken` cookie + `Authorization` header), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.",
+        "description": "Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1455,10 +1435,10 @@
         },
         "responses": {
           "200": {
-            "description": "Signed in; the access JWT is in Authorization and in the `accessToken` cookie, the body holds the refresh token.",
+            "description": "Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.",
             "headers": {
-              "Authorization": {
-                "description": "Bearer <access token>",
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
                 "schema": {
                   "type": "string"
                 }
@@ -1467,7 +1447,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthTokenResponse"
+                  "$ref": "#/components/schemas/AuthSessionResponse"
                 }
               }
             }
@@ -1723,7 +1703,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -1834,7 +1814,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -1958,7 +1938,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2071,7 +2051,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2195,7 +2175,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2319,7 +2299,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2442,7 +2422,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2546,7 +2526,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2657,7 +2637,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2781,7 +2761,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -2903,7 +2883,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3016,7 +2996,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3120,7 +3100,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3231,7 +3211,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3343,7 +3323,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3465,7 +3445,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3578,7 +3558,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3693,7 +3673,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3815,7 +3795,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -3938,7 +3918,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -4042,7 +4022,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -4146,138 +4126,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Core API unavailable, failed or answered an undeclared error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/bff/admin/sessions/refresh": {
-      "post": {
-        "tags": [
-          "Administration"
-        ],
-        "summary": "Rafraîchit une session via le Core API",
-        "description": "Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminSessionTokenBody"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Session rafraîchie",
-            "headers": {
-              "Authorization": {
-                "description": "Bearer <access token>",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "string",
-                      "example": "JWT refreshed successfully"
-                    }
-                  },
-                  "required": [
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Créé par le Core API",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreResponse"
-                }
-              }
-            }
-          },
-          "204": {
-            "description": "Aucun contenu retourné par le Core API"
-          },
-          "400": {
-            "description": "Erreur Core API",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Non authentifié",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Accès refusé",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Introuvable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict with the current state of the resource",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -4304,7 +4153,8 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Révoque une session via le Core API",
+        "summary": "Revokes a session through Core API",
+        "description": "Core POST /api/v1/sessions/revoke: Core only revokes a session of the caller (the refresh token must belong to the JWT user). Refreshing a session from the administration console is not offered: it used to replace the administrator's own accessToken cookie.",
         "requestBody": {
           "required": true,
           "content": {
@@ -4390,7 +4240,7 @@
             }
           },
           "500": {
-            "description": "Server error (JWT_SECRET not configured, unexpected error)",
+            "description": "Server error (misconfiguration or unexpected error); the cause is only logged",
             "content": {
               "application/json": {
                 "schema": {
@@ -4416,7 +4266,7 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Identité, groupes et rôles de la session",
+            "description": "Identity, groups and roles of the session (contract fields only)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4452,7 +4302,7 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Identité, groupes et rôles de la session",
+            "description": "Identity, groups and roles of the session (contract fields only)",
             "content": {
               "application/json": {
                 "schema": {

@@ -58,17 +58,18 @@ describe('POST /auth/login', () => {
         jest.clearAllMocks();
     });
 
-    it('transmits the Core JWT as a Bearer header and accessToken cookie', async () => {
+    it('only delivers the Core JWT and refresh token in HttpOnly cookies', async () => {
         mockedLoginUser.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
 
         const response = await request(app).post('/auth/login').send(credentials);
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual(loginResponse());
-        expect(response.headers.authorization).toBe('Bearer header.payload.signature');
-        expect(response.headers['access-control-expose-headers']).toBe('Authorization');
-        expect(response.headers['set-cookie'][0]).toContain('accessToken=header.payload.signature');
-        expect(response.headers['set-cookie'][0]).toContain('HttpOnly');
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers.authorization).toBeUndefined();
+        expect(response.headers['access-control-expose-headers']).toBeUndefined();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*Path=\/;.*HttpOnly;.*SameSite=Strict/);
+        expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly;.*SameSite=Strict`));
         expect(mockedLoginUser).toHaveBeenCalledWith(credentials);
     });
 
@@ -191,15 +192,15 @@ describe('POST /auth/refresh', () => {
         jest.clearAllMocks();
     });
 
-    it('returns the renewed JWT like login: Authorization header and httpOnly cookie', async () => {
+    it('delivers the renewed JWT like login: HttpOnly cookie only', async () => {
         mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN, role: 'Admin' });
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
-        expect(response.headers.authorization).toBe('Bearer renewed.payload.signature');
-        expect(response.headers['access-control-expose-headers']).toBe('Authorization');
+        expect(response.headers.authorization).toBeUndefined();
+        expect(response.headers['access-control-expose-headers']).toBeUndefined();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=renewed\.payload\.signature;.*HttpOnly/);
         expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
     });
@@ -213,8 +214,32 @@ describe('POST /auth/refresh', () => {
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 
+    it('reads the refresh token from the refreshToken cookie when the body has none', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
+
+        expect(response.status).toBe(200);
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
+    });
+
+    it('prefers the body refresh token over the cookie', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=cookie-token').send({ refresh_token: REFRESH_TOKEN });
+
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
+    });
+
+    it('rejects a request without refresh token in the body nor the cookie with 400', async () => {
+        const response = await request(app).post('/auth/refresh').send({});
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({ error: { code: 'BAD_REQUEST', message: 'Missing refresh token', details: [] } });
+        expect(mockedRefreshSession).not.toHaveBeenCalled();
+    });
+
     it.each([
-        ['no refresh token', {}],
         ['an empty refresh token', { refresh_token: '' }],
         ['a non-string refresh token', { refresh_token: 42 }],
     ])('rejects %s with 400 before calling Core API', async (_label, body) => {
@@ -423,6 +448,52 @@ describe('authentication rate limiting', () => {
         expect((await failedLogin(target, 'alice@example.com', '198.51.100.7')).status).toBe(400);
     });
 
+    describe('with TRUST_PROXY but no X-Forwarded-For (a front calling server side, e.g. the Login pod)', () => {
+        // Every user then shares the front pod IP: keying on it would be a global lockout (MAIR-397).
+        const fromFrontPod = (target: express.Express, email: string) => request(target)
+            .post('/auth/login')
+            .send({ email, device_info: 'test' });
+
+        it('skips the per-IP limit, so failed logins of many accounts never lock the other users out', async () => {
+            const target = limitedApp({ accountMax: 100, ipMax: 2 });
+
+            for (const email of ['a@example.com', 'b@example.com', 'c@example.com', 'd@example.com']) {
+                expect((await fromFrontPod(target, email)).status).toBe(400);
+            }
+            for (let attempt = 0; attempt < 3; attempt += 1) {
+                expect((await request(target).post('/auth/force_change_password').send({ token: '' })).status).toBe(400);
+            }
+            mockedRefreshSession.mockRejectedValue(coreError(401, 'Session not found'));
+            for (const token of ['token-1', 'token-2', 'token-3']) {
+                expect((await request(target).post('/auth/refresh').send({ refresh_token: token })).status).toBe(401);
+            }
+            mockedLoginUser.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+            expect((await request(target).post('/auth/login').send(credentials)).status).toBe(200);
+        });
+
+        it('still limits the failed logins of one e-mail', async () => {
+            const target = limitedApp({ accountMax: 2, ipMax: 100 });
+
+            await fromFrontPod(target, 'alice@example.com');
+            await fromFrontPod(target, 'alice@example.com');
+
+            expect((await fromFrontPod(target, 'Alice@example.com')).status).toBe(429);
+            expect((await fromFrontPod(target, 'bob@example.com')).status).toBe(400);
+        });
+
+        it('keeps the per-IP limit for the requests that carry X-Forwarded-For', async () => {
+            const target = limitedApp({ accountMax: 100, ipMax: 2 });
+
+            await fromFrontPod(target, 'a@example.com');
+            await fromFrontPod(target, 'b@example.com');
+            await failedLogin(target, 'c@example.com');
+            await failedLogin(target, 'd@example.com');
+
+            expect((await failedLogin(target, 'e@example.com')).status).toBe(429);
+            expect((await fromFrontPod(target, 'f@example.com')).status).toBe(400);
+        });
+    });
+
     describe('without TRUST_PROXY (every client shares the front pod IP)', () => {
         const sharedIpApp = () => limitedApp({ perClientIp: false, accountMax: 2, ipMax: 1 });
 
@@ -501,17 +572,17 @@ describe('POST /auth/keycloak', () => {
         jest.clearAllMocks();
     });
 
-    it('opens the same session as the password login: Bearer header and accessToken cookie', async () => {
+    it('opens the same session as the password login: HttpOnly cookies only', async () => {
         mockedKeycloakLogin.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
 
         const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual(loginResponse());
-        expect(response.headers.authorization).toBe('Bearer header.payload.signature');
-        expect(response.headers['access-control-expose-headers']).toBe('Authorization');
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(response.headers.authorization).toBeUndefined();
         expect(response.headers['set-cookie'][0]).toContain('accessToken=header.payload.signature');
         expect(response.headers['set-cookie'][0]).toContain('HttpOnly');
+        expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=.*Path=\/auth;.*HttpOnly/);
         expect(mockedKeycloakLogin).toHaveBeenCalledWith(keycloakLogin);
     });
 
