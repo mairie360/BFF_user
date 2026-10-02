@@ -4,7 +4,6 @@ import { NextFunction, Request, Response, Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ErrorResponse, registry } from '../openapi-registry';
-import { transmitAccessToken } from '../utils/cookieUtils';
 import {
     coreAdminRolesClient,
     coreAdminUsersClient,
@@ -17,6 +16,7 @@ import {
     coreRequestOptions,
     forwardCoreResponse,
     parsePositiveInteger,
+    whitelist,
 } from './admin_helpers';
 import { coreError, invalidInput, invalidParameter } from '../utils/httpErrors';
 
@@ -118,14 +118,16 @@ const GroupUserBody = z.object({
     group_id: z.number().int().positive().optional().openapi({ description: 'Must match the path groupId when sent' }),
 }).openapi('AdminGroupUserBody');
 const RefreshToken = z.string().min(1).max(512);
-const SessionTokenBody = z.object({
-    refresh_token: RefreshToken.openapi({ example: 'opaque-refresh-token' }),
-}).openapi('AdminSessionTokenBody');
-// Refreshing rotates the session, so revoking uses another seeded session.
 const SessionRevokeBody = z.object({
     refresh_token: RefreshToken.openapi({ example: 'opaque-revoked-token' }),
 }).openapi('AdminSessionRevokeBody');
 const CoreResponse = z.unknown().openapi('CoreResponse');
+// 200 bodies of the read routes: Core answers are reduced to these fields (whitelist), nothing else is relayed.
+const RolesListSchema = z.object({ roles: z.array(AdministrationRoleSchema) });
+const GroupsListSchema = z.object({ groups: z.array(AdministrationGroupSchema) });
+const GroupDetailSchema = z.object({ group: AdministrationGroupSchema });
+const GroupMembersSchema = z.object({ users: z.array(AdministrationGroupMemberSchema) });
+const SessionsListSchema = z.object({ sessions: z.array(AdministrationSessionSchema) });
 
 registry.register('AdminUserIdParams', UserIdParams);
 registry.register('AdminRoleIdParams', RoleIdParams);
@@ -143,7 +145,6 @@ registry.register('AdminRoleReplaceBody', RoleReplaceBody);
 registry.register('AdminRolePatchBody', RolePatchBody);
 registry.register('AdminGroupCreateBody', GroupCreateBody);
 registry.register('AdminGroupUserBody', GroupUserBody);
-registry.register('AdminSessionTokenBody', SessionTokenBody);
 registry.register('AdminSessionRevokeBody', SessionRevokeBody);
 registry.register('CoreResponse', CoreResponse);
 
@@ -204,7 +205,7 @@ const coreResponses = {
         },
     },
     500: {
-        description: 'Server error (JWT_SECRET not configured, unexpected error)',
+        description: 'Server error (misconfiguration or unexpected error); the cause is only logged',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -247,7 +248,7 @@ function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
     return payload.data;
 }
 
-// Throws 401 (no or invalid session), 403 (not an administrator) or 500 (JWT_SECRET missing).
+// Throws 401 (no or invalid session), 403 (not an administrator) or a generic 500 (JWT_SECRET missing).
 async function requireAdmin(req: Request): Promise<void> {
     const authorization = bearerToken(req);
     if (!authorization) {
@@ -258,7 +259,8 @@ async function requireAdmin(req: Request): Promise<void> {
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {
-        throw new HttpError(500, 'JWT_SECRET is not configured');
+        // A plain Error: errorHandler() logs it and answers a generic 500, the cause never reaches the client.
+        throw new Error('JWT_SECRET is not configured');
     }
 
     let userId: number;
@@ -308,9 +310,9 @@ async function requireAdmin(req: Request): Promise<void> {
     }
 }
 
-// Toutes les routes /bff/admin exigent le rôle admin, vérifié localement : Core API v1.1.1 ne protège ses
-// routes /admin que par le JWT (AdminMiddleware désactivé), et groupes/sessions n'y sont pas réservés aux admins.
-// La vérification précède la validation des paramètres pour ne rien révéler à un appelant non autorisé.
+// Every /bff/admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
+// protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
+// The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
 router.use(async (req: Request, _res: Response, next: NextFunction) => {
     await requireAdmin(req);
     next();
@@ -338,7 +340,7 @@ router.get('/users', async (req: Request, res: Response) => {
             page_size: query.data.page_size,
             ...(query.data.search ? { search: query.data.search } : {}),
         }, coreRequestOptions(req));
-        return res.status(200).json(response.data);
+        return res.status(200).json(whitelist(AdministrationUsersPageSchema, response.data));
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -522,13 +524,13 @@ registry.registerPath({
     path: '/bff/admin/roles',
     tags: ['Administration'],
     summary: 'Liste les rôles admin via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ roles: z.array(AdministrationRoleSchema) }) } } } },
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: RolesListSchema } } } },
 });
 
 router.get('/roles', async (req: Request, res: Response) => {
     try {
         const response = await coreAdminRolesClient.adminGetRole(coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        return forwardCoreResponse(res, response, RolesListSchema);
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -632,13 +634,13 @@ registry.registerPath({
     path: '/bff/admin/groups',
     tags: ['Administration'],
     summary: 'Liste les groupes via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ groups: z.array(AdministrationGroupSchema) }) } } } },
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupsListSchema } } } },
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
     try {
         const response = await coreGroupsClient.getGroups(coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        return forwardCoreResponse(res, response, GroupsListSchema);
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -670,7 +672,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Récupère un groupe via le Core API',
     request: { params: GroupIdParams },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ group: AdministrationGroupSchema }) } } } },
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupDetailSchema } } } },
 });
 
 router.get('/groups/:groupId', async (req: Request, res: Response) => {
@@ -681,7 +683,7 @@ router.get('/groups/:groupId', async (req: Request, res: Response) => {
 
     try {
         const response = await coreGroupsClient.getGroup(groupId, coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        return forwardCoreResponse(res, response, GroupDetailSchema);
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -750,7 +752,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Liste les utilisateurs d’un groupe via le Core API',
     request: { params: GroupIdParams },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ users: z.array(AdministrationGroupMemberSchema) }) } } } },
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupMembersSchema } } } },
 });
 
 router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
@@ -766,8 +768,7 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
             { group_id: groupId, page_size: MAX_GROUP_MEMBERS },
             coreRequestOptions(req),
         );
-        const users = response.data.users.map(({ roles: _roles, ...member }) => member);
-        return res.status(200).json({ users });
+        return res.status(200).json(whitelist(GroupMembersSchema, { users: response.data.users }));
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -846,13 +847,13 @@ registry.registerPath({
     path: '/bff/admin/sessions',
     tags: ['Administration'],
     summary: 'Liste les sessions actives via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ sessions: z.array(AdministrationSessionSchema) }) } } } },
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions', async (req: Request, res: Response) => {
     try {
         const response = await coreSessionsClient.getActiveSessions(coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        return forwardCoreResponse(res, response, SessionsListSchema);
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -863,13 +864,13 @@ registry.registerPath({
     path: '/bff/admin/sessions/history',
     tags: ['Administration'],
     summary: 'Récupère l’historique des sessions via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: z.object({ sessions: z.array(AdministrationSessionSchema) }) } } } },
+    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {
     try {
         const response = await coreSessionsClient.history(coreRequestOptions(req));
-        return forwardCoreResponse(res, response);
+        return forwardCoreResponse(res, response, SessionsListSchema);
     } catch (error) {
         throw coreError(error, READ_STATUSES);
     }
@@ -877,43 +878,11 @@ router.get('/sessions/history', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/sessions/refresh',
-    tags: ['Administration'],
-    summary: 'Rafraîchit une session via le Core API',
-    description: 'Le JWT rafraîchi est renvoyé dans l’en-tête Authorization et remplace le cookie accessToken.',
-    request: { body: jsonBodyRequest(SessionTokenBody) },
-    responses: {
-        ...coreWriteResponses,
-        200: {
-            description: 'Session rafraîchie',
-            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
-            content: { 'application/json': { schema: z.object({ message: z.string().openapi({ example: 'JWT refreshed successfully' }) }) } },
-        },
-    },
-});
-
-router.post('/sessions/refresh', async (req: Request, res: Response) => {
-    const body = parseBody(SessionTokenBody, req);
-
-    try {
-        const response = await coreSessionsClient.refresh(body, coreRequestOptions(req));
-        // Core API renvoie le JWT rafraîchi dans l'en-tête Authorization : il remplace le cookie de session,
-        // sinon le client continuerait avec l'ancien jeton.
-        const authorizationHeader = response.headers?.authorization ?? response.headers?.Authorization;
-        if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
-            throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
-        }
-        return forwardCoreResponse(res, response);
-    } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
-    }
-});
-
-registry.registerPath({
-    method: 'post',
     path: '/bff/admin/sessions/revoke',
     tags: ['Administration'],
-    summary: 'Révoque une session via le Core API',
+    summary: 'Revokes a session through Core API',
+    description: 'Core POST /api/v1/sessions/revoke: Core only revokes a session of the caller (the refresh token must belong to the JWT user). '
+        + 'Refreshing a session from the administration console is not offered: it used to replace the administrator\'s own accessToken cookie.',
     request: { body: jsonBodyRequest(SessionRevokeBody) },
     responses: coreWriteResponses,
 });

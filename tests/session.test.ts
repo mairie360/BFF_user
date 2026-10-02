@@ -50,9 +50,42 @@ describe('GET /session/me', () => {
             .set('Authorization', `Bearer ${tokenFor(42)}`);
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual({ user: me, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
+        // Contract fields only: the groups nested in Core's /user/me answer are not relayed under `user`.
+        const user: Partial<ReturnType<typeof meResponse>> = { ...me };
+        delete user.groups;
+        expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
         expect(mockedGetMe).toHaveBeenCalledWith({ headers: { Authorization: `Bearer ${tokenFor(42)}` } });
         expect(mockedGetGroups).toHaveBeenCalledWith({ headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+    });
+
+    it('drops any field Core API adds beyond the contract', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse({ ...meResponse({ role: 'Agent' }), password_hash: 'secret', is_archived: false }));
+        mockedGetGroups.mockResolvedValue(axiosResponse({ groups: [{ ...group(7), internal_note: 'hidden' }], total: 1 }));
+
+        const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(200);
+        expect(Object.keys(response.body).sort()).toEqual(['groups', 'roles', 'user']);
+        expect(response.body.user).not.toHaveProperty('password_hash');
+        expect(response.body.user).not.toHaveProperty('is_archived');
+        expect(response.body.groups[0]).not.toHaveProperty('internal_note');
+    });
+
+    it('answers 502 when Core API returns a body that does not match the contract', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse({ email: 'a@b.c' } as unknown as ReturnType<typeof meResponse>));
+        mockedGetGroups.mockResolvedValue(axiosResponse(groupsResult([])));
+
+        const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(502);
+        expect(JSON.stringify(response.body)).not.toContain('a@b.c');
+    });
+
+    it('ignores the legacy x-session-token header and session cookie', async () => {
+        const response = await request(app).get('/me').set('x-session-token', tokenFor(42)).set('Cookie', `session=${tokenFor(42)}`);
+
+        expect(response.status).toBe(401);
+        expect(mockedGetMe).not.toHaveBeenCalled();
     });
 
     it('rejects a missing token', async () => {

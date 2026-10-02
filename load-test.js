@@ -91,11 +91,12 @@ const handlers = {
     check(request(), { 'check_apis 200': (r) => r.status === 200 }),
 
   // --- Authentication (public) ---
-  // Logs the admin in: the refresh token feeds /bff/admin/sessions/refresh and /revoke.
+  // Logs the admin in: the refresh token (HttpOnly refreshToken cookie, never in the body) feeds
+  // /bff/admin/sessions/revoke.
   'POST /auth/login': ({ request, data }) => {
     const res = request({ body: { email: data.adminEmail, password: ADMIN_PASSWORD, device_info: 'k6' } });
     check(res, { 'login 200': (r) => r.status === 200 });
-    state.refreshToken = (json(res) || {}).refresh_token;
+    state.refreshToken = ((res.cookies.refreshToken || [])[0] || {}).value;
   },
   'POST /auth/register': ({ request }) => {
     state.registeredEmail = `${unique('perf-register')}@perf.mairie360.fr`;
@@ -241,12 +242,8 @@ const handlers = {
     check(request({ headers: data.admin }), { 'sessions 200': (r) => r.status === 200 }),
   'GET /bff/admin/sessions/history': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'sessions history 200': (r) => r.status === 200 }),
-  // Core API does not rotate the refresh token: the one of POST /auth/login is refreshed, then
-  // revoked (Core API only revokes the caller's own sessions, hence the admin login).
-  'POST /bff/admin/sessions/refresh': ({ request, data }) =>
-    check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
-      'refresh 200': (r) => r.status === 200,
-    }),
+  // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
+  // sessions, hence the admin login).
   'POST /bff/admin/sessions/revoke': ({ request, data }) =>
     check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
       'revoke 200': (r) => r.status === 200,

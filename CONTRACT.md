@@ -10,8 +10,8 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | --- | --- | --- |
 | GET | `/health` | 200 OK |
 | GET | `/check_apis` | 200 CheckApiResponse |
-| POST | `/auth/login` | 200 AuthTokenResponse |
-| POST | `/auth/keycloak` | 200 AuthTokenResponse |
+| POST | `/auth/login` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
+| POST | `/auth/keycloak` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
 | POST | `/auth/force_change_password` | 204 Mot de passe changé avec succès |
 | POST | `/auth/refresh` | 200 RefreshResponse |
 | POST | `/auth/logout` | 200 LogoutResponse |
@@ -38,7 +38,6 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | DELETE | `/bff/admin/groups/{groupId}/users/{userId}` | 200 CoreResponse ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | GET | `/bff/admin/sessions` | 200 Données de l’administration ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | GET | `/bff/admin/sessions/history` | 200 Données de l’administration ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
-| POST | `/bff/admin/sessions/refresh` | 200 CoreResponse ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | POST | `/bff/admin/sessions/revoke` | 200 CoreResponse ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | GET | `/me` | 200 SessionResponse |
 | GET | `/session/me` | 200 SessionResponse |

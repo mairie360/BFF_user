@@ -4,7 +4,7 @@ import { ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import type { AxiosRequestConfig } from 'axios';
 import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
-import { bearerToken } from './admin_helpers';
+import { bearerToken, whitelist } from './admin_helpers';
 import { coreError } from '../utils/httpErrors';
 
 type UserWithRoles = {
@@ -14,18 +14,19 @@ type UserWithRoles = {
 
 const router = Router();
 
+// Only these fields are returned (whitelist): anything Core API adds to /user/me or /groups is dropped.
 export const SessionResponseSchema = registry.register('SessionResponse', z.object({
     user: z.object({
         id: z.union([z.string(), z.number()]).optional(),
         first_name: z.string(), last_name: z.string(), email: z.string(),
         phone: z.string().nullable().optional(), status: z.string(), role: z.string().optional(),
-    }).passthrough(),
-    groups: z.array(z.object({ id: z.number(), name: z.string(), owner_id: z.number(), description: z.string().nullable().optional() }).passthrough()),
-    roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() }).passthrough()])),
+    }),
+    groups: z.array(z.object({ id: z.number(), name: z.string(), owner_id: z.number(), description: z.string().nullable().optional() })),
+    roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() })])),
 }));
 for (const path of ['/me', '/session/me']) {
     registry.registerPath({ method: 'get', path, responses: {
-        200: { description: 'Identité, groupes et rôles de la session', content: { 'application/json': { schema: SessionResponseSchema } } },
+        200: { description: 'Identity, groups and roles of the session (contract fields only)', content: { 'application/json': { schema: SessionResponseSchema } } },
         401: { description: 'Missing, invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
         502: { description: 'Core API unavailable, failed or answered another error', content: { 'application/json': { schema: ErrorResponse } } },
     } });
@@ -54,11 +55,11 @@ router.get('/me', async (req: Request, res: Response) => {
                 ? [userWithRoles.role]
                 : [];
 
-        return res.status(200).json({
+        return res.status(200).json(whitelist(SessionResponseSchema, {
             user: userResponse.data,
             groups: groupsResponse.data.groups,
             roles,
-        });
+        }));
     } catch (error) {
         throw coreError(error, [401]);
     }

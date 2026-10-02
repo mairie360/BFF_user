@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { Request, Response, Router } from 'express';
 import {
     ErrorResponse,
-    AuthTokenResponse,
+    AuthSessionResponse,
     ForceChangePasswordViewSchema,
     KeycloakLoginViewSchema,
     LoginViewSchema,
@@ -16,7 +16,14 @@ import {
     registry,
 } from '../openapi-registry';
 import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
-import { clearTokenCookie, transmitAccessToken } from '../utils/cookieUtils';
+import {
+    clearRefreshTokenCookie,
+    clearTokenCookie,
+    readCookie,
+    REFRESH_TOKEN_COOKIE,
+    setRefreshTokenCookie,
+    transmitAccessToken,
+} from '../utils/cookieUtils';
 import { createAuthRateLimiters, RATE_LIMIT_MESSAGE } from '../middleware/rateLimit';
 import type { AuthRateLimiters } from '../middleware/rateLimit';
 import { bearerToken } from './admin_helpers';
@@ -45,8 +52,10 @@ registry.registerPath({
     path: '/auth/login',
     security: [],
     tags: ['Authentication'],
-    summary: 'Authentifie un utilisateur',
-    description: 'Transmet les identifiants au Core API et retourne le token JWT.',
+    summary: 'Signs a user in',
+    description: 'Forwards the credentials to Core API. The session is only delivered in HttpOnly, SameSite=Strict cookies: '
+        + '`accessToken` (the access JWT, path /) and `refreshToken` (path /auth, read by /auth/refresh and /auth/logout). '
+        + 'No token is returned in the body or in a response header.',
     request: {
         body: {
             required: true,
@@ -59,11 +68,11 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'Utilisateur authentifié ; le JWT d’accès est dans Authorization, le corps contient le refresh token.',
-            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
+            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
             content: {
                 'application/json': {
-                    schema: AuthTokenResponse,
+                    schema: AuthSessionResponse,
                 },
             },
         },
@@ -177,10 +186,10 @@ registry.registerPath({
     path: '/auth/refresh',
     tags: ['Authentication'],
     summary: 'Renews the access JWT',
-    description: 'Exchanges the refresh token returned by /auth/login for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is returned in the Authorization header and the HTTP-only accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set.',
+    description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is only delivered in the HttpOnly accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.',
     request: {
         body: {
-            required: true,
+            required: false,
             content: {
                 'application/json': {
                     schema: RefreshViewSchema,
@@ -190,8 +199,8 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'JWT renewed; the new access JWT is in Authorization and in the accessToken cookie.',
-            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
+            description: 'JWT renewed; the new access JWT is in the accessToken cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` cookie', schema: { type: 'string' } } },
             content: {
                 'application/json': {
                     schema: RefreshResponse,
@@ -199,7 +208,7 @@ registry.registerPath({
             },
         },
         400: {
-            description: 'Invalid payload',
+            description: 'Invalid payload, or no refresh token in the body nor in the refreshToken cookie',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -240,7 +249,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token are both sent, then always clears the HTTP-only access-token cookie, even if Core API fails. '
+    description: 'Revokes the caller\'s Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
         + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
         + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
         + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
@@ -292,7 +301,7 @@ registry.registerPath({
     description: 'Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the '
         + 'authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and '
         + 'opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly '
-        + 'like POST /auth/login (httpOnly `accessToken` cookie + `Authorization` header), so every front and BFF keeps '
+        + 'like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps '
         + 'working unchanged and the user keeps their roles. The password login stays available during the transition.',
     request: {
         body: {
@@ -306,9 +315,9 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'Signed in; the access JWT is in Authorization and in the `accessToken` cookie, the body holds the refresh token.',
-            headers: { Authorization: { description: 'Bearer <access token>', schema: { type: 'string' } } },
-            content: { 'application/json': { schema: AuthTokenResponse } },
+            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
         },
         400: {
             description: 'Invalid payload',
@@ -346,7 +355,10 @@ function firstConnectionToken(error: unknown): string | undefined {
     return typeof token === 'string' ? token : undefined;
 }
 
-/** Turns a Core sign-in response into the BFF session: `accessToken` cookie, Authorization header, refresh token body. */
+/**
+ * Turns a Core sign-in response into the BFF session: the access JWT and the refresh token only go to
+ * HttpOnly cookies, never to the body or a header readable by the browser's JavaScript.
+ */
 function sendSession(res: Response, coreResponse: AxiosResponse): Response {
     const authorizationHeader = coreResponse.headers?.authorization
         ?? coreResponse.headers?.Authorization;
@@ -354,8 +366,14 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
     if (!isLoginResponseView(coreResponse.data) || !transmitAccessToken(res, authorizationHeader)) {
         throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
     }
+    setRefreshTokenCookie(res, coreResponse.data.refresh_token);
 
-    return res.status(coreResponse.status).json(coreResponse.data);
+    return res.status(coreResponse.status).json({ message: 'Logged in successfully' });
+}
+
+/** Refresh token of the caller: the body field, else the HttpOnly `refreshToken` cookie set at sign-in. */
+function refreshTokenOf(req: Request, fromBody: string | undefined): string | undefined {
+    return fromBody ?? readCookie(req, REFRESH_TOKEN_COOKIE);
 }
 
 /**
@@ -417,16 +435,21 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
     });
 
     router.post('/refresh', limiters.perIp, limiters.perRefreshToken, async (req: Request, res: Response) => {
-        const input = RefreshViewSchema.safeParse(req.body);
+        const input = RefreshViewSchema.safeParse(req.body ?? {});
         if (!input.success) {
             throw invalidInput('Invalid refresh payload', input.error, 'body');
         }
 
+        const refreshToken = refreshTokenOf(req, input.data.refresh_token);
+        if (!refreshToken) {
+            throw new HttpError(400, 'Missing refresh token');
+        }
+
         try {
-            const coreResponse = await refreshSession(input.data.refresh_token);
+            const coreResponse = await refreshSession(refreshToken);
             const authorizationHeader = coreResponse.headers?.authorization ?? coreResponse.headers?.Authorization;
 
-            // Same delivery as /auth/login: Authorization header + HTTP-only accessToken cookie.
+            // Same delivery as /auth/login: the HttpOnly accessToken cookie only.
             if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
                 throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
             }
@@ -444,7 +467,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             throw invalidInput('Invalid logout payload', input.error, 'body');
         }
 
-        const refreshToken = input.data.refresh_token;
+        const refreshToken = refreshTokenOf(req, input.data.refresh_token);
         const authorization = bearerToken(req);
 
         let sessionRevoked = false;
@@ -462,6 +485,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         }
 
         clearTokenCookie(res);
+        clearRefreshTokenCookie(res);
 
         // Single logout (MAIR-143): the browser must end the Keycloak session itself, the BFF holds no Keycloak token.
         const keycloak = getKeycloakConfig();

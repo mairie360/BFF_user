@@ -28,15 +28,8 @@ export const coreClient = axios.create({
     },
 });
 
-coreClient.interceptors.request.use(
-    (config) => {
-        // Aucun jeton par défaut : chaque appel transmet uniquement la session de l'appelant, et les routes
-        // publiques de Core (/api/v1/auth/*) restent anonymes.
-        console.log('URL Core API envoyée :', `${config.baseURL ?? ''}${config.url ?? ''}`);
-        return config;
-    },
-    (error) => Promise.reject(error),
-);
+// No default token: every call forwards only the caller's session, and Core's public routes
+// (/api/v1/auth/*) stay anonymous. Outgoing URLs are not logged (they carry user and group ids).
 
 /** API générée à partir du contrat OpenAPI du Core API. */
 export const coreApi = getCoreAPIMairie360(coreClient);

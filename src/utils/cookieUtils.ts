@@ -1,32 +1,45 @@
-import type { CookieOptions, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 
-function accessTokenCookieOptions(): CookieOptions {
+export const ACCESS_TOKEN_COOKIE = 'accessToken';
+export const REFRESH_TOKEN_COOKIE = 'refreshToken';
+
+/** The refresh token is only ever needed by `/auth/refresh` and `/auth/logout`. */
+const REFRESH_TOKEN_COOKIE_PATH = '/auth';
+const ACCESS_TOKEN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** HttpOnly + SameSite=Strict, like the cookies set by the Login front. */
+function sessionCookieOptions(path: string): CookieOptions {
     const domain = process.env.COOKIE_DOMAIN?.trim();
 
     return {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
+        sameSite: 'strict',
+        path,
         ...(domain ? { domain } : {}),
     };
 }
 
-/**
- * Ajouter le token d'accès dans un cookie HttpOnly
- * @param res - Response Express
- * @param token - Token JWT du Core API
- */
+/** Stores the access JWT in the HttpOnly `accessToken` cookie. */
 export function setTokenCookie(res: Response, token: string): void {
-    res.cookie('accessToken', token, {
-        ...accessTokenCookieOptions(),
-        maxAge: 24 * 60 * 60 * 1000
+    res.cookie(ACCESS_TOKEN_COOKIE, token, {
+        ...sessionCookieOptions('/'),
+        maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+    });
+}
+
+/** Stores the Core refresh token in the HttpOnly `refreshToken` cookie, only sent to `/auth/*`. */
+export function setRefreshTokenCookie(res: Response, refreshToken: string): void {
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
+        ...sessionCookieOptions(REFRESH_TOKEN_COOKIE_PATH),
+        maxAge: REFRESH_TOKEN_MAX_AGE_MS,
     });
 }
 
 /**
- * Transmet le JWT d'accès retourné par le Core et le stocke sans le préfixe
- * `Bearer` dans le cookie HttpOnly.
+ * Stores the access JWT returned by Core (`Authorization: Bearer <jwt>`) in the HttpOnly cookie only:
+ * the token is never copied to a channel readable by the browser's JavaScript (response header or body).
  */
 export function transmitAccessToken(res: Response, authorizationHeader: string | undefined): boolean {
     const token = extractTokenFromHeader(authorizationHeader);
@@ -35,34 +48,34 @@ export function transmitAccessToken(res: Response, authorizationHeader: string |
     }
 
     setTokenCookie(res, token);
-    res.setHeader('Authorization', `Bearer ${token}`);
-    res.setHeader('Access-Control-Expose-Headers', 'Authorization');
     return true;
 }
 
-/**
- * Supprimer le token d'accès du cookie
- * @param res - Response Express
- */
+/** Clears the access-token cookie. */
 export function clearTokenCookie(res: Response): void {
-    res.clearCookie('accessToken', accessTokenCookieOptions());
+    res.clearCookie(ACCESS_TOKEN_COOKIE, sessionCookieOptions('/'));
+}
+
+/** Clears the refresh-token cookie. */
+export function clearRefreshTokenCookie(res: Response): void {
+    res.clearCookie(REFRESH_TOKEN_COOKIE, sessionCookieOptions(REFRESH_TOKEN_COOKIE_PATH));
+}
+
+/** Value of a cookie parsed by `cookie-parser`, if it is a non-empty string. */
+export function readCookie(req: Request, name: string): string | undefined {
+    const value: unknown = (req as Request & { cookies?: Record<string, unknown> }).cookies?.[name];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 /**
- * Extraire le token du header Authorization
- * @param authHeader - Header Authorization
- * @returns Token ou null
+ * Extracts the token of a `Bearer <token>` Authorization header (scheme case-insensitive).
+ * @returns the token, or null for a missing header or any other scheme
  */
 export function extractTokenFromHeader(authHeader: string | undefined): string | null {
     if (!authHeader) {
         return null;
     }
 
-    // Format: "Bearer <token>"
-    const parts = authHeader.split(' ');
-    if (parts.length !== 2 || parts[0] !== 'Bearer') {
-        return null;
-    }
-
-    return parts[1];
+    const match = /^Bearer ([^\s]+)$/i.exec(authHeader.trim());
+    return match ? match[1] : null;
 }
