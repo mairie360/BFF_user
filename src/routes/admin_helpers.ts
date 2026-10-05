@@ -1,23 +1,7 @@
-import { authorization, baseUrl, HttpError } from '@mairie360/bffs-lib';
-import type { AxiosRequestConfig, AxiosResponse } from 'axios';
-import type { Request, Response } from 'express';
+import { HttpError } from '@mairie360/bffs-lib';
+import type { AxiosResponse } from 'axios';
+import type { Response } from 'express';
 import type { z } from 'zod';
-
-/**
- * Options of a Core API call on behalf of the caller: the `Authorization: Bearer <jwt>` header of the
- * request, forwarded as is. Throws a 401 before any upstream call when the request carries no Bearer
- * token (cookies and other headers are ignored: the fronts' proxy turns the `accessToken` cookie into
- * this header). Core API's URL is read now (`CORE_API_URL`): 503 when it is missing, after the 401.
- */
-export function coreRequestOptions(req: Request): AxiosRequestConfig {
-    const Authorization = authorization(req);
-    return { baseURL: baseUrl('CORE_API'), headers: { Authorization } };
-}
-
-/** Core API's URL as call options, read now (503 when missing): anonymous calls (sign-in, refresh) or with a session already read. */
-export function coreUrlOptions(): AxiosRequestConfig {
-    return { baseURL: baseUrl('CORE_API') };
-}
 
 /**
  * Keeps only the fields declared by the BFF contract: anything Core API adds to its answer is dropped
@@ -26,7 +10,7 @@ export function coreUrlOptions(): AxiosRequestConfig {
 export function whitelist<T>(schema: z.ZodType<T>, data: unknown): T {
     const parsed = schema.safeParse(data);
     if (!parsed.success) {
-        throw new HttpError(502, 'Core API returned an unexpected response');
+        throw new HttpError(502, 'The CORE_API answer is invalid.');
     }
     return parsed.data;
 }
@@ -49,9 +33,4 @@ function toJsonBody(data: unknown): unknown {
     // Core sometimes answers a text body (e.g. "Forbidden: User is not an admin."): it is wrapped in JSON
     // to keep a consistent Content-Type on the BFF side.
     return typeof data === 'string' ? { message: data } : data;
-}
-
-export function parsePositiveInteger(value: string): number | null {
-    const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }

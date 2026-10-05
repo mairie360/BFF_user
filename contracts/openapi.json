@@ -298,16 +298,22 @@
           "userId"
         ]
       },
-      "CheckApiResponse": {
+      "CheckApisResponse": {
         "type": "object",
         "properties": {
           "status": {
             "type": "string",
-            "example": "OK"
+            "enum": [
+              "OK",
+              "Error"
+            ]
           },
           "core_api": {
             "type": "string",
-            "example": "Connected"
+            "enum": [
+              "Connected",
+              "Unreachable"
+            ]
           }
         },
         "required": [
@@ -1024,24 +1030,24 @@
         "tags": [
           "Connectivity"
         ],
-        "summary": "Vérifie la connexion avec l'API Core (Rust)",
+        "summary": "Checks that Core API is reachable",
         "responses": {
           "200": {
-            "description": "Connexion réussie",
+            "description": "Core API is reachable",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CheckApiResponse"
+                  "$ref": "#/components/schemas/CheckApisResponse"
                 }
               }
             }
           },
           "502": {
-            "description": "API Core injoignable",
+            "description": "Core API is unreachable or CORE_API_URL is not set",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CheckApiResponse"
+                  "$ref": "#/components/schemas/CheckApisResponse"
                 }
               }
             }

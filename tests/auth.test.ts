@@ -125,7 +125,7 @@ describe('POST /auth/login', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error.code).toBe('BAD_REQUEST');
-        expect(response.body.error.message).toBe('Invalid login payload');
+        expect(response.body.error.message).toBe('Validation failed');
         expect(response.body.error.details.map((detail: { path: string }) => detail.path).sort()).toEqual(['body.email', 'body.password']);
         expect(mockedLoginUser).not.toHaveBeenCalled();
     });
@@ -155,7 +155,7 @@ describe('POST /auth/force_change_password', () => {
             .send({ token: '' });
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid password-change payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
     });
 
@@ -245,7 +245,7 @@ describe('POST /auth/refresh', () => {
         const response = await request(app).post('/auth/refresh').send(body);
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid refresh payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(mockedRefreshSession).not.toHaveBeenCalled();
     });
 });
@@ -257,6 +257,7 @@ describe('POST /auth/logout', () => {
         jest.clearAllMocks();
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         mockedRevokeSession.mockResolvedValue();
+        process.env.CORE_API_URL = 'http://core.test';
     });
 
     afterEach(() => {
@@ -271,7 +272,9 @@ describe('POST /auth/logout', () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
-        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, 'Bearer header.payload.signature');
+        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, {
+            baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: 'Bearer header.payload.signature' },
+        });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
     });
 
@@ -286,6 +289,20 @@ describe('POST /auth/logout', () => {
         expect(response.body.session_revoked).toBe(false);
         expect(mockedRevokeSession).not.toHaveBeenCalled();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+    });
+
+    it('still clears the cookies, without revoking, when CORE_API_URL is not set', async () => {
+        delete process.env.CORE_API_URL;
+
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature')
+            .send({ refresh_token: REFRESH_TOKEN });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        expect(mockedRevokeSession).not.toHaveBeenCalled();
     });
 
     it('marks every /auth answer as not cacheable', async () => {
@@ -445,15 +462,70 @@ describe('authentication rate limiting', () => {
         }
     });
 
-    it('keys the per-IP and per-account limits on the client IP when TRUST_PROXY is set', async () => {
-        const target = limitedApp({ accountMax: 2, ipMax: 2 });
+    it('keys the per-IP limit on the client IP when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 100, ipMax: 2 });
 
         await failedLogin(target, 'alice@example.com', '203.0.113.1');
         await failedLogin(target, 'bob@example.com', '203.0.113.1');
 
-        // The first client is blocked, another client is not, even for the same account.
+        // The first client is blocked, another client is not.
         expect((await failedLogin(target, 'carol@example.com', '203.0.113.1')).status).toBe(429);
         expect((await failedLogin(target, 'alice@example.com', '198.51.100.7')).status).toBe(400);
+    });
+
+    it('limits the failed logins of one e-mail across client IPs when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 2, ipMax: 100 });
+
+        await failedLogin(target, 'alice@example.com', '203.0.113.1');
+        await failedLogin(target, 'alice@example.com', '198.51.100.7');
+
+        expect((await failedLogin(target, 'Alice@example.com', '192.0.2.44')).status).toBe(429);
+        expect((await failedLogin(target, 'bob@example.com', '192.0.2.44')).status).toBe(400);
+    });
+
+    it('limits the failed refreshes of one refresh token across client IPs when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 2, ipMax: 100 });
+
+        expect((await failedRefresh(target, 'stolen-token', '203.0.113.1')).status).toBe(401);
+        expect((await failedRefresh(target, 'stolen-token', '198.51.100.7')).status).toBe(401);
+
+        expect((await failedRefresh(target, 'stolen-token', '192.0.2.44')).status).toBe(429);
+        expect((await failedRefresh(target, 'other-token', '192.0.2.44')).status).toBe(401);
+    });
+
+    describe('with no proxy information at all (Express trusts no proxy, no X-Forwarded-For)', () => {
+        const directApp = () => {
+            const direct = express();
+            direct.use(express.json());
+            direct.use('/auth', createAuthRouter(createAuthRateLimiters({
+                enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 1, perClientIp: false,
+            })));
+            direct.use(errorHandler({ onError: () => undefined }));
+            return direct;
+        };
+
+        it('still limits the failed logins of one e-mail', async () => {
+            const target = directApp();
+            const attempt = (email: string) => request(target).post('/auth/login').send({ email, device_info: 'test' });
+
+            await attempt('alice@example.com');
+            await attempt('alice@example.com');
+
+            expect((await attempt('alice@example.com')).status).toBe(429);
+            expect((await attempt('bob@example.com')).status).toBe(400);
+        });
+
+        it('still limits the failed refreshes of one refresh token', async () => {
+            const target = directApp();
+            mockedRefreshSession.mockRejectedValue(coreError(401, 'Session not found'));
+            const attempt = (token: string) => request(target).post('/auth/refresh').send({ refresh_token: token });
+
+            await attempt('stolen-token');
+            await attempt('stolen-token');
+
+            expect((await attempt('stolen-token')).status).toBe(429);
+            expect((await attempt('other-token')).status).toBe(401);
+        });
     });
 
     describe('with TRUST_PROXY but no X-Forwarded-For (a front calling server side, e.g. the Login pod)', () => {
@@ -601,7 +673,7 @@ describe('POST /auth/keycloak', () => {
         const response = await request(app).post('/auth/keycloak').send(body);
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid Keycloak login payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(mockedKeycloakLogin).not.toHaveBeenCalled();
     });
 
@@ -715,7 +787,7 @@ describe('POST /auth/logout', () => {
         const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'not a url' });
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid logout payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 

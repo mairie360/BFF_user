@@ -1,5 +1,15 @@
 import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
-import { bearerToken, HttpError, INVALID_SESSION_MESSAGE, noStore } from '@mairie360/bffs-lib';
+import {
+    asCaller,
+    bearerToken,
+    callUpstream,
+    HttpError,
+    INVALID_SESSION_MESSAGE,
+    noStore,
+    parseRequest,
+    upstreamError,
+    validationError,
+} from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -11,17 +21,11 @@ import {
     coreSessionsClient,
     coreUsersClient,
 } from '../clients/coreClient';
-import {
-    coreRequestOptions,
-    forwardCoreResponse,
-    parsePositiveInteger,
-    whitelist,
-} from './admin_helpers';
-import { coreError, invalidInput, invalidParameter } from '../utils/httpErrors';
+import { forwardCoreResponse, whitelist } from './admin_helpers';
 
 const router = Router();
 
-// Un groupe de la mairie ne dépasse pas la page maximale de Core API (500).
+// A town hall group never exceeds Core API's largest page (500).
 const MAX_GROUP_MEMBERS = 500;
 
 const UserIdParams = z.object({ userId: z.coerce.number().int().positive() }).openapi('AdminUserIdParams');
@@ -246,15 +250,6 @@ const coreWriteResponses = {
 const READ_STATUSES = [400, 401, 403, 404] as const;
 const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
 
-// Throws a 400 listing the invalid fields when the body does not match the schema.
-function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
-    const payload = schema.safeParse(req.body);
-    if (!payload.success) {
-        throw invalidInput('Invalid request body', payload.error, 'body');
-    }
-    return payload.data;
-}
-
 // Throws 401 (no or invalid session), 503 (JWT_SECRET or CORE_API_URL missing) or 403 (not an administrator).
 async function requireAdmin(req: Request): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
@@ -305,13 +300,9 @@ async function requireAdmin(req: Request): Promise<void> {
         throw new HttpError(401, 'Invalid or expired session token');
     }
 
-    let role: string | undefined;
-    try {
-        // The role comes from Core API (GET /api/v1/user/me/), the authority on roles.
-        ({ data: { role } } = await coreUsersClient.getMe(coreRequestOptions(req)));
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    // The role comes from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
+    const caller = asCaller('CORE_API', req);
+    const { data: { role } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
     if (role?.trim().toLowerCase() !== 'admin') {
         throw new HttpError(403, 'Administrator role required');
@@ -338,22 +329,12 @@ registry.registerPath({
 });
 
 router.get('/users', async (req: Request, res: Response) => {
-    const query = UserListQuery.safeParse(req.query);
-    if (!query.success) {
-        throw invalidInput('Invalid pagination parameters', query.error, 'query');
-    }
+    const query = parseRequest(UserListQuery, req.query, 'query');
+    const caller = asCaller('CORE_API', req);
+    const params = { page: query.page, page_size: query.page_size, ...(query.search ? { search: query.search } : {}) };
 
-
-    try {
-        const response = await coreAdminUsersClient.adminListUsers({
-            page: query.data.page,
-            page_size: query.data.page_size,
-            ...(query.data.search ? { search: query.data.search } : {}),
-        }, coreRequestOptions(req));
-        return res.status(200).json(whitelist(AdministrationUsersPageSchema, response.data));
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminListUsers(params, caller), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationUsersPageSchema, response.data));
 });
 
 registry.registerPath({
@@ -366,13 +347,13 @@ registry.registerPath({
 });
 
 router.post('/users', async (req: Request, res: Response) => {
-    const body = parseBody(UserCreateBody, req);
+    const body = parseRequest(UserCreateBody, req.body, 'body');
 
     try {
-        const response = await coreAdminUsersClient.adminPostUser(body, coreRequestOptions(req));
+        const response = await coreAdminUsersClient.adminPostUser(body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -386,18 +367,15 @@ registry.registerPath({
 });
 
 router.patch('/users/:userId', async (req: Request, res: Response) => {
-    const userId = parsePositiveInteger(req.params.userId);
-    if (!userId) {
-        throw invalidParameter('params', 'userId');
-    }
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
 
-    const body = parseBody(UserPatchBody, req);
+    const body = parseRequest(UserPatchBody, req.body, 'body');
 
     try {
-        const response = await coreAdminUsersClient.adminPatchUser(userId, body, coreRequestOptions(req));
+        const response = await coreAdminUsersClient.adminPatchUser(userId, body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -417,28 +395,21 @@ registry.registerPath({
 });
 
 router.patch('/users/:userId/password', async (req: Request, res: Response) => {
-    const userId = parsePositiveInteger(req.params.userId);
-    if (!userId) {
-        throw invalidParameter('params', 'userId');
-    }
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
 
-    const payload = UserPasswordResetBody.safeParse(req.body);
-    if (!payload.success) {
-        throw invalidInput('The password must contain between 8 and 255 characters', payload.error, 'body');
-    }
-
+    const payload = parseRequest(UserPasswordResetBody, req.body, 'body');
 
     try {
-        // Core réinitialise le mot de passe, lève la première connexion et révoque les sessions actives.
+        // Core resets the password, clears the first sign-in flag and revokes the active sessions.
         await coreAdminUsersClient.adminResetUserPassword(
             userId,
-            { new_password: payload.data.new_password },
-            coreRequestOptions(req),
+            { new_password: payload.new_password },
+            asCaller('CORE_API', req),
         );
 
         return res.status(204).send();
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -452,20 +423,16 @@ registry.registerPath({
 });
 
 router.delete('/users/:userId', async (req: Request, res: Response) => {
-    const userId = parsePositiveInteger(req.params.userId);
-    if (!userId) {
-        throw invalidParameter('params', 'userId');
-    }
-
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
 
     try {
         const response = await coreAdminUsersClient.adminDeleteUser(
             userId,
-            coreRequestOptions(req),
+            asCaller('CORE_API', req),
         );
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -479,26 +446,23 @@ registry.registerPath({
 });
 
 router.post('/users/:userId/roles', async (req: Request, res: Response) => {
-    const userId = parsePositiveInteger(req.params.userId);
-    if (!userId) {
-        throw invalidParameter('params', 'userId');
-    }
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
 
-    const body = parseBody(UserRoleBody, req);
+    const body = parseRequest(UserRoleBody, req.body, 'body');
     // Core trusts the user_id of the body, not the one of its path: it must name the path user.
     if (body.user_id !== undefined && body.user_id !== userId) {
-        throw invalidParameter('body', 'user_id');
+        throw validationError('body', [{ path: ['user_id'], message: 'Must match the path userId' }]);
     }
 
     try {
         const response = await coreAdminUsersClient.adminAddRoleToUser(
             userId,
             { role_id: body.role_id, user_id: userId },
-            coreRequestOptions(req),
+            asCaller('CORE_API', req),
         );
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -512,20 +476,13 @@ registry.registerPath({
 });
 
 router.delete('/users/:userId/roles/:roleId', async (req: Request, res: Response) => {
-    const userId = parsePositiveInteger(req.params.userId);
-    const roleId = parsePositiveInteger(req.params.roleId);
-    if (!userId) {
-        throw invalidParameter('params', 'userId');
-    }
-    if (!roleId) {
-        throw invalidParameter('params', 'roleId');
-    }
+    const { userId, roleId } = parseRequest(UserRoleParams, req.params, 'params');
 
     try {
-        const response = await coreAdminUsersClient.adminDeleteUserRole(userId, roleId, coreRequestOptions(req));
+        const response = await coreAdminUsersClient.adminDeleteUserRole(userId, roleId, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -538,12 +495,8 @@ registry.registerPath({
 });
 
 router.get('/roles', async (req: Request, res: Response) => {
-    try {
-        const response = await coreAdminRolesClient.adminGetRole(coreRequestOptions(req));
-        return forwardCoreResponse(res, response, RolesListSchema);
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    const response = await callUpstream('CORE_API', () => coreAdminRolesClient.adminGetRole(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, RolesListSchema);
 });
 
 registry.registerPath({
@@ -556,13 +509,13 @@ registry.registerPath({
 });
 
 router.post('/roles', async (req: Request, res: Response) => {
-    const body = parseBody(RoleWriteBody, req);
+    const body = parseRequest(RoleWriteBody, req.body, 'body');
 
     try {
-        const response = await coreAdminRolesClient.adminPostRole(body, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminPostRole(body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -576,18 +529,15 @@ registry.registerPath({
 });
 
 router.put('/roles/:roleId', async (req: Request, res: Response) => {
-    const roleId = parsePositiveInteger(req.params.roleId);
-    if (!roleId) {
-        throw invalidParameter('params', 'roleId');
-    }
+    const { roleId } = parseRequest(RoleIdParams, req.params, 'params');
 
-    const body = parseBody(RoleReplaceBody, req);
+    const body = parseRequest(RoleReplaceBody, req.body, 'body');
 
     try {
-        const response = await coreAdminRolesClient.adminPutRole(roleId, body, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminPutRole(roleId, body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -601,18 +551,15 @@ registry.registerPath({
 });
 
 router.patch('/roles/:roleId', async (req: Request, res: Response) => {
-    const roleId = parsePositiveInteger(req.params.roleId);
-    if (!roleId) {
-        throw invalidParameter('params', 'roleId');
-    }
+    const { roleId } = parseRequest(RoleIdParams, req.params, 'params');
 
-    const body = parseBody(RolePatchBody, req);
+    const body = parseRequest(RolePatchBody, req.body, 'body');
 
     try {
-        const response = await coreAdminRolesClient.adminPatchRole(roleId, body, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminPatchRole(roleId, body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -626,16 +573,13 @@ registry.registerPath({
 });
 
 router.delete('/roles/:roleId', async (req: Request, res: Response) => {
-    const roleId = parsePositiveInteger(req.params.roleId);
-    if (!roleId) {
-        throw invalidParameter('params', 'roleId');
-    }
+    const { roleId } = parseRequest(RoleIdParams, req.params, 'params');
 
     try {
-        const response = await coreAdminRolesClient.adminDeleteRole(roleId, coreRequestOptions(req));
+        const response = await coreAdminRolesClient.adminDeleteRole(roleId, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -648,12 +592,8 @@ registry.registerPath({
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
-    try {
-        const response = await coreGroupsClient.getGroups(coreRequestOptions(req));
-        return forwardCoreResponse(res, response, GroupsListSchema);
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, GroupsListSchema);
 });
 
 registry.registerPath({
@@ -666,13 +606,13 @@ registry.registerPath({
 });
 
 router.post('/groups', async (req: Request, res: Response) => {
-    const body = parseBody(GroupCreateBody, req);
+    const body = parseRequest(GroupCreateBody, req.body, 'body');
 
     try {
-        const response = await coreGroupsClient.postGroup(body, coreRequestOptions(req));
+        const response = await coreGroupsClient.postGroup(body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -686,17 +626,10 @@ registry.registerPath({
 });
 
 router.get('/groups/:groupId', async (req: Request, res: Response) => {
-    const groupId = parsePositiveInteger(req.params.groupId);
-    if (!groupId) {
-        throw invalidParameter('params', 'groupId');
-    }
+    const { groupId } = parseRequest(GroupIdParams, req.params, 'params');
 
-    try {
-        const response = await coreGroupsClient.getGroup(groupId, coreRequestOptions(req));
-        return forwardCoreResponse(res, response, GroupDetailSchema);
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroup(groupId, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, GroupDetailSchema);
 });
 
 registry.registerPath({
@@ -715,21 +648,15 @@ registry.registerPath({
 });
 
 router.patch('/groups/:groupId', async (req: Request, res: Response) => {
-    const groupId = parsePositiveInteger(req.params.groupId);
-    if (!groupId) {
-        throw invalidParameter('params', 'groupId');
-    }
+    const { groupId } = parseRequest(GroupIdParams, req.params, 'params');
 
-    const payload = GroupPatchBody.safeParse(req.body);
-    if (!payload.success) {
-        throw invalidInput('Invalid group data', payload.error, 'body');
-    }
+    const payload = parseRequest(GroupPatchBody, req.body, 'body');
 
     try {
-        const response = await coreGroupsClient.patchGroup(groupId, payload.data, coreRequestOptions(req));
+        const response = await coreGroupsClient.patchGroup(groupId, payload, asCaller('CORE_API', req));
         return res.status(200).json({ group: response.data });
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -743,16 +670,13 @@ registry.registerPath({
 });
 
 router.delete('/groups/:groupId', async (req: Request, res: Response) => {
-    const groupId = parsePositiveInteger(req.params.groupId);
-    if (!groupId) {
-        throw invalidParameter('params', 'groupId');
-    }
+    const { groupId } = parseRequest(GroupIdParams, req.params, 'params');
 
     try {
-        const response = await coreGroupsClient.deleteGroup(groupId, coreRequestOptions(req));
+        const response = await coreGroupsClient.deleteGroup(groupId, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -766,22 +690,16 @@ registry.registerPath({
 });
 
 router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
-    const groupId = parsePositiveInteger(req.params.groupId);
-    if (!groupId) {
-        throw invalidParameter('params', 'groupId');
-    }
+    const { groupId } = parseRequest(GroupIdParams, req.params, 'params');
+    const caller = asCaller('CORE_API', req);
 
-
-    try {
-        // La liste d'administration filtrée par groupe porte les mêmes champs que la liste globale.
-        const response = await coreAdminUsersClient.adminListUsers(
-            { group_id: groupId, page_size: MAX_GROUP_MEMBERS },
-            coreRequestOptions(req),
-        );
-        return res.status(200).json(whitelist(GroupMembersSchema, { users: response.data.users }));
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    // The administration list filtered by group carries the same fields as the global list.
+    const response = await callUpstream(
+        'CORE_API',
+        () => coreAdminUsersClient.adminListUsers({ group_id: groupId, page_size: MAX_GROUP_MEMBERS }, caller),
+        { declared: READ_STATUSES, retry: true },
+    );
+    return res.status(200).json(whitelist(GroupMembersSchema, { users: response.data.users }));
 });
 
 registry.registerPath({
@@ -794,28 +712,25 @@ registry.registerPath({
 });
 
 router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
-    const groupId = parsePositiveInteger(req.params.groupId);
-    if (!groupId) {
-        throw invalidParameter('params', 'groupId');
-    }
+    const { groupId } = parseRequest(GroupIdParams, req.params, 'params');
 
-    const body = parseBody(GroupUserBody, req);
+    const body = parseRequest(GroupUserBody, req.body, 'body');
     if (body.group_id !== undefined && body.group_id !== groupId) {
-        throw invalidParameter('body', 'group_id');
+        throw validationError('body', [{ path: ['group_id'], message: 'Must match the path groupId' }]);
     }
     const userId = body.user_id;
 
     try {
-        // Core ne distingue pas l'ajout d'un doublon : l'appartenance est lue avant d'ajouter.
-        const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
+        // Core does not tell a duplicate addition apart: the membership is read before adding.
+        const members = await coreGroupsClient.getGroupUsers(groupId, asCaller('CORE_API', req));
         if (members.data.users.includes(userId)) {
             return res.status(200).json({ created: false });
         }
 
-        await coreGroupsClient.addUserToGroup(groupId, { group_id: groupId, user_id: userId }, coreRequestOptions(req));
+        await coreGroupsClient.addUserToGroup(groupId, { group_id: groupId, user_id: userId }, asCaller('CORE_API', req));
         return res.status(201).json({ created: true });
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -829,26 +744,18 @@ registry.registerPath({
 });
 
 router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Response) => {
-    const groupId = parsePositiveInteger(req.params.groupId);
-    const userId = parsePositiveInteger(req.params.userId);
-    if (!groupId) {
-        throw invalidParameter('params', 'groupId');
-    }
-    if (!userId) {
-        throw invalidParameter('params', 'userId');
-    }
-
+    const { groupId, userId } = parseRequest(GroupUserParams, req.params, 'params');
 
     try {
-        const members = await coreGroupsClient.getGroupUsers(groupId, coreRequestOptions(req));
+        const members = await coreGroupsClient.getGroupUsers(groupId, asCaller('CORE_API', req));
         if (!members.data.users.includes(userId)) {
             throw new HttpError(404, 'Unknown group member');
         }
 
-        await coreGroupsClient.removeUserFromGroup(groupId, userId, coreRequestOptions(req));
+        await coreGroupsClient.removeUserFromGroup(groupId, userId, asCaller('CORE_API', req));
         return res.status(204).send();
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
@@ -861,12 +768,8 @@ registry.registerPath({
 });
 
 router.get('/sessions', async (req: Request, res: Response) => {
-    try {
-        const response = await coreSessionsClient.getActiveSessions(coreRequestOptions(req));
-        return forwardCoreResponse(res, response, SessionsListSchema);
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    const response = await callUpstream('CORE_API', () => coreSessionsClient.getActiveSessions(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, SessionsListSchema);
 });
 
 registry.registerPath({
@@ -878,12 +781,8 @@ registry.registerPath({
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {
-    try {
-        const response = await coreSessionsClient.history(coreRequestOptions(req));
-        return forwardCoreResponse(res, response, SessionsListSchema);
-    } catch (error) {
-        throw coreError(error, READ_STATUSES);
-    }
+    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, SessionsListSchema);
 });
 
 registry.registerPath({
@@ -898,13 +797,13 @@ registry.registerPath({
 });
 
 router.post('/sessions/revoke', async (req: Request, res: Response) => {
-    const body = parseBody(SessionRevokeBody, req);
+    const body = parseRequest(SessionRevokeBody, req.body, 'body');
 
     try {
-        const response = await coreSessionsClient.revoke(body, coreRequestOptions(req));
+        const response = await coreSessionsClient.revoke(body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
     } catch (error) {
-        throw coreError(error, WRITE_STATUSES);
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
 });
 
