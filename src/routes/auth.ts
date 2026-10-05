@@ -399,7 +399,8 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             if (token !== undefined) {
                 return res.status(412).json({ token });
             }
-            throw upstreamError('CORE_API', error, [400, 401]);
+            // Core API rate-limits sign-ins too (MAIR-425): its 429 is relayed, like the BFF's own limiter.
+            throw upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 
@@ -425,7 +426,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             await forceChangeUserPassword(body);
             return res.status(204).send();
         } catch (error) {
-            throw upstreamError('CORE_API', error, [400, 401, 403]);
+            throw upstreamError('CORE_API', error, [400, 401, 403, 429]);
         }
     });
 
@@ -448,7 +449,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
             return res.status(200).json({ message: 'JWT refreshed successfully' });
         } catch (error) {
-            throw upstreamError('CORE_API', error, [400, 401]);
+            throw upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 

@@ -129,6 +129,20 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
+    test.each([
+      ['/auth/login', () => CORE.login],
+      ['/auth/refresh', () => CORE.sessionsRefresh],
+    ])('relays a Core 429 on %s instead of a 502', async (path, route) => {
+      coreApi.on('post', route(), coreError(429, 'Too many sign-in attempts'));
+
+      const body = path === '/auth/login' ? credentials : { refresh_token: 'refresh-token' };
+      const response = await request(app).post(path).send(body);
+
+      expect(response.status).toBe(429);
+      expectBffContract('post', path, response);
+      expect(response.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests', details: [] } });
+    });
+
     test('relays the first-connection 412 with its one-time token and sets no cookie', async () => {
       coreApi.on('post', CORE.login, { status: 412, body: { token: FIRST_CONNECTION_TOKEN }, outOfContract: true });
 
