@@ -2,7 +2,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import { CheckApiResponse, CheckApiResponseSchema } from '../views/check_api_view';
 import { registry } from '../openapi-registry';
-import { getCoreApiBaseUrl } from '../clients/coreClient';
+import { baseUrl } from '@mairie360/bffs-lib';
 
 const router = Router();
 
@@ -35,8 +35,8 @@ registry.registerPath({
 
 router.get('/', async (_, res) => {
   try {
-    // Même URL que le client Core (CORE_API_URL + CORE_API_PORT), relue à chaque vérification.
-    await axios.get(`${getCoreApiBaseUrl()}/health`, { timeout: 5000 });
+    // Same URL as the Core client (CORE_API_URL + CORE_API_PORT), read on every check: a missing one is Unreachable.
+    await axios.get(`${baseUrl('CORE_API')}/health`, { timeout: 5000 });
 
     const result: CheckApiResponse = {
       status: 'OK',
@@ -45,7 +45,7 @@ router.get('/', async (_, res) => {
 
     res.status(200).json(result);
   } catch (error) {
-    // Le détail (hôte, port, code réseau) reste dans les logs : il ne doit pas fuiter vers le client.
+    // The detail (host, port, network code) stays in the logs: it must not leak to the client.
     console.error('[BFF] Core API health check failed:', error instanceof Error ? error.message : error);
     const result: CheckApiResponse = {
       status: 'Error',

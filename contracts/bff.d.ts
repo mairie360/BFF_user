@@ -171,8 +171,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Core API indisponible ou réponse amont invalide */
+                /** @description Core API unavailable or invalid upstream answer */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -268,8 +277,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Core API indisponible ou réponse amont invalide */
+                /** @description Core API unavailable or invalid upstream answer */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -362,6 +380,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable or invalid upstream answer */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -520,7 +547,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Keycloak sign-in is not configured on this instance; use POST /auth/login instead. */
+                /** @description Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set. */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -607,6 +634,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable or invalid upstream answer */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -706,7 +742,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -717,6 +753,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -811,7 +856,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -822,6 +867,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -929,7 +983,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -940,6 +994,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1037,7 +1100,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1048,6 +1111,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1158,7 +1230,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1169,6 +1241,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1275,7 +1356,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1286,6 +1367,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1394,7 +1484,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1405,6 +1495,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1499,7 +1598,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1510,6 +1609,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1604,7 +1712,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1615,6 +1723,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1724,7 +1841,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1735,6 +1852,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1827,7 +1953,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1838,6 +1964,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1935,7 +2070,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -1946,6 +2081,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2037,7 +2181,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2048,6 +2192,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2142,7 +2295,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2153,6 +2306,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2250,7 +2412,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2261,6 +2423,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2354,7 +2525,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2365,6 +2536,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2462,7 +2642,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2473,6 +2653,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2566,7 +2755,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2577,6 +2766,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2673,7 +2871,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2684,6 +2882,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2792,7 +2999,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2803,6 +3010,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2897,7 +3113,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -2908,6 +3124,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3005,7 +3230,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -3016,6 +3241,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3129,7 +3363,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Server error (misconfiguration or unexpected error); the cause is only logged */
+                /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -3140,6 +3374,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered an undeclared error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3198,6 +3441,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
             };
         };
         put?: never;
@@ -3244,6 +3496,15 @@ export interface paths {
                 };
                 /** @description Core API unavailable, failed or answered another error */
                 502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };

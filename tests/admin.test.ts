@@ -70,6 +70,11 @@ describe('Administration routes', () => {
     });
 
     beforeEach(() => {
+        // Read on every call (MAIR-431): no localhost default, no URL frozen at import.
+        process.env.CORE_API_URL = 'http://core.test';
+    });
+
+    beforeEach(() => {
         jest.clearAllMocks();
         mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Admin' })));
     });
@@ -121,6 +126,7 @@ describe('Administration routes', () => {
 
         expect(response.status).toBe(204);
         expect(mockedDeleteUser).toHaveBeenCalledWith(42, {
+            baseURL: 'http://core.test',
             headers: { Authorization: `Bearer ${token}` },
         });
     });
@@ -170,21 +176,42 @@ describe('Administration routes', () => {
         expect(refused.headers['cache-control']).toBe('no-store');
     });
 
-    it('answers 500 without calling Core API when JWT_SECRET is not configured', async () => {
+    it('answers 503 without calling Core API when JWT_SECRET is not configured', async () => {
         const token = tokenFor(1);
         const secret = process.env.JWT_SECRET;
         delete process.env.JWT_SECRET;
         try {
             const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${token}`);
 
-            expect(response.status).toBe(500);
-            expect(response.body.error.code).toBe('INTERNAL_ERROR');
-            // The cause is only logged server side, never sent to the client.
+            expect(response.status).toBe(503);
+            expect(response.body).toEqual({
+                error: { code: 'SERVICE_UNAVAILABLE', message: 'The administrator session check is not configured.', details: [] },
+            });
+            // The secret's name is not disclosed.
             expect(JSON.stringify(response.body)).not.toContain('JWT_SECRET');
             expect(mockedGetMe).not.toHaveBeenCalled();
         } finally {
             process.env.JWT_SECRET = secret;
         }
+    });
+
+    it('answers 503 without calling Core API when CORE_API_URL is not configured', async () => {
+        delete process.env.CORE_API_URL;
+
+        const response = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(503);
+        expect(response.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'The CORE_API service is not configured.', details: [] } });
+        expect(mockedGetMe).not.toHaveBeenCalled();
+        expect(mockedListUsers).not.toHaveBeenCalled();
+    });
+
+    it('answers 401 before 503 to a caller without session on a misconfigured instance', async () => {
+        delete process.env.CORE_API_URL;
+
+        const response = await request(app).get('/bff/admin/users');
+
+        expect(response.status).toBe(401);
     });
 
     it.each([
