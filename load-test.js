@@ -98,18 +98,20 @@ const handlers = {
     check(res, { 'login 200': (r) => r.status === 200 });
     state.refreshToken = ((res.cookies.refreshToken || [])[0] || {}).value;
   },
-  'POST /auth/register': ({ request }) => {
-    state.registeredEmail = `${unique('perf-register')}@perf.mairie360.fr`;
-    const res = request({
-      body: { email: state.registeredEmail, first_name: 'Perf', last_name: 'Register', password: USER_PASSWORD },
-    });
-    check(res, { 'register 201': (r) => r.status === 201 });
-  },
-  // The first sign-in of the user registered above answers 412 with the one-time token.
-  'POST /auth/force_change_password': ({ request }) => {
+  // Accounts created by an admin start with first_connect = true: their first sign-in answers 412
+  // with the one-time token. The account is created here (outside the coverage of
+  // POST /bff/admin/users, which runs later) and deleted by DELETE /bff/admin/users/{userId}.
+  'POST /auth/force_change_password': ({ request, data }) => {
+    state.firstConnectEmail = `${unique('perf-first-connect')}@perf.mairie360.fr`;
+    const created = http.post(
+      coverage.url('POST /bff/admin/users'),
+      JSON.stringify({ email: state.firstConnectEmail, first_name: 'Perf', last_name: 'FirstConnect', password: USER_PASSWORD }),
+      { headers: Object.assign({ 'Content-Type': 'application/json' }, data.admin), tags: { op: 'POST /bff/admin/users' } },
+    );
+    check(created, { 'first-connect user 201': (r) => r.status === 201 });
     const firstLogin = http.post(
       coverage.url('POST /auth/login'),
-      JSON.stringify({ email: need(state.registeredEmail, 'registered user'), password: USER_PASSWORD, device_info: 'k6' }),
+      JSON.stringify({ email: state.firstConnectEmail, password: USER_PASSWORD, device_info: 'k6' }),
       {
         headers: { 'Content-Type': 'application/json' },
         tags: { op: 'POST /auth/login' },
@@ -120,8 +122,30 @@ const handlers = {
     const res = request({ body: { token: need((json(firstLogin) || {}).token, 'one-time token'), new_password: `${USER_PASSWORD}-2` } });
     check(res, { 'force_change_password 204': (r) => r.status === 204 });
   },
+  // Refreshes a session of its own: Core rotates the refresh token, and the one of POST /auth/login
+  // must stay valid for /bff/admin/sessions/revoke.
+  'POST /auth/refresh': ({ request, data }) => {
+    const login = http.post(
+      coverage.url('POST /auth/login'),
+      JSON.stringify({ email: data.adminEmail, password: ADMIN_PASSWORD, device_info: 'k6-refresh' }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { op: 'POST /auth/login' } },
+    );
+    const refreshToken = ((login.cookies.refreshToken || [])[0] || {}).value;
+    const res = request({ body: { refresh_token: need(refreshToken, 'refresh token of the second login') } });
+    check(res, { 'refresh 200': (r) => r.status === 200 });
+  },
   'POST /auth/logout': ({ request }) =>
     check(request(), { 'logout 200': (r) => r.status === 200 }),
+  // The test stack has no Keycloak: the BFF answers its declared 503 without calling Core.
+  'POST /auth/keycloak': ({ request }) =>
+    check(
+      request({
+        // Contract examples: a well-formed sign-in that only fails because Keycloak is not configured.
+        body: { code: '7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83', redirect_uri: 'https://login.mairie360.fr/auth/callback', code_verifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk', nonce: 'n-0S6_WzA2Mj', device_info: 'Firefox 142 on Ubuntu 24.04' },
+        params: { responseCallback: http.expectedStatuses(503) },
+      }),
+      { 'keycloak 503 (not configured)': (r) => r.status === 503 },
+    ),
 
   // --- User ---
   'GET /user/{userId}/about': ({ request }) =>
@@ -146,10 +170,10 @@ const handlers = {
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { first_name: 'Patched' }, headers: data.admin }), {
       'patch user 200': (r) => r.status === 200,
     }),
-  // Deletes the user registered by POST /auth/register, the created one is still needed below.
+  // Deletes the first-connect user of POST /auth/force_change_password, the created one is still needed below.
   'DELETE /bff/admin/users/{userId}': ({ request, data }) => {
-    const userId = findUserId(need(state.registeredEmail, 'registered user'), data);
-    check(request({ path: { userId: need(userId, 'registered user id') }, headers: data.admin }), {
+    const userId = findUserId(need(state.firstConnectEmail, 'first-connect user'), data);
+    check(request({ path: { userId: need(userId, 'first-connect user id') }, headers: data.admin }), {
       'delete user 2xx': (r) => r.status === 200 || r.status === 204,
     });
   },

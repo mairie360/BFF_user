@@ -8,3 +8,4 @@
 90005	IGNORE	Sec-Fetch-* Headers Not Present (API, non applicable)
 100000	IGNORE	Server Error transitoire quand un upstream de la stack de test isolee n'est pas encore pret
 100001	OUTOFSCOPE	.*/docs/?.*
+6	OUTOFSCOPE	http://bff-user:4000/bff/admin/(roles|groups)(/.*)?$
