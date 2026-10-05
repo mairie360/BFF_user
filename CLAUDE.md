@@ -128,9 +128,13 @@ and the legacy `/me` resolve.
   role from Core `GET /api/v1/user/me/`. A missing `JWT_SECRET` is a plain `Error` (generic 500). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
-- **Everything else**: `bearerToken()` (`admin_helpers.ts`) pulls the credential from an
-  `Authorization: Bearer` header or the `accessToken` cookie only, and forwards it to Core as
-  `Bearer <jwt>`; `/me` and `/user/{userId}/about` answer 401 without one.
+- **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
+  header, read with `authorization()` / `requireBearer` / `bearerToken()` of `@mairie360/bffs-lib`
+  (the fronts' proxy builds it from the `accessToken` cookie). The `accessToken` cookie, `x-session-token`
+  and other schemes are ignored, also by `/auth/logout` and `requireAdmin`; the `refreshToken` cookie of
+  `/auth/refresh` and `/auth/logout` is a different credential and is kept. `/me`, `/session/me` and
+  `/user/*` answer 401 before any validation or Core call without one, and every `/auth`, `/me`,
+  `/session`, `/user` and `/bff/admin` answer carries `Cache-Control: no-store` (lib `noStore`).
   `/user/{userId}/about` only returns the public fields of its contract (no role/groups).
   Read routes (`/me`, admin GET lists) pass Core's answer through `whitelist(schema, data)`: only
   contract fields are returned, a non-matching answer is a 502. Never log tokens or Core URLs.
@@ -191,7 +195,7 @@ BFF response is checked against `contracts/openapi.json`.
 `security_test.sh` / `performance_test.sh` clone `mairie360/CICD` into `cicd-repo/` (gitignored) at
 the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `zap_hooks.py` with
 `--hook`: every operation of the served spec must be reached, and non-public ones with a
-non-401/403 answer. The spec declares `bearerAuth` + `cookieAuth` at the top level (`openapi.ts`);
+non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
 `contracts/openapi.json`: a new route without a handler makes k6 abort at init. Two scenarios: `crud`

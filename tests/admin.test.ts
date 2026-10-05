@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { errorHandler } from '@mairie360/bffs-lib';
 import { AxiosError, AxiosHeaders } from 'axios';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -54,6 +55,7 @@ function tokenFor(userId: number) {
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use('/bff/admin', adminRouter);
 app.use(errorHandler({ onError: () => undefined }));
 
@@ -136,7 +138,7 @@ describe('Administration routes', () => {
     });
 
     it.each([
-        ['no session', undefined, 'Invalid or missing session token'],
+        ['no session', undefined, 'Invalid session.'],
         ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token'],
     ])('answers 401 with %s before calling Core API', async (_label, authorization, message) => {
         const call = request(app).delete('/bff/admin/users/42');
@@ -145,6 +147,27 @@ describe('Administration routes', () => {
         expect(response.status).toBe(401);
         expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message, details: [] } });
         expect(mockedGetMe).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['the accessToken cookie', (call: request.Test) => call.set('Cookie', `accessToken=${tokenFor(1)}`)],
+        ['the x-session-token header', (call: request.Test) => call.set('x-session-token', tokenFor(1))],
+    ])('ignores a session sent in %s: 401 before calling Core API', async (_label, prepare) => {
+        const response = await prepare(request(app).get('/bff/admin/users'));
+
+        expect(response.status).toBe(401);
+        expect(mockedGetMe).not.toHaveBeenCalled();
+        expect(mockedListUsers).not.toHaveBeenCalled();
+    });
+
+    it('marks administration answers as not cacheable, errors included', async () => {
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser])));
+
+        const ok = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const refused = await request(app).get('/bff/admin/users');
+
+        expect(ok.headers['cache-control']).toBe('no-store');
+        expect(refused.headers['cache-control']).toBe('no-store');
     });
 
     it('answers 500 without calling Core API when JWT_SECRET is not configured', async () => {

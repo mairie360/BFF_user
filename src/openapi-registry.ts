@@ -7,19 +7,15 @@ extendZodWithOpenApi(z);
 
 export const registry = new OpenAPIRegistry();
 
-// Credentials accepted by `bearerToken()` (admin_helpers.ts) and forwarded to Core API. The
-// document requires one of them on every operation (`openapi.ts`); public operations opt out with
-// `security: []`. The ZAP OpenAPI coverage gate reads this to tell which operations must be
+// The only credential accepted (`authorization()` / `bearerToken()` of `@mairie360/bffs-lib`) and forwarded
+// to Core API: an `Authorization: Bearer <jwt>` header, which the fronts' proxy builds from the
+// `accessToken` cookie. The document requires it on every operation (`openapi.ts`); public operations
+// opt out with `security: []`. The ZAP OpenAPI coverage gate reads this to tell which operations must be
 // reached authenticated.
 export const bearerAuth = registry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
     scheme: 'bearer',
     bearerFormat: 'JWT',
-});
-export const cookieAuth = registry.registerComponent('securitySchemes', 'cookieAuth', {
-    type: 'apiKey',
-    in: 'cookie',
-    name: 'accessToken',
 });
 
 // Body of every error answer, shared by every BFF (`@mairie360/bffs-lib`): `{ error: { code, message, details } }`.

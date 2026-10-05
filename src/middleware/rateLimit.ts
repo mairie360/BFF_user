@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { buildErrorResponse } from '@mairie360/bffs-lib';
+import { buildErrorResponse, parseTrustProxy } from '@mairie360/bffs-lib';
 import type { Request, RequestHandler, Response } from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
@@ -20,7 +20,7 @@ import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
  *                                 default 100. Only applied when `TRUST_PROXY` is set and the request
  *                                 carries `X-Forwarded-For`.
  *
- * The client IP is `req.ip`, which is only the real client when `TRUST_PROXY` (see `parseTrustProxy`)
+ * The client IP is `req.ip`, which is only the real client when `TRUST_PROXY` (see `parseTrustProxy` of `@mairie360/bffs-lib`)
  * tells Express to read it from `X-Forwarded-For`. Without it, every client reaches the BFF through
  * the front pods and shares their IP: a per-IP limit would then be a global lockout any attacker can
  * trigger, so the IP is left out of every key and only the per-e-mail limit applies.
@@ -151,24 +151,4 @@ export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateL
             keyGenerator: (req) => refreshTokenHashOf(req),
         }),
     };
-}
-
-/**
- * Parses `TRUST_PROXY` into Express' `trust proxy` setting:
- * unset or `false` → do not trust any proxy (default), `true` → trust every hop,
- * an integer → number of trusted hops, anything else → comma-separated addresses/subnets
- * (e.g. `loopback, 10.0.0.0/8`).
- */
-export function parseTrustProxy(value: string | undefined): boolean | number | string {
-    const trimmed = value?.trim();
-    if (!trimmed || trimmed.toLowerCase() === 'false') {
-        return false;
-    }
-    if (trimmed.toLowerCase() === 'true') {
-        return true;
-    }
-    if (/^\d+$/.test(trimmed)) {
-        return Number(trimmed);
-    }
-    return trimmed;
 }

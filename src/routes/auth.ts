@@ -1,4 +1,4 @@
-import { HttpError } from '@mairie360/bffs-lib';
+import { bearerToken, HttpError, noStore } from '@mairie360/bffs-lib';
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { z } from 'zod';
@@ -26,7 +26,6 @@ import {
 } from '../utils/cookieUtils';
 import { createAuthRateLimiters, RATE_LIMIT_MESSAGE } from '../middleware/rateLimit';
 import type { AuthRateLimiters } from '../middleware/rateLimit';
-import { bearerToken } from './admin_helpers';
 import { coreError, invalidInput } from '../utils/httpErrors';
 import {
     forceChangeUserPassword,
@@ -249,7 +248,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
+    description: 'Revokes the caller\'s Core API session (POST /api/v1/sessions/revoke) when the session (`Authorization: Bearer` header) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
         + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
         + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
         + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
@@ -382,6 +381,8 @@ function refreshTokenOf(req: Request, fromBody: string | undefined): string | un
  */
 export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimiters()): Router {
     const router = Router();
+    // Session cookies and one-time tokens: no answer of /auth may be cached by a proxy or the browser.
+    router.use(noStore);
 
     router.post('/login', limiters.perIp, limiters.perAccount, async (req: Request, res: Response) => {
         const input = LoginViewSchema.safeParse(req.body);
@@ -468,7 +469,10 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         }
 
         const refreshToken = refreshTokenOf(req, input.data.refresh_token);
-        const authorization = bearerToken(req);
+        // The session is the `Authorization: Bearer` header only (the fronts' proxy builds it from the
+        // accessToken cookie); without one, logout only clears the cookies.
+        const token = bearerToken(req);
+        const authorization = token === undefined ? undefined : `Bearer ${token}`;
 
         let sessionRevoked = false;
         if (refreshToken && authorization) {

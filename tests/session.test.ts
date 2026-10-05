@@ -1,5 +1,6 @@
 import { errorHandler } from '@mairie360/bffs-lib';
 import { AxiosError, AxiosHeaders } from 'axios';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import request from 'supertest';
 import sessionRouter from '../src/routes/session';
@@ -27,6 +28,8 @@ function tokenFor(userId: number) {
 }
 
 const app = express();
+// Cookies are parsed, as in the application: the accessToken cookie must still be ignored.
+app.use(cookieParser());
 app.use('/session', sessionRouter);
 app.use('/', sessionRouter);
 app.use(errorHandler({ onError: () => undefined }));
@@ -81,18 +84,40 @@ describe('GET /session/me', () => {
         expect(JSON.stringify(response.body)).not.toContain('a@b.c');
     });
 
-    it('ignores the legacy x-session-token header and session cookie', async () => {
-        const response = await request(app).get('/me').set('x-session-token', tokenFor(42)).set('Cookie', `session=${tokenFor(42)}`);
+    it.each([
+        ['the legacy x-session-token header', (call: request.Test) => call.set('x-session-token', tokenFor(42))],
+        ['the legacy session cookie', (call: request.Test) => call.set('Cookie', `session=${tokenFor(42)}`)],
+        ['the accessToken cookie', (call: request.Test) => call.set('Cookie', `accessToken=${tokenFor(42)}`)],
+        ['another scheme', (call: request.Test) => call.set('Authorization', `Token ${tokenFor(42)}`)],
+    ])('ignores a session sent in %s: 401 before any Core call', async (_label, prepare) => {
+        const response = await prepare(request(app).get('/me'));
 
         expect(response.status).toBe(401);
         expect(mockedGetMe).not.toHaveBeenCalled();
+        expect(mockedGetGroups).not.toHaveBeenCalled();
+    });
+
+    it('marks the session answer as not cacheable', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Agent' })));
+        mockedGetGroups.mockResolvedValue(axiosResponse(groupsResult([])));
+
+        const response = await request(app).get('/session/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('still answers 404 to unknown paths under the / mount', async () => {
+        const response = await request(app).get('/unknown');
+
+        expect(response.status).toBe(404);
     });
 
     it('rejects a missing token', async () => {
         const response = await request(app).get('/session/me');
 
         expect(response.status).toBe(401);
-        expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Invalid or missing session token', details: [] } });
+        expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Invalid session.', details: [] } });
         expect(mockedGetMe).not.toHaveBeenCalled();
     });
 
