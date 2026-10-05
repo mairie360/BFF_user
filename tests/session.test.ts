@@ -59,8 +59,8 @@ describe('GET /session/me', () => {
         const user: Partial<ReturnType<typeof meResponse>> = { ...me };
         delete user.groups;
         expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
-        expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', headers: { Authorization: `Bearer ${tokenFor(42)}` } });
-        expect(mockedGetGroups).toHaveBeenCalledWith({ baseURL: 'http://core.test', headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+        expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+        expect(mockedGetGroups).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
     });
 
     it.each([
@@ -79,6 +79,16 @@ describe('GET /session/me', () => {
         } finally {
             delete process.env.CORE_API_PORT;
         }
+    });
+
+    it('retries the idempotent Core reads once on a transient failure', async () => {
+        mockedGetMe.mockRejectedValueOnce(coreError(503)).mockResolvedValue(axiosResponse(meResponse({ role: 'Agent' })));
+        mockedGetGroups.mockResolvedValue(axiosResponse(groupsResult([])));
+
+        const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(200);
+        expect(mockedGetMe).toHaveBeenCalledTimes(2);
     });
 
     it.each([

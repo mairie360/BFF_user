@@ -1,4 +1,4 @@
-import { authorization, noStore, requireBearer } from '@mairie360/bffs-lib';
+import { asCaller, noStore, parseRequest, requireBearer } from '@mairie360/bffs-lib';
 import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
@@ -8,7 +8,6 @@ import {
     UserIdParams,
 } from '../openapi-registry';
 import { fetchUserAbout } from './core_helpers';
-import { coreError, invalidInput } from '../utils/httpErrors';
 
 const router = Router();
 
@@ -78,18 +77,8 @@ registry.registerPath({
 });
 
 router.get('/:userId/about', async (req: Request, res: Response) => {
-    const paramsResult = UserIdParams.safeParse(req.params);
-
-    if (!paramsResult.success) {
-        throw invalidInput('Invalid user ID', paramsResult.error, 'params');
-    }
-
-    try {
-        const userInfo = await fetchUserAbout(paramsResult.data.userId, authorization(req));
-        return res.status(200).json(userInfo);
-    } catch (error) {
-        throw coreError(error, [401, 404]);
-    }
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    return res.status(200).json(await fetchUserAbout(userId, asCaller('CORE_API', req)));
 });
 
 export default router;

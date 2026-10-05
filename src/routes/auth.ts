@@ -1,4 +1,4 @@
-import { bearerToken, HttpError, noStore } from '@mairie360/bffs-lib';
+import { asCaller, bearerToken, HttpError, noStore, parseRequest, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { z } from 'zod';
@@ -27,7 +27,6 @@ import {
 } from '../utils/cookieUtils';
 import { createAuthRateLimiters, RATE_LIMIT_MESSAGE } from '../middleware/rateLimit';
 import type { AuthRateLimiters } from '../middleware/rateLimit';
-import { coreError, invalidInput } from '../utils/httpErrors';
 import {
     forceChangeUserPassword,
     isLoginResponseView,
@@ -389,13 +388,10 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
     router.use(noStore);
 
     router.post('/login', limiters.perIp, limiters.perAccount, async (req: Request, res: Response) => {
-        const input = LoginViewSchema.safeParse(req.body);
-        if (!input.success) {
-            throw invalidInput('Invalid login payload', input.error, 'body');
-        }
+        const body = parseRequest(LoginViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await loginUser(input.data));
+            return sendSession(res, await loginUser(body));
         } catch (error) {
             // First sign-in: Core answers 412 with the one-time token of the password change. It is a regular
             // answer the front needs, not an error: only the token is relayed.
@@ -403,49 +399,40 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             if (token !== undefined) {
                 return res.status(412).json({ token });
             }
-            throw coreError(error, [400, 401]);
+            throw upstreamError('CORE_API', error, [400, 401]);
         }
     });
 
     router.post('/keycloak', async (req: Request, res: Response) => {
-        const input = KeycloakLoginViewSchema.safeParse(req.body);
-        if (!input.success) {
-            throw invalidInput('Invalid Keycloak login payload', input.error, 'body');
-        }
+        const body = parseRequest(KeycloakLoginViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await keycloakLoginUser(input.data));
+            return sendSession(res, await keycloakLoginUser(body));
         } catch (error) {
             // Core answers 503 when Keycloak is not configured: keep it so the front can fall back to the password login.
             if (axios.isAxiosError(error) && error.response?.status === 503) {
                 throw new HttpError(503, 'Keycloak sign-in is not configured');
             }
-            throw coreError(error, [400, 401, 403]);
+            throw upstreamError('CORE_API', error, [400, 401, 403]);
         }
     });
 
     router.post('/force_change_password', limiters.perIp, async (req: Request, res: Response) => {
-        const input = ForceChangePasswordViewSchema.safeParse(req.body);
-        if (!input.success) {
-            throw invalidInput('Invalid password-change payload', input.error, 'body');
-        }
+        const body = parseRequest(ForceChangePasswordViewSchema, req.body, 'body');
 
         try {
             // Core validates the one-time token, saves the password and consumes the token.
-            await forceChangeUserPassword(input.data);
+            await forceChangeUserPassword(body);
             return res.status(204).send();
         } catch (error) {
-            throw coreError(error, [400, 401, 403]);
+            throw upstreamError('CORE_API', error, [400, 401, 403]);
         }
     });
 
     router.post('/refresh', limiters.perIp, limiters.perRefreshToken, async (req: Request, res: Response) => {
-        const input = RefreshViewSchema.safeParse(req.body ?? {});
-        if (!input.success) {
-            throw invalidInput('Invalid refresh payload', input.error, 'body');
-        }
+        const body = parseRequest(RefreshViewSchema, req.body ?? {}, 'body');
 
-        const refreshToken = refreshTokenOf(req, input.data.refresh_token);
+        const refreshToken = refreshTokenOf(req, body.refresh_token);
         if (!refreshToken) {
             throw new HttpError(400, 'Missing refresh token');
         }
@@ -461,33 +448,30 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
             return res.status(200).json({ message: 'JWT refreshed successfully' });
         } catch (error) {
-            throw coreError(error, [400, 401]);
+            throw upstreamError('CORE_API', error, [400, 401]);
         }
     });
 
     router.post('/logout', async (req: Request, res: Response) => {
         // The body is optional: an empty request (no JSON) only clears the cookie.
-        const input = LogoutViewSchema.safeParse(req.body ?? {});
-        if (!input.success) {
-            throw invalidInput('Invalid logout payload', input.error, 'body');
-        }
+        const body = parseRequest(LogoutViewSchema, req.body ?? {}, 'body');
 
-        const refreshToken = refreshTokenOf(req, input.data.refresh_token);
+        const refreshToken = refreshTokenOf(req, body.refresh_token);
         // The session is the `Authorization: Bearer` header only (the fronts' proxy builds it from the
         // accessToken cookie); without one, logout only clears the cookies.
-        const token = bearerToken(req);
-        const authorization = token === undefined ? undefined : `Bearer ${token}`;
+        const hasSession = bearerToken(req) !== undefined;
 
         let sessionRevoked = false;
-        if (refreshToken && authorization) {
+        if (refreshToken && hasSession) {
             try {
                 // Core only revokes the caller's own session (JWT user + refresh token); once revoked,
-                // the access JWT is refused by Core's session check even before it expires.
-                await revokeSession(refreshToken, authorization);
+                // the access JWT is refused by Core's session check even before it expires. Inside the try:
+                // a missing CORE_API_URL (503) must not prevent clearing the cookies.
+                await revokeSession(refreshToken, asCaller('CORE_API', req));
                 sessionRevoked = true;
             } catch (error) {
                 // Never log the tokens: the status is enough to diagnose.
-                const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+                const status = error instanceof HttpError ? error.status : upstreamStatus(error);
                 console.warn('[BFF Auth] Session revocation failed on logout', { status: status ?? 'network error' });
             }
         }
@@ -504,7 +488,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         return res.json({
             message: 'Logged out successfully',
             session_revoked: sessionRevoked,
-            logout_url: buildKeycloakLogoutUrl(keycloak, input.data.post_logout_redirect_uri),
+            logout_url: buildKeycloakLogoutUrl(keycloak, body.post_logout_redirect_uri),
         });
     });
 

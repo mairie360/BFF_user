@@ -81,9 +81,18 @@ production image runs `node dist/index.js` and nothing registers `ts-node` at ru
 (`require.main === module`), calls `assertStartupConfiguration()`: `assertConfigured(['CORE_API'])` + a
 `JWT_SECRET` check, so a misconfigured instance refuses to start. Tests import the app without it.
 
-### Routing (`src/index.ts`)
+### App and entry point (MAIR-430)
 
-Routers: `/health`, `/check_apis`, `/auth`, `/user`, `/session`, `/bff/admin`. The
+Same split as the BFF template: `src/app.ts` builds and exports the Express app (`trust proxy` from
+`TRUST_PROXY`, lib `securityHeaders` + `apiOnlyHeaders()`, JSON + cookie parsing, `/docs`, the routers,
+`notFoundHandler` + `errorHandler()`); `src/index.ts` (the build entry) loads `.env`, runs the startup check
+and listens on `PORT` (default 4000) only under `require.main === module`. Tests import `src/app.ts`.
+
+### Routing (`src/app.ts`)
+
+Routers: `/health`, `/check_apis`, `/auth`, `/user`, `/session`, `/bff/admin`. `/check_apis` is the lib
+`checkApis({ core_api })` probing Core's generated `health` operation (`withoutSession('CORE_API', 5_000)`),
+answer `CheckApisResponse` (`{ status: 'OK' | 'Error', core_api: 'Connected' | 'Unreachable' }`, 200 / 502). The
 `session` router is **mounted twice** — at `/session` and at `/` — so both `/session/me`
 and the legacy `/me` resolve.
 
@@ -104,12 +113,14 @@ and the legacy `/me` resolve.
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
   Core publishes no "revoke the current session by JWT" operation, so without a `refresh_token`
   logout only clears the cookie (`session_revoked: false`).
-- **Rate limiting** (`src/middleware/rateLimit.ts`, `express-rate-limit`): failed attempts on
+- **Rate limiting** (`src/middleware/rateLimit.ts`, three lib `createRateLimiter` instances with
+  `envPrefix: 'AUTH_RATE_LIMIT'`, 412 counted as a success): failed attempts on
   `/auth/login` (per IP and per IP + e-mail), `/auth/force_change_password` (per IP) and
-  `/auth/refresh` (per IP and per SHA-256 of the refresh token) answer 429.
-  The IP keys only apply when `TRUST_PROXY` is set **and** the request carries `X-Forwarded-For`;
-  otherwise every client shares the front pods' IP, so only the per-e-mail login limit runs (one
-  startup warning when `TRUST_PROXY` is unset). The ZAP/k6 stacks set
+  `/auth/refresh` (per IP and per IP + SHA-256 of the refresh token) answer 429.
+  The IP-only limit (`AUTH_RATE_LIMIT_IP_MAX`) only applies when `TRUST_PROXY` is set **and** the request
+  carries `X-Forwarded-For`; otherwise every client shares the front pod's IP, so the e-mail and
+  refresh-token keys are effectively per account / per token and per front pod (one startup warning when
+  `TRUST_PROXY` is unset). The ZAP/k6 stacks set
   `AUTH_RATE_LIMIT_ENABLED=false` on bff-user.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.
 - **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
@@ -149,11 +160,13 @@ Every error is `{ error: { code, message, details } }` (`@mairie360/bffs-lib`), 
 `ErrorResponse` in `openapi-registry.ts` (`ErrorResponseSchema.clone()`: the lib builds it before
 `extendZodWithOpenApi`) and referenced by every 4xx/5xx of the contract. Routes **throw**
 (`HttpError`, Express 5 forwards async rejections); `notFoundHandler` + `errorHandler()` close
-`src/index.ts`, keep the status and hide unexpected errors behind a generic 500. `src/utils/httpErrors.ts`:
-`invalidInput` (Zod failure -> 400 with one `{ path: 'body.email', message }` detail per issue),
-`invalidParameter`, and `coreError(error, declared)`: only the Core 4xx the route declares are kept (generic
-message), any other status or a network failure -> 502, the Core body is never relayed, a non-axios error
-is rethrown as is (500). Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
+`src/app.ts`, keep the status and hide unexpected errors behind a generic 500. Everything comes from the lib
+(MAIR-430), no local copy: `parseRequest(schema, value, location)` (400 `Validation failed` with one
+`{ path: 'body.email', message }` detail per issue), `asCaller('CORE_API', req)` / `withoutSession('CORE_API')`
+for the call options, and `callUpstream('CORE_API', call, { declared, retry })` / `upstreamError('CORE_API',
+error, declared)`: only the Core 4xx the route declares are kept (generic message), any other status, a network
+failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
+relayed. `retry: true` (one retry on no answer / 502 / 503 / 504) is only set on Core GETs. Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
 `{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
 `[400, 401, 403]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
 `READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
@@ -178,7 +191,7 @@ multi-stage build running `node dist/index.js` with the heap capped at 180 MB fo
 
 ## Tests with a contract-driven Core API mock
 
-`tests/user.upstream-mocks.test.ts` imports the **whole app** (`src/index.ts`) with the **real** axios
+`tests/user.upstream-mocks.test.ts` imports the **whole app** (`src/app.ts`) with the **real** axios
 client and serves Core API from a local HTTP server (`tests/support/contract-mock-server.ts`). Its
 contract is rebuilt at test time from the **installed** `@mairie360/core-api-openapi` dependency
 (`tests/support/orval-contract.ts` parses the orval `endpoints/*.ts` + `model/*.ts` with the TypeScript

@@ -1,36 +1,36 @@
 import { createHash } from 'node:crypto';
-import { buildErrorResponse, parseTrustProxy } from '@mairie360/bffs-lib';
+import { createRateLimiter, parseTrustProxy } from '@mairie360/bffs-lib';
 import type { Request, RequestHandler, Response } from 'express';
-import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
 
 /**
- * Rate limiting of the authentication routes (brute force of passwords and one-time tokens).
+ * Rate limiting of the authentication routes (brute force of passwords and one-time tokens), built on
+ * `createRateLimiter` of `@mairie360/bffs-lib` (429 in the shared error envelope, `RateLimit` and
+ * `Retry-After` headers).
  *
- * Only failed attempts are counted (`skipSuccessfulRequests`), so users who sign in normally are
- * never throttled. Counters live in memory, per BFF replica.
+ * Only failed attempts are counted, so users who sign in normally are never throttled; a 412 (first
+ * sign-in, password to change) is a regular answer, not a failure. Counters live in memory, per BFF replica.
  *
- * Environment:
+ * Environment (prefix `AUTH_RATE_LIMIT`):
  * - `AUTH_RATE_LIMIT_ENABLED`     `false` disables every limiter (load tests), default enabled.
  * - `AUTH_RATE_LIMIT_WINDOW_MS`   window length, default 15 minutes.
- * - `AUTH_RATE_LIMIT_MAX`         failed logins per account e-mail (per client IP + e-mail when
- *                                 `TRUST_PROXY` is set) and window, default 10.
+ * - `AUTH_RATE_LIMIT_MAX`         failed logins per account e-mail and window, default 10.
  *                                 Also the failed refreshes per refresh token on `/auth/refresh`.
  * - `AUTH_RATE_LIMIT_IP_MAX`      failed attempts per client IP and window over every limited route,
  *                                 default 100. Only applied when `TRUST_PROXY` is set and the request
  *                                 carries `X-Forwarded-For`.
  *
- * The client IP is `req.ip`, which is only the real client when `TRUST_PROXY` (see `parseTrustProxy` of `@mairie360/bffs-lib`)
- * tells Express to read it from `X-Forwarded-For`. Without it, every client reaches the BFF through
- * the front pods and shares their IP: a per-IP limit would then be a global lockout any attacker can
- * trigger, so the IP is left out of every key and only the per-e-mail limit applies.
- * The same holds per request: when a front calls the BFF server side without forwarding
- * `X-Forwarded-For`, `req.ip` is the front pod's even with `TRUST_PROXY`, so such a request is never
- * keyed on its IP (per-IP limit skipped, per-e-mail key without the IP).
+ * The lib keys every counter on `req.ip` plus an optional part (`<ip>|<e-mail>`, `<ip>|<token hash>`).
+ * `req.ip` is only the real client when `TRUST_PROXY` (see `parseTrustProxy` of `@mairie360/bffs-lib`)
+ * tells Express to read it from `X-Forwarded-For`; otherwise it is the calling front pod's, shared by every
+ * user. The per-e-mail and per-refresh-token keys then stay per account / per token (one counter per front
+ * pod), while the IP-only limit, which would become a global lockout any attacker can trigger, is skipped:
+ * it only runs when `TRUST_PROXY` is set and the request carries `X-Forwarded-For`.
  */
 
 export const RATE_LIMIT_MESSAGE = 'Too many attempts, please try again later';
 
+const ENV_PREFIX = 'AUTH_RATE_LIMIT';
 const DEFAULT_WINDOW_MS = 15 * 60 * 1000;
 const DEFAULT_ACCOUNT_MAX = 10;
 const DEFAULT_IP_MAX = 100;
@@ -40,21 +40,20 @@ export interface AuthRateLimitOptions {
     windowMs: number;
     accountMax: number;
     ipMax: number;
-    /** Whether `req.ip` identifies the client (`TRUST_PROXY` set): enables the per-IP keys. */
+    /** Whether `req.ip` identifies the client (`TRUST_PROXY` set): enables the per-IP limit. */
     perClientIp: boolean;
 }
 
 export interface AuthRateLimiters {
     /** Failed attempts per client IP, shared by every limited authentication route (only with `X-Forwarded-For`). */
     perIp: RequestHandler;
-    /** Failed logins per account e-mail, or per (client IP, e-mail) when `perClientIp`. */
+    /** Failed logins per (client IP, account e-mail). */
     perAccount: RequestHandler;
     /**
-     * Failed refreshes per refresh token (SHA-256, the raw token never reaches the store). The
-     * refresh body carries no e-mail; without `TRUST_PROXY` the IP is the front pod's, so the token
-     * is the only key that cannot lock other users out. It stops replaying a revoked or stolen token;
-     * guessing a valid one is out of reach (high-entropy token) and is further capped by `perIp`
-     * when `TRUST_PROXY` is set.
+     * Failed refreshes per (client IP, refresh token SHA-256; the raw token never reaches the store). The
+     * refresh body carries no e-mail; without `TRUST_PROXY` the IP is the front pod's, so the token is the
+     * only part that cannot lock other users out. It stops replaying a revoked or stolen token; guessing a
+     * valid one is out of reach (high-entropy token) and is further capped by `perIp` when `TRUST_PROXY` is set.
      */
     perRefreshToken: RequestHandler;
 }
@@ -66,16 +65,12 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 
 export function authRateLimitOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): AuthRateLimitOptions {
     return {
-        enabled: env.AUTH_RATE_LIMIT_ENABLED?.trim().toLowerCase() !== 'false',
-        windowMs: positiveInteger(env.AUTH_RATE_LIMIT_WINDOW_MS, DEFAULT_WINDOW_MS),
-        accountMax: positiveInteger(env.AUTH_RATE_LIMIT_MAX, DEFAULT_ACCOUNT_MAX),
-        ipMax: positiveInteger(env.AUTH_RATE_LIMIT_IP_MAX, DEFAULT_IP_MAX),
+        enabled: env[`${ENV_PREFIX}_ENABLED`]?.trim().toLowerCase() !== 'false',
+        windowMs: positiveInteger(env[`${ENV_PREFIX}_WINDOW_MS`], DEFAULT_WINDOW_MS),
+        accountMax: positiveInteger(env[`${ENV_PREFIX}_MAX`], DEFAULT_ACCOUNT_MAX),
+        ipMax: positiveInteger(env[`${ENV_PREFIX}_IP_MAX`], DEFAULT_IP_MAX),
         perClientIp: parseTrustProxy(env.TRUST_PROXY) !== false,
     };
-}
-
-function clientIp(req: Request): string {
-    return ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? 'unknown');
 }
 
 /** Whether a proxy told us who the client is; otherwise `req.ip` is the calling pod's, shared by every user. */
@@ -94,13 +89,10 @@ function refreshTokenHashOf(req: Request): string {
 
 function accountOf(req: Request): string {
     const email: unknown = (req.body as { email?: unknown } | undefined)?.email;
-    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+    return typeof email === 'string' ? email : '';
 }
 
-/**
- * A request counts as a failure when it ends in an error status. 412 is the regular answer of a
- * first sign-in (password to change), not a failed attempt.
- */
+/** 412 is the regular answer of a first sign-in (password to change), not a failed attempt. */
 function requestWasSuccessful(_req: Request, res: Response): boolean {
     return res.statusCode < 400 || res.statusCode === 412;
 }
@@ -116,39 +108,22 @@ export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateL
     }
 
     const common = {
+        envPrefix: ENV_PREFIX,
+        enabled: options.enabled,
         windowMs: options.windowMs,
-        standardHeaders: 'draft-8' as const,
-        legacyHeaders: false,
-        skipSuccessfulRequests: true,
-        requestWasSuccessful,
-        skip: () => !options.enabled,
-        message: buildErrorResponse('TOO_MANY_REQUESTS', RATE_LIMIT_MESSAGE),
+        failedOnly: true,
+        succeeded: requestWasSuccessful,
+        message: RATE_LIMIT_MESSAGE,
     };
 
+    const perIp = createRateLimiter({ ...common, limit: options.ipMax });
+
     return {
+        // Only on requests whose client IP comes from X-Forwarded-For behind a trusted proxy.
         perIp: options.perClientIp
-            ? rateLimit({
-                ...common,
-                identifier: 'auth-ip',
-                requestPropertyName: 'authIpRateLimit',
-                limit: options.ipMax,
-                keyGenerator: (req) => clientIp(req),
-                skip: (req) => !options.enabled || !hasForwardedClientIp(req),
-            })
+            ? (req, res, next) => (hasForwardedClientIp(req) ? perIp(req, res, next) : next())
             : passThrough,
-        perAccount: rateLimit({
-            ...common,
-            identifier: 'auth-account',
-            requestPropertyName: 'authAccountRateLimit',
-            limit: options.accountMax,
-            keyGenerator: (req) => (options.perClientIp && hasForwardedClientIp(req) ? `${clientIp(req)}|${accountOf(req)}` : accountOf(req)),
-        }),
-        perRefreshToken: rateLimit({
-            ...common,
-            identifier: 'auth-refresh-token',
-            requestPropertyName: 'authRefreshTokenRateLimit',
-            limit: options.accountMax,
-            keyGenerator: (req) => refreshTokenHashOf(req),
-        }),
+        perAccount: createRateLimiter({ ...common, limit: options.accountMax, keyOf: accountOf }),
+        perRefreshToken: createRateLimiter({ ...common, limit: options.accountMax, keyOf: refreshTokenHashOf }),
     };
 }

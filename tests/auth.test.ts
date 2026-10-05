@@ -125,7 +125,7 @@ describe('POST /auth/login', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error.code).toBe('BAD_REQUEST');
-        expect(response.body.error.message).toBe('Invalid login payload');
+        expect(response.body.error.message).toBe('Validation failed');
         expect(response.body.error.details.map((detail: { path: string }) => detail.path).sort()).toEqual(['body.email', 'body.password']);
         expect(mockedLoginUser).not.toHaveBeenCalled();
     });
@@ -155,7 +155,7 @@ describe('POST /auth/force_change_password', () => {
             .send({ token: '' });
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid password-change payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
     });
 
@@ -245,7 +245,7 @@ describe('POST /auth/refresh', () => {
         const response = await request(app).post('/auth/refresh').send(body);
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid refresh payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(mockedRefreshSession).not.toHaveBeenCalled();
     });
 });
@@ -257,6 +257,7 @@ describe('POST /auth/logout', () => {
         jest.clearAllMocks();
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         mockedRevokeSession.mockResolvedValue();
+        process.env.CORE_API_URL = 'http://core.test';
     });
 
     afterEach(() => {
@@ -271,7 +272,9 @@ describe('POST /auth/logout', () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
-        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, 'Bearer header.payload.signature');
+        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, {
+            baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: 'Bearer header.payload.signature' },
+        });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
     });
 
@@ -286,6 +289,20 @@ describe('POST /auth/logout', () => {
         expect(response.body.session_revoked).toBe(false);
         expect(mockedRevokeSession).not.toHaveBeenCalled();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+    });
+
+    it('still clears the cookies, without revoking, when CORE_API_URL is not set', async () => {
+        delete process.env.CORE_API_URL;
+
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature')
+            .send({ refresh_token: REFRESH_TOKEN });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        expect(mockedRevokeSession).not.toHaveBeenCalled();
     });
 
     it('marks every /auth answer as not cacheable', async () => {
@@ -328,11 +345,11 @@ describe('authentication rate limiting', () => {
     const limitedApp = (options: Partial<Parameters<typeof createAuthRateLimiters>[0]> = {}) => {
         const limited = express();
         limited.use(express.json());
-        // Clients are told apart by X-Forwarded-For, as behind the ingress.
-        limited.set('trust proxy', true);
-        limited.use('/auth', createAuthRouter(createAuthRateLimiters({
-            enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, perClientIp: true, ...options,
-        })));
+        const settings = { enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, perClientIp: true, ...options };
+        // As in the app, both come from TRUST_PROXY: with it, clients are told apart by X-Forwarded-For (as
+        // behind the ingress); without it, X-Forwarded-For is ignored and every client shares the peer IP.
+        limited.set('trust proxy', settings.perClientIp);
+        limited.use('/auth', createAuthRouter(createAuthRateLimiters(settings)));
         limited.use(errorHandler({ onError: () => undefined }));
         return limited;
     };
@@ -601,7 +618,7 @@ describe('POST /auth/keycloak', () => {
         const response = await request(app).post('/auth/keycloak').send(body);
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid Keycloak login payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(mockedKeycloakLogin).not.toHaveBeenCalled();
     });
 
@@ -715,7 +732,7 @@ describe('POST /auth/logout', () => {
         const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'not a url' });
 
         expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Invalid logout payload'));
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 

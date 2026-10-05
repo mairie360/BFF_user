@@ -1,59 +1,27 @@
+import { checkApis, checkApisResponseSchema, withoutSession } from '@mairie360/bffs-lib';
 import { Router } from 'express';
-import axios from 'axios';
-import { CheckApiResponse, CheckApiResponseSchema } from '../views/check_api_view';
+import { coreApi } from '../clients/coreClient';
 import { registry } from '../openapi-registry';
-import { baseUrl } from '@mairie360/bffs-lib';
 
 const router = Router();
 
-// Déclaration OpenAPI automatisée
+// One `<service>: Connected | Unreachable` entry per upstream the BFF calls: Core API only, probed through
+// its generated `health` operation with the same CORE_API_URL (+ CORE_API_PORT) as the real calls.
+export const CheckApisResponseSchema = registry.register('CheckApisResponse', checkApisResponseSchema(['core_api']));
+
 registry.registerPath({
   method: 'get',
   path: '/check_apis',
   security: [],
   tags: ['Connectivity'],
-  summary: "Vérifie la connexion avec l'API Core (Rust)",
+  summary: 'Checks that Core API is reachable',
   responses: {
-    200: {
-      description: 'Connexion réussie',
-      content: {
-        'application/json': {
-          schema: CheckApiResponseSchema,
-        },
-      },
-    },
-    502: {
-      description: 'API Core injoignable',
-      content: {
-        'application/json': {
-          schema: CheckApiResponseSchema,
-        },
-      },
-    },
+    200: { description: 'Core API is reachable', content: { 'application/json': { schema: CheckApisResponseSchema } } },
+    502: { description: 'Core API is unreachable or CORE_API_URL is not set', content: { 'application/json': { schema: CheckApisResponseSchema } } },
   },
 });
 
-router.get('/', async (_, res) => {
-  try {
-    // Same URL as the Core client (CORE_API_URL + CORE_API_PORT), read on every check: a missing one is Unreachable.
-    await axios.get(`${baseUrl('CORE_API')}/health`, { timeout: 5000 });
-
-    const result: CheckApiResponse = {
-      status: 'OK',
-      core_api: 'Connected',
-    };
-
-    res.status(200).json(result);
-  } catch (error) {
-    // The detail (host, port, network code) stays in the logs: it must not leak to the client.
-    console.error('[BFF] Core API health check failed:', error instanceof Error ? error.message : error);
-    const result: CheckApiResponse = {
-      status: 'Error',
-      core_api: 'Unreachable',
-    };
-
-    res.status(502).json(result);
-  }
-});
+// The network detail (host, port, error code) is only logged, never sent to the client.
+router.get('/', checkApis({ core_api: () => coreApi.health(withoutSession('CORE_API', 5_000)) }));
 
 export default router;

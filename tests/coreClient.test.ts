@@ -20,7 +20,7 @@ describe('coreAuthClient.keycloakLogin', () => {
         const response = await keycloakLoginUser(view);
 
         expect(response.data).toEqual(loginResponse());
-        expect(post).toHaveBeenCalledWith('/api/v1/auth/keycloak', view, { baseURL: 'http://core.test' });
+        expect(post).toHaveBeenCalledWith('/api/v1/auth/keycloak', view, { baseURL: 'http://core.test', timeout: 10_000 });
     });
 
     it('never falls back to a localhost URL: 503 without any call when CORE_API_URL is missing', async () => {

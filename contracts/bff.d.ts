@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Vérifie la connexion avec l'API Core (Rust) */
+        /** Checks that Core API is reachable */
         get: {
             parameters: {
                 query?: never;
@@ -55,22 +55,22 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Connexion réussie */
+                /** @description Core API is reachable */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CheckApiResponse"];
+                        "application/json": components["schemas"]["CheckApisResponse"];
                     };
                 };
-                /** @description API Core injoignable */
+                /** @description Core API is unreachable or CORE_API_URL is not set */
                 502: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["CheckApiResponse"];
+                        "application/json": components["schemas"]["CheckApisResponse"];
                     };
                 };
             };
@@ -3673,11 +3673,11 @@ export interface components {
              */
             userId: number;
         };
-        CheckApiResponse: {
-            /** @example OK */
-            status: string;
-            /** @example Connected */
-            core_api: string;
+        CheckApisResponse: {
+            /** @enum {string} */
+            status: "OK" | "Error";
+            /** @enum {string} */
+            core_api: "Connected" | "Unreachable";
         };
         AdministrationRole: {
             id: number;

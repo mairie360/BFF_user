@@ -1,10 +1,9 @@
-import { noStore, requireBearer } from '@mairie360/bffs-lib';
+import { asCaller, callUpstream, noStore, requireBearer } from '@mairie360/bffs-lib';
 import { z } from 'zod';
 import { CoreApiNotConfigured, ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
-import { coreRequestOptions, whitelist } from './admin_helpers';
-import { coreError } from '../utils/httpErrors';
+import { whitelist } from './admin_helpers';
 
 type UserWithRoles = {
     roles?: unknown;
@@ -35,28 +34,24 @@ for (const path of ['/me', '/session/me']) {
 // Per route, not router.use(): this router is also mounted at `/`, where a router-level guard would answer
 // 401 to every unknown path instead of 404.
 router.get('/me', noStore, requireBearer, async (req: Request, res: Response) => {
-    const options = coreRequestOptions(req);
+    const options = asCaller('CORE_API', req);
+    // Idempotent reads: retried once on a transient failure; only Core's 401 is relayed, the rest is a 502.
+    const [userResponse, groupsResponse] = await Promise.all([
+        callUpstream('CORE_API', () => coreUsersClient.getMe(options), { declared: [401], retry: true }),
+        callUpstream('CORE_API', () => coreGroupsClient.getGroups(options), { declared: [401], retry: true }),
+    ]);
+    const userWithRoles = userResponse.data as typeof userResponse.data & UserWithRoles;
+    const roles = Array.isArray(userWithRoles.roles) && userWithRoles.roles.length > 0
+        ? userWithRoles.roles
+        : typeof userWithRoles.role === 'string'
+            ? [userWithRoles.role]
+            : [];
 
-    try {
-        const [userResponse, groupsResponse] = await Promise.all([
-            coreUsersClient.getMe(options),
-            coreGroupsClient.getGroups(options),
-        ]);
-        const userWithRoles = userResponse.data as typeof userResponse.data & UserWithRoles;
-        const roles = Array.isArray(userWithRoles.roles) && userWithRoles.roles.length > 0
-            ? userWithRoles.roles
-            : typeof userWithRoles.role === 'string'
-                ? [userWithRoles.role]
-                : [];
-
-        return res.status(200).json(whitelist(SessionResponseSchema, {
-            user: userResponse.data,
-            groups: groupsResponse.data.groups,
-            roles,
-        }));
-    } catch (error) {
-        throw coreError(error, [401]);
-    }
+    return res.status(200).json(whitelist(SessionResponseSchema, {
+        user: userResponse.data,
+        groups: groupsResponse.data?.groups,
+        roles,
+    }));
 });
 
 export default router;

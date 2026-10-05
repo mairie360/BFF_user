@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app } from '../src/index';
+import { app } from '../src/app';
 import { fetchUserAbout } from '../src/routes/core_helpers';
 
 // Final middlewares of the app (@mairie360/bffs-lib): every error ends in { error: { code, message, details } }.
@@ -11,6 +11,7 @@ jest.mock('../src/routes/core_helpers', () => ({
 describe('error envelope of the app', () => {
     beforeEach(() => {
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        process.env.CORE_API_URL = 'http://core.test';
     });
 
     afterEach(() => {
@@ -42,5 +43,32 @@ describe('error envelope of the app', () => {
 
         expect(response.status).toBe(500);
         expect(response.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error', details: [] } });
+    });
+});
+
+describe('security headers of the app (@mairie360/bffs-lib securityHeaders + apiOnlyHeaders)', () => {
+    it('sends the strict API-only headers on the JSON routes, without X-Powered-By', async () => {
+        const response = await request(app).get('/health');
+
+        expect(response.headers['content-security-policy']).toBe("default-src 'none'");
+        expect(response.headers['x-content-type-options']).toBe('nosniff');
+        expect(response.headers['permissions-policy']).toBe('geolocation=(), camera=(), microphone=()');
+        expect(response.headers['cross-origin-resource-policy']).toBe('same-origin');
+        expect(response.headers['x-powered-by']).toBeUndefined();
+    });
+
+    it('keeps the strict headers on body-parse errors', async () => {
+        const response = await request(app).post('/auth/login').set('Content-Type', 'application/json').send('{"email":');
+
+        expect(response.status).toBe(400);
+        expect(response.headers['content-security-policy']).toBe("default-src 'none'");
+    });
+
+    it('lets the interactive documentation load its scripts', async () => {
+        const response = await request(app).get('/docs/');
+
+        expect(response.status).toBe(200);
+        expect(response.headers['content-security-policy']).not.toBe("default-src 'none'");
+        expect(response.headers['content-security-policy']).toContain("script-src 'self'");
     });
 });

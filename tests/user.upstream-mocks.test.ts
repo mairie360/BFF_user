@@ -41,7 +41,7 @@ beforeAll(async () => {
   process.env.CORE_API_URL = coreApi.url;
   delete process.env.CORE_API_PORT;
   process.env.JWT_SECRET = JWT_SECRET;
-  ({ app } = await import('../src/index'));
+  ({ app } = await import('../src/app'));
 });
 afterAll(async () => { await coreApi.stop(); });
 
@@ -104,7 +104,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(400);
       expectBffContract('post', '/auth/login', response);
-      expect(response.body.error).toMatchObject({ code: 'BAD_REQUEST', message: 'Invalid login payload' });
+      expect(response.body.error).toMatchObject({ code: 'BAD_REQUEST', message: 'Validation failed' });
       expect(response.body.error.details).not.toHaveLength(0);
       expect(coreApi.requests).toHaveLength(0);
     });
@@ -600,8 +600,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(400);
       expectBffContract(method, pathname, response);
-      expect(response.body).toEqual({ error: { code: 'BAD_REQUEST', message: `Invalid ${name}`, details: [{ path: `params.${name}`, message: 'Must be a positive integer' }] } });
-      // Le rôle est vérifié avant les paramètres, pour ne rien révéler à un appelant non autorisé.
+      expect(response.body).toEqual({ error: { code: 'BAD_REQUEST', message: 'Validation failed', details: [{ path: `params.${name}`, message: expect.any(String) }] } });
+      // The role is checked before the parameters, so nothing is revealed to an unauthorized caller.
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
   });
@@ -659,7 +659,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['404', coreError(404, 'Not found'), 404, { error: { code: 'NOT_FOUND', message: 'Resource not found', details: [] } }],
       ['409 (not declared by a read)', coreError(409, 'duplicate key'), 502, { error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } }],
       ['500', coreError(500, 'An error occurred while accessing the database.'), 502, { error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } }],
-      ['dropped connection', { dropConnection: true }, 502, { error: { code: 'BAD_GATEWAY', message: 'The Core API service is unavailable.', details: [] } }],
+      ['dropped connection', { dropConnection: true }, 502, { error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } }],
     ] as Array<[string, MockReply, number, object]>)('maps a Core API %s on an admin proxy route without leaking upstream details', async (_label, reply, status, body) => {
       jest.spyOn(console, 'error').mockImplementation(() => undefined);
       coreApi.on('get', CORE.group, reply);
@@ -733,7 +733,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['nothing listens on CORE_API_URL', async () => { process.env.CORE_API_URL = await unreachableUrl(); }],
       ['CORE_API_URL is not set', async () => { delete process.env.CORE_API_URL; }],
     ])('reports Core API unreachable without leaking network details when %s', async (_label, arrange) => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
       await arrange();
 
       const response = await request(app).get('/check_apis');
@@ -741,7 +741,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(502);
       expectBffContract('get', '/check_apis', response);
       expect(response.body).toEqual({ status: 'Error', core_api: 'Unreachable' });
-      expect(consoleError).toHaveBeenCalled();
+      // The cause is only logged server side.
+      expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('[check_apis] core_api unreachable'));
     });
   });
 

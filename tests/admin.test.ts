@@ -110,7 +110,7 @@ describe('Administration routes', () => {
         expect(response.status).toBe(400);
         expect(response.body.error).toEqual({
             code: 'BAD_REQUEST',
-            message: 'Invalid pagination parameters',
+            message: 'Validation failed',
             details: [expect.objectContaining({ path: 'query.page_size' })],
         });
         expect(mockedListUsers).not.toHaveBeenCalled();
@@ -127,6 +127,7 @@ describe('Administration routes', () => {
         expect(response.status).toBe(204);
         expect(mockedDeleteUser).toHaveBeenCalledWith(42, {
             baseURL: 'http://core.test',
+            timeout: 10_000,
             headers: { Authorization: `Bearer ${token}` },
         });
     });
@@ -230,6 +231,15 @@ describe('Administration routes', () => {
         expect(JSON.stringify(response.body)).not.toContain('duplicate key');
     });
 
+    it('never retries a write, even on a transient Core failure', async () => {
+        mockedDeleteUser.mockRejectedValue(coreError(503));
+
+        const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(502);
+        expect(mockedDeleteUser).toHaveBeenCalledTimes(1);
+    });
+
     it('answers 502 for a Core 409 on a read, which does not declare it', async () => {
         mockedListUsers.mockRejectedValue(coreError(409));
 
@@ -249,7 +259,7 @@ describe('Administration routes', () => {
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
-        expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The Core API service is unavailable.', details: [] } });
+        expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } });
     });
 
     it('sets a new password for an authenticated administrator', async () => {
@@ -380,7 +390,7 @@ describe('Administration routes', () => {
             .send({ user_id: 1, role_id: 1 });
 
         expect(response.status).toBe(400);
-        expect(response.body.error).toEqual({ code: 'BAD_REQUEST', message: 'Invalid user_id', details: [expect.objectContaining({ path: 'body.user_id' })] });
+        expect(response.body.error).toEqual({ code: 'BAD_REQUEST', message: 'Validation failed', details: [{ path: 'body.user_id', message: 'Must match the path userId' }] });
         expect(jest.mocked(coreAdminUsersClient.adminAddRoleToUser)).not.toHaveBeenCalled();
     });
 
