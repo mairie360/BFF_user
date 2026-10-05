@@ -345,11 +345,11 @@ describe('authentication rate limiting', () => {
     const limitedApp = (options: Partial<Parameters<typeof createAuthRateLimiters>[0]> = {}) => {
         const limited = express();
         limited.use(express.json());
-        const settings = { enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, perClientIp: true, ...options };
-        // As in the app, both come from TRUST_PROXY: with it, clients are told apart by X-Forwarded-For (as
-        // behind the ingress); without it, X-Forwarded-For is ignored and every client shares the peer IP.
-        limited.set('trust proxy', settings.perClientIp);
-        limited.use('/auth', createAuthRouter(createAuthRateLimiters(settings)));
+        // Clients are told apart by X-Forwarded-For, as behind the ingress.
+        limited.set('trust proxy', true);
+        limited.use('/auth', createAuthRouter(createAuthRateLimiters({
+            enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 4, perClientIp: true, ...options,
+        })));
         limited.use(errorHandler({ onError: () => undefined }));
         return limited;
     };
@@ -462,15 +462,70 @@ describe('authentication rate limiting', () => {
         }
     });
 
-    it('keys the per-IP and per-account limits on the client IP when TRUST_PROXY is set', async () => {
-        const target = limitedApp({ accountMax: 2, ipMax: 2 });
+    it('keys the per-IP limit on the client IP when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 100, ipMax: 2 });
 
         await failedLogin(target, 'alice@example.com', '203.0.113.1');
         await failedLogin(target, 'bob@example.com', '203.0.113.1');
 
-        // The first client is blocked, another client is not, even for the same account.
+        // The first client is blocked, another client is not.
         expect((await failedLogin(target, 'carol@example.com', '203.0.113.1')).status).toBe(429);
         expect((await failedLogin(target, 'alice@example.com', '198.51.100.7')).status).toBe(400);
+    });
+
+    it('limits the failed logins of one e-mail across client IPs when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 2, ipMax: 100 });
+
+        await failedLogin(target, 'alice@example.com', '203.0.113.1');
+        await failedLogin(target, 'alice@example.com', '198.51.100.7');
+
+        expect((await failedLogin(target, 'Alice@example.com', '192.0.2.44')).status).toBe(429);
+        expect((await failedLogin(target, 'bob@example.com', '192.0.2.44')).status).toBe(400);
+    });
+
+    it('limits the failed refreshes of one refresh token across client IPs when TRUST_PROXY is set', async () => {
+        const target = limitedApp({ accountMax: 2, ipMax: 100 });
+
+        expect((await failedRefresh(target, 'stolen-token', '203.0.113.1')).status).toBe(401);
+        expect((await failedRefresh(target, 'stolen-token', '198.51.100.7')).status).toBe(401);
+
+        expect((await failedRefresh(target, 'stolen-token', '192.0.2.44')).status).toBe(429);
+        expect((await failedRefresh(target, 'other-token', '192.0.2.44')).status).toBe(401);
+    });
+
+    describe('with no proxy information at all (Express trusts no proxy, no X-Forwarded-For)', () => {
+        const directApp = () => {
+            const direct = express();
+            direct.use(express.json());
+            direct.use('/auth', createAuthRouter(createAuthRateLimiters({
+                enabled: true, windowMs: 60_000, accountMax: 2, ipMax: 1, perClientIp: false,
+            })));
+            direct.use(errorHandler({ onError: () => undefined }));
+            return direct;
+        };
+
+        it('still limits the failed logins of one e-mail', async () => {
+            const target = directApp();
+            const attempt = (email: string) => request(target).post('/auth/login').send({ email, device_info: 'test' });
+
+            await attempt('alice@example.com');
+            await attempt('alice@example.com');
+
+            expect((await attempt('alice@example.com')).status).toBe(429);
+            expect((await attempt('bob@example.com')).status).toBe(400);
+        });
+
+        it('still limits the failed refreshes of one refresh token', async () => {
+            const target = directApp();
+            mockedRefreshSession.mockRejectedValue(coreError(401, 'Session not found'));
+            const attempt = (token: string) => request(target).post('/auth/refresh').send({ refresh_token: token });
+
+            await attempt('stolen-token');
+            await attempt('stolen-token');
+
+            expect((await attempt('stolen-token')).status).toBe(429);
+            expect((await attempt('other-token')).status).toBe(401);
+        });
     });
 
     describe('with TRUST_PROXY but no X-Forwarded-For (a front calling server side, e.g. the Login pod)', () => {

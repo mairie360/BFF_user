@@ -20,12 +20,12 @@ import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
  *                                 default 100. Only applied when `TRUST_PROXY` is set and the request
  *                                 carries `X-Forwarded-For`.
  *
- * The lib keys every counter on `req.ip` plus an optional part (`<ip>|<e-mail>`, `<ip>|<token hash>`).
- * `req.ip` is only the real client when `TRUST_PROXY` (see `parseTrustProxy` of `@mairie360/bffs-lib`)
- * tells Express to read it from `X-Forwarded-For`; otherwise it is the calling front pod's, shared by every
- * user. The per-e-mail and per-refresh-token keys then stay per account / per token (one counter per front
- * pod), while the IP-only limit, which would become a global lockout any attacker can trigger, is skipped:
- * it only runs when `TRUST_PROXY` is set and the request carries `X-Forwarded-For`.
+ * The per-e-mail and per-refresh-token counters are keyed on the account / token hash alone
+ * (`perIp: false`), so they hold across client IPs. The IP-only limit is keyed on `req.ip`, which is only the
+ * real client when `TRUST_PROXY` (see `parseTrustProxy` of `@mairie360/bffs-lib`) tells Express to read it
+ * from `X-Forwarded-For`; otherwise it is the calling front pod's, shared by every user, and the limit would
+ * become a global lockout any attacker can trigger. It therefore only runs when `TRUST_PROXY` is set and the
+ * request carries `X-Forwarded-For`.
  */
 
 export const RATE_LIMIT_MESSAGE = 'Too many attempts, please try again later';
@@ -47,10 +47,10 @@ export interface AuthRateLimitOptions {
 export interface AuthRateLimiters {
     /** Failed attempts per client IP, shared by every limited authentication route (only with `X-Forwarded-For`). */
     perIp: RequestHandler;
-    /** Failed logins per (client IP, account e-mail). */
+    /** Failed logins per account e-mail (lower-cased), whatever the client IP. */
     perAccount: RequestHandler;
     /**
-     * Failed refreshes per (client IP, refresh token SHA-256; the raw token never reaches the store). The
+     * Failed refreshes per refresh token (SHA-256, the raw token never reaches the store), whatever the client IP. The
      * refresh body carries no e-mail; without `TRUST_PROXY` the IP is the front pod's, so the token is the
      * only part that cannot lock other users out. It stops replaying a revoked or stolen token; guessing a
      * valid one is out of reach (high-entropy token) and is further capped by `perIp` when `TRUST_PROXY` is set.
@@ -123,7 +123,9 @@ export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateL
         perIp: options.perClientIp
             ? (req, res, next) => (hasForwardedClientIp(req) ? perIp(req, res, next) : next())
             : passThrough,
-        perAccount: createRateLimiter({ ...common, limit: options.accountMax, keyOf: accountOf }),
-        perRefreshToken: createRateLimiter({ ...common, limit: options.accountMax, keyOf: refreshTokenHashOf }),
+        // Keyed on the account / token alone (perIp: false): a brute force spread over many client IPs
+        // still trips the limit, whatever TRUST_PROXY and X-Forwarded-For say.
+        perAccount: createRateLimiter({ ...common, perIp: false, limit: options.accountMax, keyOf: accountOf }),
+        perRefreshToken: createRateLimiter({ ...common, perIp: false, limit: options.accountMax, keyOf: refreshTokenHashOf }),
     };
 }

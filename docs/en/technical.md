@@ -64,7 +64,7 @@ Values below are local examples or explicitly described behavior, not production
 | `TRUST_PROXY` | unset (no proxy trusted) | Express `trust proxy`: hop count (`1`), `true`, or trusted addresses/subnets (`loopback, 10.0.0.0/8`). Set it behind the ingress so rate limits apply per client and not per proxy; while it is unset, per-IP limiting is disabled (warning at startup). |
 | `AUTH_RATE_LIMIT_ENABLED` | `true` | `false` disables the authentication rate limits (load tests only). |
 | `AUTH_RATE_LIMIT_WINDOW_MS` | `900000` | Rate-limit window (15 minutes). |
-| `AUTH_RATE_LIMIT_MAX` | `10` | Failed logins per account e-mail per window (per client IP + e-mail when `TRUST_PROXY` is set), and failed refreshes per refresh token. |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Failed logins per account e-mail per window, and failed refreshes per refresh token, whatever the client IP. |
 | `AUTH_RATE_LIMIT_IP_MAX` | `100` | Failed attempts per client IP per window, over `/auth/login`, `/auth/force_change_password` and `/auth/refresh`; only applied when `TRUST_PROXY` is set and the request carries `X-Forwarded-For` (a front calling server side without it shares its pod IP with every user). |
 | `KEYCLOAK_REALM_URL` | https://auth.mairie360.fr/realms/mairie360 | Public URL of the Keycloak realm, as the browser reaches it. With `KEYCLOAK_CLIENT_ID`, enables the single logout. |
 | `KEYCLOAK_CLIENT_ID` | mairie360 | OIDC client the fronts sign in with (the same as Core's). |

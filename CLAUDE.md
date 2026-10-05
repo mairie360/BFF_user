@@ -115,11 +115,11 @@ and the legacy `/me` resolve.
   logout only clears the cookie (`session_revoked: false`).
 - **Rate limiting** (`src/middleware/rateLimit.ts`, three lib `createRateLimiter` instances with
   `envPrefix: 'AUTH_RATE_LIMIT'`, 412 counted as a success): failed attempts on
-  `/auth/login` (per IP and per IP + e-mail), `/auth/force_change_password` (per IP) and
-  `/auth/refresh` (per IP and per IP + SHA-256 of the refresh token) answer 429.
+  `/auth/login` (per IP and per e-mail), `/auth/force_change_password` (per IP) and
+  `/auth/refresh` (per IP and per SHA-256 of the refresh token) answer 429. The e-mail and refresh-token
+  limiters use `perIp: false`: keyed on the account / token alone, they hold across client IPs.
   The IP-only limit (`AUTH_RATE_LIMIT_IP_MAX`) only applies when `TRUST_PROXY` is set **and** the request
-  carries `X-Forwarded-For`; otherwise every client shares the front pod's IP, so the e-mail and
-  refresh-token keys are effectively per account / per token and per front pod (one startup warning when
+  carries `X-Forwarded-For`; otherwise every client shares the front pod's IP (one startup warning when
   `TRUST_PROXY` is unset). The ZAP/k6 stacks set
   `AUTH_RATE_LIMIT_ENABLED=false` on bff-user.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.

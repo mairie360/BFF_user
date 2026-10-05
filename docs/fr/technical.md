@@ -64,7 +64,7 @@ Les valeurs ci-dessous sont des exemples locaux ou des comportements expliciteme
 | `TRUST_PROXY` | non défini (aucun proxy de confiance) | `trust proxy` d’Express: nombre de sauts (`1`), `true`, ou adresses/sous-réseaux de confiance (`loopback, 10.0.0.0/8`). À définir derrière l’ingress pour que les limites s’appliquent par client et non par proxy; tant qu’elle n’est pas définie, la limite par IP est désactivée (avertissement au démarrage). |
 | `AUTH_RATE_LIMIT_ENABLED` | `true` | `false` désactive les limites de débit de l’authentification (tests de charge uniquement). |
 | `AUTH_RATE_LIMIT_WINDOW_MS` | `900000` | Fenêtre de limitation (15 minutes). |
-| `AUTH_RATE_LIMIT_MAX` | `10` | Connexions échouées par e-mail de compte par fenêtre (par IP cliente + e-mail quand `TRUST_PROXY` est défini), et rafraîchissements échoués par refresh token. |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Connexions échouées par e-mail de compte par fenêtre, et rafraîchissements échoués par refresh token, quelle que soit l’IP cliente. |
 | `AUTH_RATE_LIMIT_IP_MAX` | `100` | Tentatives échouées par IP cliente par fenêtre, sur `/auth/login`, `/auth/force_change_password` et `/auth/refresh`; appliquée seulement si `TRUST_PROXY` est défini et que la requête porte `X-Forwarded-For` (un front qui appelle côté serveur sans cet en-tête partage l’IP de son pod avec tous les utilisateurs). |
 | `KEYCLOAK_REALM_URL` | https://auth.mairie360.fr/realms/mairie360 | URL publique du realm Keycloak, telle que le navigateur l’atteint. Avec `KEYCLOAK_CLIENT_ID`, active la déconnexion unique. |
 | `KEYCLOAK_CLIENT_ID` | mairie360 | Client OIDC avec lequel les fronts se connectent (le même que Core). |
