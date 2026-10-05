@@ -9,7 +9,6 @@ import { forceChangeUserPassword, keycloakLoginUser, loginUser, refreshSession, 
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
-    parseTrustProxy,
     RATE_LIMIT_MESSAGE,
 } from '../src/middleware/rateLimit';
 import { axiosResponse, loginResponse } from './support/core-fixtures';
@@ -276,14 +275,23 @@ describe('POST /auth/logout', () => {
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
     });
 
-    it('reads the session from the accessToken cookie', async () => {
-        const response = await request(app)
-            .post('/auth/logout')
-            .set('Cookie', 'accessToken=cookie.payload.signature')
-            .send({ refresh_token: REFRESH_TOKEN });
+    it.each([
+        ['the accessToken cookie', (call: request.Test) => call.set('Cookie', 'accessToken=cookie.payload.signature')],
+        ['the x-session-token header', (call: request.Test) => call.set('x-session-token', 'cookie.payload.signature')],
+        ['another scheme', (call: request.Test) => call.set('Authorization', 'Token cookie.payload.signature')],
+    ])('ignores a session sent in %s: only clears the cookies', async (_label, prepare) => {
+        const response = await prepare(request(app).post('/auth/logout')).send({ refresh_token: REFRESH_TOKEN });
 
-        expect(response.body.session_revoked).toBe(true);
-        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, 'Bearer cookie.payload.signature');
+        expect(response.status).toBe(200);
+        expect(response.body.session_revoked).toBe(false);
+        expect(mockedRevokeSession).not.toHaveBeenCalled();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+    });
+
+    it('marks every /auth answer as not cacheable', async () => {
+        const response = await request(app).post('/auth/logout');
+
+        expect(response.headers['cache-control']).toBe('no-store');
     });
 
     it('still clears the cookie when Core API fails, without logging the tokens', async () => {
@@ -545,17 +553,6 @@ describe('authentication rate limiting', () => {
         })).toEqual({ enabled: false, windowMs: 60_000, accountMax: 5, ipMax: 50, perClientIp: true });
         expect(authRateLimitOptionsFromEnv({ AUTH_RATE_LIMIT_MAX: '0', AUTH_RATE_LIMIT_IP_MAX: 'abc', TRUST_PROXY: 'false' }))
             .toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, perClientIp: false });
-    });
-
-    it.each([
-        [undefined, false],
-        ['', false],
-        ['false', false],
-        ['true', true],
-        ['1', 1],
-        ['loopback, 10.0.0.0/8', 'loopback, 10.0.0.0/8'],
-    ])('parses TRUST_PROXY=%p as %p', (value, expected) => {
-        expect(parseTrustProxy(value)).toBe(expected);
     });
 });
 

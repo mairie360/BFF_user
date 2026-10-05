@@ -1,29 +1,16 @@
-import { HttpError } from '@mairie360/bffs-lib';
+import { authorization, HttpError } from '@mairie360/bffs-lib';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 import type { Request, Response } from 'express';
 import type { z } from 'zod';
-import { ACCESS_TOKEN_COOKIE, extractTokenFromHeader, readCookie } from '../utils/cookieUtils';
 
 /**
- * The caller's session, as the `Authorization` value forwarded to Core API (`Bearer <jwt>`).
- * Only two credentials are accepted: an `Authorization: Bearer <jwt>` header (other BFFs, the fronts'
- * proxy) or the HttpOnly `accessToken` cookie set at sign-in. A header with another scheme is ignored.
+ * Options of a Core API call on behalf of the caller: the `Authorization: Bearer <jwt>` header of the
+ * request, forwarded as is. Throws a 401 before any upstream call when the request carries no Bearer
+ * token (cookies and other headers are ignored: the fronts' proxy turns the `accessToken` cookie into
+ * this header).
  */
-export function bearerToken(req: Request): string | undefined {
-    const token = extractTokenFromHeader(req.header('authorization')) ?? readCookie(req, ACCESS_TOKEN_COOKIE);
-    return token ? `Bearer ${token}` : undefined;
-}
-
 export function coreRequestOptions(req: Request): AxiosRequestConfig {
-    const authorization = bearerToken(req);
-
-    return authorization
-        ? {
-            headers: {
-                Authorization: authorization,
-            },
-        }
-        : {};
+    return { headers: { Authorization: authorization(req) } };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { openApiDocument as openApiSpec } from './openapi';
-import { errorHandler, notFoundHandler } from '@mairie360/bffs-lib';
+import { errorHandler, notFoundHandler, parseTrustProxy } from '@mairie360/bffs-lib';
 import express from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
@@ -11,7 +11,6 @@ import authRouter from './routes/auth';
 import userRouter from './routes/user';
 import adminRouter from './routes/admin';
 import sessionRouter from './routes/session';
-import { parseTrustProxy } from './middleware/rateLimit';
 
 dotenv.config();
 

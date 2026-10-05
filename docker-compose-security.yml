@@ -14,7 +14,7 @@
 # .zap/rules.tsv (informational alerts are set to IGNORE there). The OpenAPI coverage hook
 # (mairie360/CICD tests/zap/zap_hooks.py, cloned into cicd-repo/ by security_test.sh or checked
 # out by the CI job) then fails the scan when an operation was never reached, or when an
-# operation that requires bearerAuth/cookieAuth only got 401/403.
+# operation that requires bearerAuth only got 401/403.
 
 volumes:
   postgres-data:

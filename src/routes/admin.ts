@@ -1,5 +1,5 @@
 import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
-import { HttpError } from '@mairie360/bffs-lib';
+import { bearerToken, HttpError, INVALID_SESSION_MESSAGE, noStore } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -12,7 +12,6 @@ import {
     coreUsersClient,
 } from '../clients/coreClient';
 import {
-    bearerToken,
     coreRequestOptions,
     forwardCoreResponse,
     parsePositiveInteger,
@@ -250,12 +249,12 @@ function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
 
 // Throws 401 (no or invalid session), 403 (not an administrator) or a generic 500 (JWT_SECRET missing).
 async function requireAdmin(req: Request): Promise<void> {
-    const authorization = bearerToken(req);
-    if (!authorization) {
-        throw new HttpError(401, 'Invalid or missing session token');
+    // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
+    const token = bearerToken(req);
+    if (token === undefined) {
+        throw new HttpError(401, INVALID_SESSION_MESSAGE);
     }
 
-    const token = authorization.replace(/^Bearer\s+/i, '');
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {
@@ -313,6 +312,8 @@ async function requireAdmin(req: Request): Promise<void> {
 // Every /bff/admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
 // The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
+// Administration answers are session-bound: never cached by a proxy or the browser.
+router.use(noStore);
 router.use(async (req: Request, _res: Response, next: NextFunction) => {
     await requireAdmin(req);
     next();

@@ -388,7 +388,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user out
-         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (Authorization header or accessToken cookie) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
+         * @description Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (`Authorization: Bearer` header) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
          */
         post: {
             parameters: {
@@ -545,8 +545,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Récupère les informations publiques d'un utilisateur
-         * @description Transmet la session (en-tête Authorization, x-session-token ou cookie accessToken) au Core API sur /api/v1/user/{id}/ et ne renvoie que les informations publiques.
+         * Gets the public information of a user
+         * @description Forwards the caller's `Authorization: Bearer` header to Core API on /api/v1/user/{id}/ and only returns the public information.
          */
         get: {
             parameters: {
@@ -560,7 +560,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Informations utilisateur récupérées avec succès */
+                /** @description Public information of the user */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -569,7 +569,7 @@ export interface paths {
                         "application/json": components["schemas"]["AboutResponseView"];
                     };
                 };
-                /** @description Identifiant utilisateur invalide */
+                /** @description Invalid user id */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -578,7 +578,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Utilisateur non authentifié ou ID invalide */
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -596,7 +596,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur serveur */
+                /** @description Server error */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -605,7 +605,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Core API indisponible ou réponse amont invalide */
+                /** @description Core API unavailable or invalid upstream answer */
                 502: {
                     headers: {
                         [name: string]: unknown;
@@ -3180,7 +3180,7 @@ export interface paths {
                         "application/json": components["schemas"]["SessionResponse"];
                     };
                 };
-                /** @description Missing, invalid or expired session */
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3233,7 +3233,7 @@ export interface paths {
                         "application/json": components["schemas"]["SessionResponse"];
                     };
                 };
-                /** @description Missing, invalid or expired session */
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
                 401: {
                     headers: {
                         [name: string]: unknown;

@@ -1,10 +1,9 @@
-import { HttpError } from '@mairie360/bffs-lib';
+import { noStore, requireBearer } from '@mairie360/bffs-lib';
 import { z } from 'zod';
 import { ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
-import type { AxiosRequestConfig } from 'axios';
 import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
-import { bearerToken, whitelist } from './admin_helpers';
+import { coreRequestOptions, whitelist } from './admin_helpers';
 import { coreError } from '../utils/httpErrors';
 
 type UserWithRoles = {
@@ -27,21 +26,15 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
 for (const path of ['/me', '/session/me']) {
     registry.registerPath({ method: 'get', path, responses: {
         200: { description: 'Identity, groups and roles of the session (contract fields only)', content: { 'application/json': { schema: SessionResponseSchema } } },
-        401: { description: 'Missing, invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Missing `Authorization: Bearer` header, or invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
         502: { description: 'Core API unavailable, failed or answered another error', content: { 'application/json': { schema: ErrorResponse } } },
     } });
 }
 
-router.get('/me', async (req: Request, res: Response) => {
-    const authorization = bearerToken(req);
-
-    if (!authorization) {
-        throw new HttpError(401, 'Invalid or missing session token');
-    }
-
-    const options: AxiosRequestConfig = {
-        headers: { Authorization: authorization },
-    };
+// Per route, not router.use(): this router is also mounted at `/`, where a router-level guard would answer
+// 401 to every unknown path instead of 404.
+router.get('/me', noStore, requireBearer, async (req: Request, res: Response) => {
+    const options = coreRequestOptions(req);
 
     try {
         const [userResponse, groupsResponse] = await Promise.all([

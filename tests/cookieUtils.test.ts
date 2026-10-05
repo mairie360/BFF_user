@@ -2,24 +2,33 @@ import type { Response } from 'express';
 import {
     clearRefreshTokenCookie,
     clearTokenCookie,
-    extractTokenFromHeader,
     setRefreshTokenCookie,
     transmitAccessToken,
 } from '../src/utils/cookieUtils';
 
 describe('cookieUtils', () => {
-    it('extracts a Bearer token without the scheme', () => {
-        expect(extractTokenFromHeader('Bearer header.payload.signature'))
-            .toBe('header.payload.signature');
-        expect(extractTokenFromHeader('bearer header.payload.signature'))
-            .toBe('header.payload.signature');
+    it.each([
+        ['Bearer header.payload.signature', 'header.payload.signature'],
+        ['bearer header.payload.signature', 'header.payload.signature'],
+    ])('stores the token of the Core header %s without the scheme', (header, token) => {
+        const cookie = jest.fn();
+        const response = { cookie } as unknown as Response;
+
+        expect(transmitAccessToken(response, header)).toBe(true);
+        expect(cookie).toHaveBeenCalledWith('accessToken', token, expect.any(Object));
     });
 
-    it('rejects a malformed Authorization header or another scheme', () => {
-        expect(extractTokenFromHeader('header.payload.signature')).toBeNull();
-        expect(extractTokenFromHeader('Basic dXNlcjpwYXNz')).toBeNull();
-        expect(extractTokenFromHeader('Bearer a b')).toBeNull();
-        expect(extractTokenFromHeader(undefined)).toBeNull();
+    it.each([
+        ['a header without scheme', 'header.payload.signature'],
+        ['another scheme', 'Basic dXNlcjpwYXNz'],
+        ['a token with spaces', 'Bearer a b'],
+        ['no header', undefined],
+    ])('sets no cookie for %s', (_label, header) => {
+        const cookie = jest.fn();
+        const response = { cookie } as unknown as Response;
+
+        expect(transmitAccessToken(response, header)).toBe(false);
+        expect(cookie).not.toHaveBeenCalled();
     });
 
     it('stores the raw JWT in a strict HttpOnly cookie and never in a response header', () => {

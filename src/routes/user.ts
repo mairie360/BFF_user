@@ -1,4 +1,4 @@
-import { HttpError } from '@mairie360/bffs-lib';
+import { authorization, noStore, requireBearer } from '@mairie360/bffs-lib';
 import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
@@ -8,22 +8,24 @@ import {
 } from '../openapi-registry';
 import { fetchUserAbout } from './core_helpers';
 import { coreError, invalidInput } from '../utils/httpErrors';
-import { bearerToken } from './admin_helpers';
 
 const router = Router();
+
+// Session-bound: never cached, and 401 before anything else (validation, upstream call) without a Bearer token.
+router.use(noStore, requireBearer);
 
 registry.registerPath({
     method: 'get',
     path: '/user/{userId}/about',
     tags: ['Users'],
-    summary: 'Récupère les informations publiques d\'un utilisateur',
-    description: 'Transmet la session (en-tête Authorization, x-session-token ou cookie accessToken) au Core API sur /api/v1/user/{id}/ et ne renvoie que les informations publiques.',
+    summary: 'Gets the public information of a user',
+    description: 'Forwards the caller\'s `Authorization: Bearer` header to Core API on /api/v1/user/{id}/ and only returns the public information.',
     request: {
         params: UserIdParams,
     },
     responses: {
         200: {
-            description: 'Informations utilisateur récupérées avec succès',
+            description: 'Public information of the user',
             content: {
                 'application/json': {
                     schema: AboutResponseViewSchema,
@@ -31,7 +33,7 @@ registry.registerPath({
             },
         },
         400: {
-            description: 'Identifiant utilisateur invalide',
+            description: 'Invalid user id',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -39,7 +41,7 @@ registry.registerPath({
             },
         },
         401: {
-            description: 'Utilisateur non authentifié ou ID invalide',
+            description: 'Missing `Authorization: Bearer` header, or invalid or expired session',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -55,7 +57,7 @@ registry.registerPath({
             },
         },
         500: {
-            description: 'Erreur serveur',
+            description: 'Server error',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -63,7 +65,7 @@ registry.registerPath({
             },
         },
         502: {
-            description: 'Core API indisponible ou réponse amont invalide',
+            description: 'Core API unavailable or invalid upstream answer',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -80,13 +82,8 @@ router.get('/:userId/about', async (req: Request, res: Response) => {
         throw invalidInput('Invalid user ID', paramsResult.error, 'params');
     }
 
-    const authorization = bearerToken(req);
-    if (!authorization) {
-        throw new HttpError(401, 'Invalid or missing session token');
-    }
-
     try {
-        const userInfo = await fetchUserAbout(paramsResult.data.userId, authorization);
+        const userInfo = await fetchUserAbout(paramsResult.data.userId, authorization(req));
         return res.status(200).json(userInfo);
     } catch (error) {
         throw coreError(error, [401, 404]);

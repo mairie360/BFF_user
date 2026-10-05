@@ -1,3 +1,4 @@
+import { bearerToken } from '@mairie360/bffs-lib';
 import type { CookieOptions, Request, Response } from 'express';
 
 export const ACCESS_TOKEN_COOKIE = 'accessToken';
@@ -42,7 +43,7 @@ export function setRefreshTokenCookie(res: Response, refreshToken: string): void
  * the token is never copied to a channel readable by the browser's JavaScript (response header or body).
  */
 export function transmitAccessToken(res: Response, authorizationHeader: string | undefined): boolean {
-    const token = extractTokenFromHeader(authorizationHeader);
+    const token = bearerToken({ headers: { authorization: authorizationHeader } });
     if (!token) {
         return false;
     }
@@ -61,21 +62,11 @@ export function clearRefreshTokenCookie(res: Response): void {
     res.clearCookie(REFRESH_TOKEN_COOKIE, sessionCookieOptions(REFRESH_TOKEN_COOKIE_PATH));
 }
 
-/** Value of a cookie parsed by `cookie-parser`, if it is a non-empty string. */
+/**
+ * Value of a cookie parsed by `cookie-parser`, if it is a non-empty string. Only used for the
+ * `refreshToken` cookie of `/auth/refresh` and `/auth/logout`: the access token is never read from a cookie.
+ */
 export function readCookie(req: Request, name: string): string | undefined {
     const value: unknown = (req as Request & { cookies?: Record<string, unknown> }).cookies?.[name];
     return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-/**
- * Extracts the token of a `Bearer <token>` Authorization header (scheme case-insensitive).
- * @returns the token, or null for a missing header or any other scheme
- */
-export function extractTokenFromHeader(authHeader: string | undefined): string | null {
-    if (!authHeader) {
-        return null;
-    }
-
-    const match = /^Bearer ([^\s]+)$/i.exec(authHeader.trim());
-    return match ? match[1] : null;
 }
