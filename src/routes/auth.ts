@@ -4,6 +4,7 @@ import axios from 'axios';
 import { z } from 'zod';
 import { Request, Response, Router } from 'express';
 import {
+    CoreApiNotConfigured,
     ErrorResponse,
     AuthSessionResponse,
     ForceChangePasswordViewSchema,
@@ -105,13 +106,14 @@ registry.registerPath({
             },
         },
         502: {
-            description: 'Core API indisponible ou réponse amont invalide',
+            description: 'Core API unavailable or invalid upstream answer',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
                 },
             },
         },
+        503: CoreApiNotConfigured,
     },
 });
 
@@ -170,13 +172,14 @@ registry.registerPath({
             },
         },
         502: {
-            description: 'Core API indisponible ou réponse amont invalide',
+            description: 'Core API unavailable or invalid upstream answer',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
                 },
             },
         },
+        503: CoreApiNotConfigured,
     },
 });
 
@@ -239,6 +242,7 @@ registry.registerPath({
                 },
             },
         },
+        503: CoreApiNotConfigured,
     },
 });
 
@@ -339,7 +343,7 @@ registry.registerPath({
             content: { 'application/json': { schema: ErrorResponse } },
         },
         503: {
-            description: 'Keycloak sign-in is not configured on this instance; use POST /auth/login instead.',
+            description: 'Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set.',
             content: { 'application/json': { schema: ErrorResponse } },
         },
     },

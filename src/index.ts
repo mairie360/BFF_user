@@ -1,18 +1,16 @@
+import 'dotenv/config';
 import { openApiDocument as openApiSpec } from './openapi';
-import { errorHandler, notFoundHandler, parseTrustProxy } from '@mairie360/bffs-lib';
+import { assertConfigured, errorHandler, notFoundHandler, parseTrustProxy } from '@mairie360/bffs-lib';
 import express from 'express';
 import helmet from 'helmet';
 import swaggerUi from 'swagger-ui-express';
 import cookieParser from 'cookie-parser';
-import dotenv from 'dotenv';
 import healthRouter from './routes/health';
 import checkApis from './routes/check_apis';
 import authRouter from './routes/auth';
 import userRouter from './routes/user';
 import adminRouter from './routes/admin';
 import sessionRouter from './routes/session';
-
-dotenv.config();
 
 export const app = express();
 const PORT = process.env.PORT || 4000;
@@ -64,8 +62,22 @@ app.use('/bff/admin', adminRouter);
 app.use(notFoundHandler);
 app.use(errorHandler());
 
-// --- Démarrage du serveur ---
-if (require.main === module) app.listen(Number(PORT), HOST, () => {
-  console.log(`Server ready at http://${HOST}:${PORT}`);
-  console.log(`Swagger docs at http://${HOST}:${PORT}/docs`);
-});
+/**
+ * Fail-fast startup check: refuses to start without a valid `CORE_API_URL` or without `JWT_SECRET`
+ * (admin session check), naming every missing variable, instead of failing on the first request.
+ */
+export function assertStartupConfiguration(): void {
+  assertConfigured(['CORE_API']);
+  if (!process.env.JWT_SECRET?.trim()) {
+    throw new Error('Missing configuration: JWT_SECRET');
+  }
+}
+
+// --- Server start (not when imported by the tests) ---
+if (require.main === module) {
+  assertStartupConfiguration();
+  app.listen(Number(PORT), HOST, () => {
+    console.log(`Server ready at http://${HOST}:${PORT}`);
+    console.log(`Swagger docs at http://${HOST}:${PORT}/docs`);
+  });
+}

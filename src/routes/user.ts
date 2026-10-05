@@ -2,6 +2,7 @@ import { authorization, noStore, requireBearer } from '@mairie360/bffs-lib';
 import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
+    CoreApiNotConfigured,
     ErrorResponse,
     registry,
     UserIdParams,
@@ -72,6 +73,7 @@ registry.registerPath({
                 },
             },
         },
+        503: CoreApiNotConfigured,
     },
 });
 

@@ -23,6 +23,12 @@ export const bearerAuth = registry.registerComponent('securitySchemes', 'bearerA
 // adds .openapi() to schemas created after the extension.
 export const ErrorResponse = registry.register('ErrorResponse', ErrorResponseSchema.clone());
 
+/** 503 of every route that calls Core API: `CORE_API_URL` is missing or invalid on this instance (MAIR-431). */
+export const CoreApiNotConfigured = {
+    description: 'Instance misconfigured: CORE_API_URL is not set or invalid',
+    content: { 'application/json': { schema: ErrorResponse } },
+};
+
 export const LoginViewSchema = z.object({
     email: z.email().openapi({
         description: 'Adresse email de l\'utilisateur',

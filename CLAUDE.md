@@ -28,7 +28,7 @@ npm run contracts:check     # fail if either is stale (CI gate)
 ```
 
 CI (`.github/workflows/contracts.yml`) runs `npm run contracts:check` then
-`npm test -- --runInBand` on Node 22. `cicd.yml` delegates to the reusable
+`npm test -- --runInBand` on Node 24 (`cicd.yml` uses `node_version: "24"` too). `cicd.yml` delegates to the reusable
 `mairie360/CICD` workflow.
 
 ### Private dependencies
@@ -57,8 +57,9 @@ script currently has no wired source directory (`source = null` in `scripts/cont
 
 ### One data path: Core API
 
-`src/clients/coreClient.ts` builds the Core base URL from `CORE_API_URL`/`CORE_API_PORT` and wraps the
-generated client from `@mairie360/core-api-openapi`. It re-exports grouped sub-clients (`coreAuthClient`,
+`src/clients/coreClient.ts` wraps the generated client from `@mairie360/core-api-openapi` on an axios
+instance without base URL: every call passes `baseURL: baseUrl('CORE_API')` (`@mairie360/bffs-lib`,
+`CORE_API_URL` + optional `CORE_API_PORT`, read per call, no `localhost` default, 503 when missing). It re-exports grouped sub-clients (`coreAuthClient`,
 `coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, `coreUsersClient`, ...) that the routes
 consume. There is **no fallback bearer**: routes forward only the caller's session (Core's `/api/v1/auth/*`
 is exempt from its JWT middleware, so login/force_change_password go anonymous; `/api/v1/sessions/refresh` is also served outside it). There is no public
@@ -72,10 +73,13 @@ the member details), and the first-sign-in password flow from `POST /api/v1/auth
 which validates the one-time token, saves the password and consumes the token. The admin role of the
 caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
 
-`registerGeneratedOpenApi.ts` (imported first by `coreClient.ts`) registers `ts-node` at
-runtime so the generated packages' `.ts` sources load without a build step; `npm run build` type-checks
-with `tsc --noEmit` then bundles `dist/index.js` with esbuild (`scripts/build.mjs`), inlining those
-packages so the production image runs `node dist/index.js`.
+The generated packages ship `.ts` sources: `tsx` (dev), ts-jest (tests) and esbuild (`npm run build`:
+`tsc --noEmit`, then `scripts/build.mjs` bundles `dist/index.js` inlining those packages) load them, so the
+production image runs `node dist/index.js` and nothing registers `ts-node` at runtime (MAIR-431).
+
+`src/index.ts` starts with `import 'dotenv/config'` and, only when run as the entry point
+(`require.main === module`), calls `assertStartupConfiguration()`: `assertConfigured(['CORE_API'])` + a
+`JWT_SECRET` check, so a misconfigured instance refuses to start. Tests import the app without it.
 
 ### Routing (`src/index.ts`)
 
@@ -125,7 +129,7 @@ and the legacy `/me` resolve.
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the `admin`
-  role from Core `GET /api/v1/user/me/`. A missing `JWT_SECRET` is a plain `Error` (generic 500). It is a `router.use` guard on **every**
+  role from Core `GET /api/v1/user/me/`. A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
@@ -157,8 +161,8 @@ must add `errorHandler()` after it. The rate limiters answer 429 in the same env
 
 ## Environment variables
 
-`CORE_API_URL` (+ optional `CORE_API_PORT`), `JWT_SECRET` (must match Core, required for
-admin checks), `COOKIE_DOMAIN` (omit for host-only
+`CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_SECRET` (must match Core,
+required at startup for the admin checks), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
 `AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX}` (see `src/middleware/rateLimit.ts`). Keycloak single logout (all optional, unset = no
 `logout_url`): `KEYCLOAK_REALM_URL` (public realm URL as the browser reaches it, e.g.
@@ -167,10 +171,10 @@ fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
 
 ## Docker
 
-`docker compose up` uses `development.Dockerfile` (ts-node-dev, `develop.watch` sync on
-`src/`) and brings up postgres, redis, liquibase migrations, the Core API image, and
-nginx. The production `Dockerfile` is a `node:20-alpine` multi-stage build running
-`node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
+`docker compose up` uses `development.Dockerfile` (`npm run start`, i.e. `tsx watch`; `develop.watch`
+sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, and
+nginx. The production `Dockerfile` is a `node:24-alpine` (pinned by digest, like `development.Dockerfile`)
+multi-stage build running `node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
 
 ## Tests with a contract-driven Core API mock
 
@@ -183,8 +187,8 @@ contract. The mock rejects paths, methods, params and bodies absent from the con
 success responses; orval does not type errors, so mocked error replies need `outOfContract: true`. Every
 BFF response is checked against `contracts/openapi.json`.
 
-- `coreClient` reads `CORE_API_URL` at module load: the app is imported in `beforeAll` after
-  `CORE_API_URL` and `JWT_SECRET` are set (`check_apis` rebuilds the URL on every call).
+- `CORE_API_URL` is read on every call, so tests can change or delete it between requests (503 tests);
+  unit tests that mock `coreClient` set it too, since the options of every call carry `baseURL`.
 - `jest.config.ts` lets ts-jest compile `node_modules/@mairie360/*` and skips diagnostics on
   `src/clients/coreClient.ts` (spurious axios `.d.ts`/`.d.cts` clash; `npm run build` still type-checks it).
 - `openapi-contract.ts`, `contract-mock-server.ts` and `orval-contract.ts` are shared verbatim with

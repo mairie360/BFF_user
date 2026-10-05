@@ -204,7 +204,7 @@ const coreResponses = {
         },
     },
     500: {
-        description: 'Server error (misconfiguration or unexpected error); the cause is only logged',
+        description: 'Unexpected server error; the cause is only logged',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -213,6 +213,14 @@ const coreResponses = {
     },
     502: {
         description: 'Core API unavailable, failed or answered an undeclared error',
+        content: {
+            'application/json': {
+                schema: ErrorResponse,
+            },
+        },
+    },
+    503: {
+        description: 'Instance misconfigured: CORE_API_URL or JWT_SECRET is not set',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -247,7 +255,7 @@ function parseBody<T>(schema: z.ZodType<T>, req: Request): T {
     return payload.data;
 }
 
-// Throws 401 (no or invalid session), 403 (not an administrator) or a generic 500 (JWT_SECRET missing).
+// Throws 401 (no or invalid session), 503 (JWT_SECRET or CORE_API_URL missing) or 403 (not an administrator).
 async function requireAdmin(req: Request): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
     const token = bearerToken(req);
@@ -258,8 +266,9 @@ async function requireAdmin(req: Request): Promise<void> {
     const secret = process.env.JWT_SECRET;
 
     if (!secret) {
-        // A plain Error: errorHandler() logs it and answers a generic 500, the cause never reaches the client.
-        throw new Error('JWT_SECRET is not configured');
+        // A misconfigured instance, not a server bug: 503 like a missing upstream URL. The entry point refuses
+        // to start without JWT_SECRET, so this only happens when the app is mounted elsewhere (tests).
+        throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
     let userId: number;

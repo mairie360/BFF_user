@@ -37,7 +37,7 @@ let app: Express;
 
 beforeAll(async () => {
   await coreApi.start();
-  // coreClient lit CORE_API_URL au chargement : l'application est importée après.
+  // CORE_API_URL is read on every call (MAIR-431); beforeEach sets it again.
   process.env.CORE_API_URL = coreApi.url;
   delete process.env.CORE_API_PORT;
   process.env.JWT_SECRET = JWT_SECRET;
@@ -731,6 +731,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test.each([
       ['/health fails', async () => { coreApi.on('get', CORE.health, coreError(500, 'KO')); }],
       ['nothing listens on CORE_API_URL', async () => { process.env.CORE_API_URL = await unreachableUrl(); }],
+      ['CORE_API_URL is not set', async () => { delete process.env.CORE_API_URL; }],
     ])('reports Core API unreachable without leaking network details when %s', async (_label, arrange) => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
       await arrange();
@@ -741,6 +742,42 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expectBffContract('get', '/check_apis', response);
       expect(response.body).toEqual({ status: 'Error', core_api: 'Unreachable' });
       expect(consoleError).toHaveBeenCalled();
+    });
+  });
+
+  describe('Core API configuration (MAIR-431)', () => {
+    test.each([
+      ['POST /auth/login', { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }, undefined],
+      ['POST /auth/force_change_password', { token: FIRST_CONNECTION_TOKEN, new_password: 'NouveauMotDePasse123' }, undefined],
+      ['POST /auth/refresh', { refresh_token: 'opaque-refresh-token' }, undefined],
+      ['GET /me', undefined, `Bearer ${SESSION}`],
+      ['GET /user/7/about', undefined, `Bearer ${SESSION}`],
+      ['GET /bff/admin/groups', undefined, `Bearer ${SESSION}`],
+    ])('%s answers a declared 503 without any call when CORE_API_URL is not set', async (route, body, authorization) => {
+      delete process.env.CORE_API_URL;
+      const [method, pathname] = route.split(' ');
+      let call = request(app)[method.toLowerCase() as 'get'](pathname);
+      if (authorization) call = call.set('Authorization', authorization);
+      if (body) call = call.send(body);
+
+      const response = await call;
+
+      expect(response.status).toBe(503);
+      expectBffContract(method, pathname, response);
+      expect(response.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'The CORE_API service is not configured.', details: [] } });
+      expect(coreApi.requests).toHaveLength(0);
+    });
+
+    test('follows a CORE_API_URL changed after the app was imported (no URL frozen at import)', async () => {
+      process.env.CORE_API_URL = await unreachableUrl();
+      const unreachable = await request(app).get('/me').set('Authorization', `Bearer ${SESSION}`);
+
+      process.env.CORE_API_URL = coreApi.url;
+      coreApi.on('get', CORE.groups, { body: groupsResult([]) });
+      const reachable = await request(app).get('/me').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(unreachable.status).toBe(502);
+      expect(reachable.status).toBe(200);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { authorization, HttpError } from '@mairie360/bffs-lib';
+import { authorization, baseUrl, HttpError } from '@mairie360/bffs-lib';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 import type { Request, Response } from 'express';
 import type { z } from 'zod';
@@ -7,10 +7,16 @@ import type { z } from 'zod';
  * Options of a Core API call on behalf of the caller: the `Authorization: Bearer <jwt>` header of the
  * request, forwarded as is. Throws a 401 before any upstream call when the request carries no Bearer
  * token (cookies and other headers are ignored: the fronts' proxy turns the `accessToken` cookie into
- * this header).
+ * this header). Core API's URL is read now (`CORE_API_URL`): 503 when it is missing, after the 401.
  */
 export function coreRequestOptions(req: Request): AxiosRequestConfig {
-    return { headers: { Authorization: authorization(req) } };
+    const Authorization = authorization(req);
+    return { baseURL: baseUrl('CORE_API'), headers: { Authorization } };
+}
+
+/** Core API's URL as call options, read now (503 when missing): anonymous calls (sign-in, refresh) or with a session already read. */
+export function coreUrlOptions(): AxiosRequestConfig {
+    return { baseURL: baseUrl('CORE_API') };
 }
 
 /**

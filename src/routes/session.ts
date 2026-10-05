@@ -1,6 +1,6 @@
 import { noStore, requireBearer } from '@mairie360/bffs-lib';
 import { z } from 'zod';
-import { ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiNotConfigured, ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
 import { coreRequestOptions, whitelist } from './admin_helpers';
@@ -28,6 +28,7 @@ for (const path of ['/me', '/session/me']) {
         200: { description: 'Identity, groups and roles of the session (contract fields only)', content: { 'application/json': { schema: SessionResponseSchema } } },
         401: { description: 'Missing `Authorization: Bearer` header, or invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
         502: { description: 'Core API unavailable, failed or answered another error', content: { 'application/json': { schema: ErrorResponse } } },
+        503: CoreApiNotConfigured,
     } });
 }
 

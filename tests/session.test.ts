@@ -41,6 +41,8 @@ const coreError = (status: number) => new AxiosError(`Request failed with status
 describe('GET /session/me', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // Read on every call (MAIR-431): no localhost default, no URL frozen at import.
+        process.env.CORE_API_URL = 'http://core.test';
     });
 
     it('returns the current user with their groups and the role of GetMeResponseView', async () => {
@@ -57,8 +59,41 @@ describe('GET /session/me', () => {
         const user: Partial<ReturnType<typeof meResponse>> = { ...me };
         delete user.groups;
         expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
-        expect(mockedGetMe).toHaveBeenCalledWith({ headers: { Authorization: `Bearer ${tokenFor(42)}` } });
-        expect(mockedGetGroups).toHaveBeenCalledWith({ headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+        expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+        expect(mockedGetGroups).toHaveBeenCalledWith({ baseURL: 'http://core.test', headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+    });
+
+    it.each([
+        ['CORE_API_URL with CORE_API_PORT', 'core', '3000', 'http://core:3000'],
+        ['a CORE_API_URL changed after import', 'https://core.other.test/', undefined, 'https://core.other.test'],
+    ])('reads %s on every call', async (_label, url, port, expected) => {
+        process.env.CORE_API_URL = url;
+        if (port) process.env.CORE_API_PORT = port;
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Agent' })));
+        mockedGetGroups.mockResolvedValue(axiosResponse(groupsResult([])));
+        try {
+            const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+            expect(response.status).toBe(200);
+            expect(mockedGetMe).toHaveBeenCalledWith(expect.objectContaining({ baseURL: expected }));
+        } finally {
+            delete process.env.CORE_API_PORT;
+        }
+    });
+
+    it.each([
+        ['missing', undefined],
+        ['invalid', 'http://exa mple'],
+    ])('answers 503 without calling Core API when CORE_API_URL is %s (no localhost default)', async (_label, url) => {
+        if (url === undefined) delete process.env.CORE_API_URL;
+        else process.env.CORE_API_URL = url;
+
+        const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
+
+        expect(response.status).toBe(503);
+        expect(response.body.error.code).toBe('SERVICE_UNAVAILABLE');
+        expect(mockedGetMe).not.toHaveBeenCalled();
+        expect(mockedGetGroups).not.toHaveBeenCalled();
     });
 
     it('drops any field Core API adds beyond the contract', async () => {
