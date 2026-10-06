@@ -219,7 +219,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     const payload = { refresh_token: 'opaque-refresh-token' };
 
     test('renews the JWT through the public Core refresh without forwarding any session', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' }, headers: { Authorization: 'Bearer refreshed.jwt.token' } });
 
       const response = await request(app).post('/auth/refresh').set('Authorization', `Bearer ${SESSION}`).send(payload);
 
@@ -228,6 +228,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
       expect(response.headers.authorization).toBeUndefined();
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=refreshed\.jwt\.token;.*HttpOnly/);
+      // Core rotates the refresh token: the cookie holds the new one, never the body.
+      expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=rotated-refresh-token;.*Path=\/auth;.*HttpOnly/);
       expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRefreshUrl())]);
       expect(coreApi.requests[0].body).toEqual(payload);
       // The refresh token alone identifies the session: an (expired) JWT is never forwarded.
@@ -260,7 +262,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('returns 502 when Core API omits the renewed JWT', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain' });
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' } });
 
       const response = await request(app).post('/auth/refresh').send(payload);
 
@@ -270,7 +272,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('reads the refresh token from the HttpOnly refreshToken cookie when the body has none', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' }, headers: { Authorization: 'Bearer refreshed.jwt.token' } });
 
       const response = await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=opaque-refresh-token');
 
@@ -390,6 +392,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       // Contract fields only: the groups nested in Core's /user/me answer are not relayed under `user`.
       const user: Partial<ReturnType<typeof meResponse>> = { ...meResponse({ role: 'Responsable' }) };
       delete user.groups;
+      delete user.roles;
       expect(response.body).toEqual({
         user,
         groups: [group(1), group(2, { description: null })],

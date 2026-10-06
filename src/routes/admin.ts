@@ -15,6 +15,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ErrorResponse, registry } from '../openapi-registry';
 import {
+    CORE_MAX_PAGE,
     coreAdminRolesClient,
     coreAdminUsersClient,
     coreGroupsClient,
@@ -300,11 +301,13 @@ async function requireAdmin(req: Request): Promise<void> {
         throw new HttpError(401, 'Invalid or expired session token');
     }
 
-    // The role comes from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
+    // The roles come from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
+    // Core >= 2.0.0 lists every role in `roles` (`role` is only the first one) and, like its own admin guard,
+    // any `admin` role grants the access.
     const caller = asCaller('CORE_API', req);
-    const { data: { role } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
+    const { data: { roles } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
-    if (role?.trim().toLowerCase() !== 'admin') {
+    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && role.trim().toLowerCase() === 'admin')) {
         throw new HttpError(403, 'Administrator role required');
     }
 }
@@ -592,7 +595,7 @@ registry.registerPath({
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
-    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(CORE_MAX_PAGE, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
     return forwardCoreResponse(res, response, GroupsListSchema);
 });
 
@@ -721,8 +724,8 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
     const userId = body.user_id;
 
     try {
-        // Core does not tell a duplicate addition apart: the membership is read before adding.
-        const members = await coreGroupsClient.getGroupUsers(groupId, asCaller('CORE_API', req));
+        // The membership is read before adding, so a duplicate answers 200 `created: false` rather than Core's 409.
+        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_MAX_PAGE, asCaller('CORE_API', req));
         if (members.data.users.includes(userId)) {
             return res.status(200).json({ created: false });
         }
@@ -747,7 +750,7 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
     const { groupId, userId } = parseRequest(GroupUserParams, req.params, 'params');
 
     try {
-        const members = await coreGroupsClient.getGroupUsers(groupId, asCaller('CORE_API', req));
+        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_MAX_PAGE, asCaller('CORE_API', req));
         if (!members.data.users.includes(userId)) {
             throw new HttpError(404, 'Unknown group member');
         }
@@ -781,7 +784,7 @@ registry.registerPath({
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {
-    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(CORE_MAX_PAGE, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
     return forwardCoreResponse(res, response, SessionsListSchema);
 });
 

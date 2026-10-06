@@ -186,13 +186,15 @@ describe('POST /auth/force_change_password', () => {
 
 describe('POST /auth/refresh', () => {
     const REFRESH_TOKEN = 'opaque-refresh-token';
+    const ROTATED_REFRESH_TOKEN = 'rotated-refresh-token';
+    const refreshed = { refresh_token: ROTATED_REFRESH_TOKEN };
 
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
     it('delivers the renewed JWT like login: HttpOnly cookie only', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN, role: 'Admin' });
 
@@ -204,8 +206,28 @@ describe('POST /auth/refresh', () => {
         expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
     });
 
+    it('replaces the refreshToken cookie with the token rotated by Core', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
+
+        expect(response.status).toBe(200);
+        expect(JSON.stringify(response.body)).not.toContain(ROTATED_REFRESH_TOKEN);
+        const refreshCookie = (response.headers['set-cookie'] as unknown as string[]).find((cookie) => cookie.startsWith('refreshToken='));
+        expect(refreshCookie).toMatch(/^refreshToken=rotated-refresh-token;.*Path=\/auth;.*HttpOnly/);
+    });
+
+    it('returns 502 when Core omits the rotated refresh token', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse({} as typeof refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN });
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
     it('returns 502 when Core omits the renewed JWT', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully'));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed));
 
         const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN });
 
@@ -214,7 +236,7 @@ describe('POST /auth/refresh', () => {
     });
 
     it('reads the refresh token from the refreshToken cookie when the body has none', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
 
@@ -223,7 +245,7 @@ describe('POST /auth/refresh', () => {
     });
 
     it('prefers the body refresh token over the cookie', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=cookie-token').send({ refresh_token: REFRESH_TOKEN });
 
@@ -454,7 +476,7 @@ describe('authentication rate limiting', () => {
     });
 
     it('does not count successful refreshes', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse({ refresh_token: 'rotated-token' }, 200, { authorization: 'Bearer renewed.payload.signature' }));
         const target = limitedApp({ accountMax: 1, ipMax: 1 });
 
         for (let attempt = 0; attempt < 3; attempt += 1) {

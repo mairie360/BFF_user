@@ -22,6 +22,7 @@ jest.mock('../src/clients/coreClient', () => {
     );
     const operations = Object.fromEntries(Object.keys(getCoreAPIMairie360()).map((operation) => [operation, jest.fn()]));
     return {
+        CORE_MAX_PAGE: { limit: 500 },
         coreAdminRolesClient: operations,
         coreAdminUsersClient: operations,
         coreGroupsClient: { ...operations, getGroupUsers: operations.getGroupMembers },
@@ -130,6 +131,17 @@ describe('Administration routes', () => {
             timeout: 10_000,
             headers: { Authorization: `Bearer ${token}` },
         });
+    });
+
+    it('accepts an administrator whose admin role is not the first of Core\'s `roles`', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Agent', roles: ['Agent', 'Admin'] })));
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
+
+        const response = await request(app)
+            .get('/bff/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
     });
 
     it('rejects user deletion when the requester is not an administrator', async () => {

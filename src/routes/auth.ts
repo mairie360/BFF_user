@@ -187,7 +187,7 @@ registry.registerPath({
     path: '/auth/refresh',
     tags: ['Authentication'],
     summary: 'Renews the access JWT',
-    description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is only delivered in the HttpOnly accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.',
+    description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.',
     request: {
         body: {
             required: false,
@@ -200,8 +200,8 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'JWT renewed; the new access JWT is in the accessToken cookie.',
-            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` cookie', schema: { type: 'string' } } },
+            description: 'JWT renewed; the new access JWT is in the accessToken cookie and the rotated refresh token in the refreshToken cookie (the one sent no longer works).',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
             content: {
                 'application/json': {
                     schema: RefreshResponse,
@@ -442,10 +442,13 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             const coreResponse = await refreshSession(refreshToken);
             const authorizationHeader = coreResponse.headers?.authorization ?? coreResponse.headers?.Authorization;
 
-            // Same delivery as /auth/login: the HttpOnly accessToken cookie only.
-            if (!transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
-                throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
+            // Same delivery as /auth/login: the HttpOnly cookies only. Core rotates the refresh token (>= 2.0.0):
+            // the one just sent no longer works, so the cookie must hold its replacement.
+            if (!isLoginResponseView(coreResponse.data)
+                || !transmitAccessToken(res, typeof authorizationHeader === 'string' ? authorizationHeader : undefined)) {
+                throw new HttpError(502, 'Core API did not return a Bearer token and a refresh token');
             }
+            setRefreshTokenCookie(res, coreResponse.data.refresh_token);
 
             return res.status(200).json({ message: 'JWT refreshed successfully' });
         } catch (error) {

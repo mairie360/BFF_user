@@ -64,12 +64,15 @@ export const sessionsResult = (sessions: SessionSchema[]): GetSessionsResultView
 export const historyResult = (sessions: SessionSchema[]): HistoryResponseView => ({ sessions });
 
 export function meResponse(overrides: Partial<GetMeResponseView> = {}): GetMeResponseView {
+  // Core >= 2.0.0: `role` is the first of `roles`, so a fixture overriding `role` alone holds that role only.
+  const role = overrides.role ?? 'Admin';
   return {
     email: 'alice@mairie.test',
     first_name: 'Alice',
     last_name: 'Martin',
     phone: '+33123456789',
-    role: 'Admin',
+    role,
+    roles: role ? [role] : [],
     status: 'active',
     groups: [group(1)],
     ...overrides,

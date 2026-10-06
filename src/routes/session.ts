@@ -2,7 +2,7 @@ import { asCaller, callUpstream, noStore, requireBearer } from '@mairie360/bffs-
 import { z } from 'zod';
 import { CoreApiNotConfigured, ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
-import { coreGroupsClient, coreUsersClient } from '../clients/coreClient';
+import { CORE_MAX_PAGE, coreGroupsClient, coreUsersClient } from '../clients/coreClient';
 import { whitelist } from './admin_helpers';
 
 type UserWithRoles = {
@@ -38,7 +38,7 @@ router.get('/me', noStore, requireBearer, async (req: Request, res: Response) =>
     // Idempotent reads: retried once on a transient failure; only Core's 401 is relayed, the rest is a 502.
     const [userResponse, groupsResponse] = await Promise.all([
         callUpstream('CORE_API', () => coreUsersClient.getMe(options), { declared: [401], retry: true }),
-        callUpstream('CORE_API', () => coreGroupsClient.getGroups(options), { declared: [401], retry: true }),
+        callUpstream('CORE_API', () => coreGroupsClient.getGroups(CORE_MAX_PAGE, options), { declared: [401], retry: true }),
     ]);
     const userWithRoles = userResponse.data as typeof userResponse.data & UserWithRoles;
     const roles = Array.isArray(userWithRoles.roles) && userWithRoles.roles.length > 0

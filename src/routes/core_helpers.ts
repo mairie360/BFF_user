@@ -3,10 +3,11 @@ import type { AxiosResponse } from 'axios';
 import type {
     ForceChangePasswordView,
     LoginResponseView,
+    KeycloakLoginView,
     LoginView,
+    RefreshResponseView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
-import type { KeycloakLoginView } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 export function isLoginResponseView(value: unknown): value is LoginResponseView {
@@ -25,8 +26,9 @@ export async function loginUser(loginView: LoginView): Promise<AxiosResponse<Log
 /**
  * Renews the access JWT from a refresh token alone: Core serves POST /api/v1/sessions/refresh outside
  * its JWT middleware (>= 1.2.0), so no session is forwarded and an expired JWT is not needed.
+ * Core >= 2.0.0 rotates the refresh token: the one sent stops working and the body carries its replacement.
  */
-export async function refreshSession(refreshToken: string): Promise<AxiosResponse<string>> {
+export async function refreshSession(refreshToken: string): Promise<AxiosResponse<RefreshResponseView>> {
     return coreSessionsClient.refresh({ refresh_token: refreshToken }, withoutSession('CORE_API'));
 }
 

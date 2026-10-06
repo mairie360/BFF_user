@@ -314,7 +314,7 @@ export interface paths {
         put?: never;
         /**
          * Renews the access JWT
-         * @description Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is only delivered in the HttpOnly accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.
+         * @description Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.
          */
         post: {
             parameters: {
@@ -329,10 +329,10 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description JWT renewed; the new access JWT is in the accessToken cookie. */
+                /** @description JWT renewed; the new access JWT is in the accessToken cookie and the rotated refresh token in the refreshToken cookie (the one sent no longer works). */
                 200: {
                     headers: {
-                        /** @description HttpOnly `accessToken` cookie */
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
                         "Set-Cookie"?: string;
                         [name: string]: unknown;
                     };
