@@ -73,7 +73,7 @@ the member details), and the first-sign-in password flow from `POST /api/v1/auth
 which validates the one-time token, saves the password and consumes the token. The admin role of the
 caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
 Core ≥ 2.0.0 paginates the groups, group members and session history (`limit`, 100 by default): the
-BFF asks for its largest page, `CORE_MAX_PAGE` (500) of `coreClient.ts`.
+BFF reads a single page of Core's default size, `CORE_PAGE_SIZE` (100) of `coreClient.ts`.
 
 The generated packages ship `.ts` sources: `tsx` (dev), ts-jest (tests) and esbuild (`npm run build`:
 `tsc --noEmit`, then `scripts/build.mjs` bundles `dist/index.js` inlining those packages) load them, so the
@@ -128,8 +128,9 @@ and the legacy `/me` resolve.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.
 - **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
   `POST /api/v1/auth/keycloak` and sets the session exactly like `/auth/login`; Core's 503
-  (Keycloak not configured) is kept so the front can fall back to password login. It is the generated `coreApi.keycloakLogin`
-  (`@mairie360/core-api-openapi` >= 2.0.0).
+  (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
+  (`keycloakLogin`), although `@mairie360/core-api-openapi` 2.0.0 ships it: switching to the generated
+  function (and adding it to `upstream-contracts.test.ts`) is left for later.
 - **`/auth/logout`**: clears the `accessToken` cookie, never calls Core. Single logout (MAIR-143):
   when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
   call), the response adds `logout_url`, the realm's OIDC end-session URL

@@ -3,11 +3,11 @@ import type { AxiosResponse } from 'axios';
 import type {
     ForceChangePasswordView,
     LoginResponseView,
-    KeycloakLoginView,
     LoginView,
     RefreshResponseView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
+import type { KeycloakLoginView } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 export function isLoginResponseView(value: unknown): value is LoginResponseView {

@@ -15,7 +15,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ErrorResponse, registry } from '../openapi-registry';
 import {
-    CORE_MAX_PAGE,
+    CORE_PAGE_SIZE,
     coreAdminRolesClient,
     coreAdminUsersClient,
     coreGroupsClient,
@@ -595,7 +595,7 @@ registry.registerPath({
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
-    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(CORE_MAX_PAGE, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(CORE_PAGE_SIZE, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
     return forwardCoreResponse(res, response, GroupsListSchema);
 });
 
@@ -725,7 +725,7 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
 
     try {
         // The membership is read before adding, so a duplicate answers 200 `created: false` rather than Core's 409.
-        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_MAX_PAGE, asCaller('CORE_API', req));
+        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_PAGE_SIZE, asCaller('CORE_API', req));
         if (members.data.users.includes(userId)) {
             return res.status(200).json({ created: false });
         }
@@ -750,7 +750,7 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
     const { groupId, userId } = parseRequest(GroupUserParams, req.params, 'params');
 
     try {
-        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_MAX_PAGE, asCaller('CORE_API', req));
+        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_PAGE_SIZE, asCaller('CORE_API', req));
         if (!members.data.users.includes(userId)) {
             throw new HttpError(404, 'Unknown group member');
         }
@@ -784,7 +784,7 @@ registry.registerPath({
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {
-    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(CORE_MAX_PAGE, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(CORE_PAGE_SIZE, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
     return forwardCoreResponse(res, response, SessionsListSchema);
 });
 

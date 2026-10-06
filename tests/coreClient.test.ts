@@ -2,8 +2,8 @@ import { coreClient } from '../src/clients/coreClient';
 import { keycloakLoginUser } from '../src/routes/core_helpers';
 import { axiosResponse, loginResponse } from './support/core-fixtures';
 
-// POST /api/v1/auth/keycloak comes from the generated client (@mairie360/core-api-openapi >= 2.0.0): the call
-// options it receives (anonymous, base URL read on every call) are checked here, its route in upstream-contracts.test.ts.
+// POST /api/v1/auth/keycloak is still called by hand (coreClient.ts), so the contract-driven mock of
+// user.upstream-mocks.test.ts does not serve it: the hand-written call is checked here instead.
 describe('coreAuthClient.keycloakLogin', () => {
     afterEach(() => {
         jest.restoreAllMocks();
