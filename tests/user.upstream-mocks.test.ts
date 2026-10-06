@@ -23,7 +23,7 @@ const CORE = {
   adminUsers: '/api/v1/admin/users/', adminUser: '/api/v1/admin/users/{userId}/', adminUserRoles: '/api/v1/admin/users/{userId}/roles/',
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
   groups: '/api/v1/groups/', group: '/api/v1/groups/{groupId}/',
-  sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke',
+  sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -299,14 +299,33 @@ describe('BFF User with a contract-driven Core API mock', () => {
       delete process.env.KEYCLOAK_CLIENT_ID;
     });
 
-    test('clears the cookie without calling Core API when no refresh token is sent', async () => {
+    test('revokes the Core session from the JWT alone when no refresh token is sent', async () => {
+      coreApi.on('post', CORE.sessionsLogout, { status: 204 });
+
+      const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getLogoutUrl())]);
+      expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
+    });
+
+    test.each([
+      ['a Core API 401 (session already revoked)', coreError(401, 'Unauthorized')],
+      ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
+      ['a dropped connection', { dropConnection: true }],
+    ] as Array<[string, MockReply]>)('still clears the cookies after %s on the JWT-only logout', async (_label, reply) => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      coreApi.on('post', CORE.sessionsLogout, reply);
+
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/logout', response);
       expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-      expect(coreApi.requests).toHaveLength(0);
     });
 
     test('revokes the Core session with the refresh token of the refreshToken cookie and clears both cookies', async () => {

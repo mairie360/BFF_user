@@ -33,6 +33,7 @@ import {
     keycloakLoginUser,
     loginUser,
     refreshSession,
+    logoutSession,
     revokeSession,
 } from './core_helpers';
 
@@ -251,7 +252,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session (POST /api/v1/sessions/revoke) when the session (`Authorization: Bearer` header) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
+    description: 'Revokes the caller\'s Core API session when the session (`Authorization: Bearer` header) is sent: with the refresh token (body field or refreshToken cookie) through POST /api/v1/sessions/revoke, else from the JWT alone through POST /api/v1/sessions/logout. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
         + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
         + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
         + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
@@ -466,12 +467,17 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         const hasSession = bearerToken(req) !== undefined;
 
         let sessionRevoked = false;
-        if (refreshToken && hasSession) {
+        if (hasSession) {
             try {
-                // Core only revokes the caller's own session (JWT user + refresh token); once revoked,
-                // the access JWT is refused by Core's session check even before it expires. Inside the try:
-                // a missing CORE_API_URL (503) must not prevent clearing the cookies.
-                await revokeSession(refreshToken, asCaller('CORE_API', req));
+                // Core only revokes the caller's own session (JWT user + refresh token, or the JWT alone through
+                // POST /api/v1/sessions/logout when no refresh token is available); once revoked, the access JWT
+                // is refused by Core's session check even before it expires. Inside the try: a missing
+                // CORE_API_URL (503) must not prevent clearing the cookies.
+                if (refreshToken) {
+                    await revokeSession(refreshToken, asCaller('CORE_API', req));
+                } else {
+                    await logoutSession(asCaller('CORE_API', req));
+                }
                 sessionRevoked = true;
             } catch (error) {
                 // Never log the tokens: the status is enough to diagnose.

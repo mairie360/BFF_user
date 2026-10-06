@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
-import { forceChangeUserPassword, keycloakLoginUser, loginUser, refreshSession, revokeSession } from '../src/routes/core_helpers';
+import { forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, refreshSession, revokeSession } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
@@ -22,6 +22,7 @@ jest.mock('../src/routes/core_helpers', () => ({
     )),
     keycloakLoginUser: jest.fn(),
     loginUser: jest.fn(),
+    logoutSession: jest.fn(),
     refreshSession: jest.fn(),
     revokeSession: jest.fn(),
 }));
@@ -29,6 +30,7 @@ jest.mock('../src/routes/core_helpers', () => ({
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedRevokeSession = jest.mocked(revokeSession);
+const mockedLogoutSession = jest.mocked(logoutSession);
 const mockedRefreshSession = jest.mocked(refreshSession);
 const mockedKeycloakLogin = jest.mocked(keycloakLoginUser);
 
@@ -279,6 +281,7 @@ describe('POST /auth/logout', () => {
         jest.clearAllMocks();
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         mockedRevokeSession.mockResolvedValue();
+        mockedLogoutSession.mockResolvedValue();
         process.env.CORE_API_URL = 'http://core.test';
     });
 
@@ -350,7 +353,6 @@ describe('POST /auth/logout', () => {
     });
 
     it.each([
-        ['no refresh token', (call: request.Test) => call.set('Authorization', 'Bearer header.payload.signature')],
         ['no session', (call: request.Test) => call.send({ refresh_token: REFRESH_TOKEN })],
         ['an empty body', (call: request.Test) => call],
     ])('only clears the cookie with %s', async (_label, prepare) => {
@@ -360,6 +362,46 @@ describe('POST /auth/logout', () => {
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
         expect(mockedRevokeSession).not.toHaveBeenCalled();
+        expect(mockedLogoutSession).not.toHaveBeenCalled();
+    });
+
+    it('revokes the session from the JWT alone when no refresh token is available', async () => {
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
+        expect(mockedLogoutSession).toHaveBeenCalledWith({
+            baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: 'Bearer header.payload.signature' },
+        });
+        expect(mockedRevokeSession).not.toHaveBeenCalled();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=;/);
+    });
+
+    it('keeps the refresh-token revocation when the refreshToken cookie is present', async () => {
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature')
+            .set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
+
+        expect(response.body.session_revoked).toBe(true);
+        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
+        expect(mockedLogoutSession).not.toHaveBeenCalled();
+    });
+
+    it('still clears the cookies when Core API refuses the JWT-only logout', async () => {
+        mockedLogoutSession.mockRejectedValue(new Error('Request failed with status code 401'));
+
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        expect(JSON.stringify(jest.mocked(console.warn).mock.calls)).not.toContain('header.payload.signature');
     });
 });
 

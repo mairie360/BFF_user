@@ -40,6 +40,14 @@ export async function revokeSession(refreshToken: string, caller: UpstreamReques
     await coreSessionsClient.revoke({ refresh_token: refreshToken }, caller);
 }
 
+/**
+ * Revokes the session the caller's JWT belongs to, from the JWT alone (POST /api/v1/sessions/logout,
+ * Core >= 2.0.0): used by /auth/logout when no refresh token is available.
+ */
+export async function logoutSession(caller: UpstreamRequestOptions): Promise<void> {
+    await coreSessionsClient.logout(caller);
+}
+
 /** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
 export async function keycloakLoginUser(
     keycloakLoginView: KeycloakLoginView,

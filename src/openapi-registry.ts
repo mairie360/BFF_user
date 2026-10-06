@@ -126,7 +126,7 @@ export const RefreshResponse = z.object({
 
 export const LogoutViewSchema = z.object({
     refresh_token: z.string().min(1).optional().openapi({
-        description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. When available with the session, the Core API session is revoked, which invalidates the access JWT immediately.',
+        description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. With the session, the Core API session is revoked through it (POST /api/v1/sessions/revoke); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
     post_logout_redirect_uri: z.url().optional().openapi({
@@ -141,7 +141,7 @@ export const LogoutResponse = z.object({
         example: 'Logged out successfully',
     }),
     session_revoked: z.boolean().openapi({
-        description: 'Whether the Core API session was revoked. `false` when no session or refresh token was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.',
+        description: 'Whether the Core API session was revoked. `false` when no session was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.',
         example: true,
     }),
     logout_url: z.url().optional().openapi({

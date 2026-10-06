@@ -96,6 +96,7 @@ export const coreGroupsClient = {
 export const coreSessionsClient = {
     getActiveSessions: coreApi.getActiveSessions,
     history: coreApi.history,
+    logout: coreApi.logout,
     refresh: coreApi.refresh,
     revoke: coreApi.revoke,
 };

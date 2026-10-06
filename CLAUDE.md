@@ -114,8 +114,9 @@ and the legacy `/me` resolve.
   was removed (it replaced the admin's own cookie with the refreshed JWT; Core has no revoke-by-session-id).
 - **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
-  Core publishes no "revoke the current session by JWT" operation, so without a `refresh_token`
-  logout only clears the cookie (`session_revoked: false`).
+  Without a `refresh_token` (body or cookie) it revokes the session from the JWT alone through Core ≥ 2.0.0's
+  `POST /api/v1/sessions/logout`. Any Core failure is only logged (status only): the cookies are still
+  cleared and `session_revoked` is `false`. Without a Bearer session nothing is called.
 - **Rate limiting** (`src/middleware/rateLimit.ts`, three lib `createRateLimiter` instances with
   `envPrefix: 'AUTH_RATE_LIMIT'`, 412 counted as a success): failed attempts on
   `/auth/login` (per IP and per e-mail), `/auth/force_change_password` (per IP) and
@@ -131,7 +132,7 @@ and the legacy `/me` resolve.
   (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
   (`keycloakLogin`), although `@mairie360/core-api-openapi` 2.0.0 ships it: switching to the generated
   function (and adding it to `upstream-contracts.test.ts`) is left for later.
-- **`/auth/logout`**: clears the `accessToken` cookie, never calls Core. Single logout (MAIR-143):
+- **`/auth/logout`** single logout (MAIR-143):
   when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
   call), the response adds `logout_url`, the realm's OIDC end-session URL
   (`/protocol/openid-connect/logout?client_id=…&post_logout_redirect_uri=…`) that the front must
