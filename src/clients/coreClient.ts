@@ -23,10 +23,12 @@ export const coreClient = axios.create({
 export const coreApi = getCoreAPIMairie360(coreClient);
 
 /**
- * Page asked on Core API's paginated lists (>= 2.0.0): its default `limit`, 100. The BFF routes that expose a
- * whole list (groups, group members, session history) read this single page.
+ * Core API's paginated lists (>= 2.0.0) take `limit` (1 to 500, 100 by default) and `offset` (0 to 1000000).
+ * The list routes forward the page the front asks for; internal membership checks read the largest page.
  */
-export const CORE_PAGE_SIZE = { limit: 100 } as const;
+export const CORE_MAX_LIMIT = 500;
+export const CORE_MAX_OFFSET = 1_000_000;
+export const CORE_LARGEST_PAGE = { limit: CORE_MAX_LIMIT } as const;
 
 /** Body of Core's `POST /api/v1/auth/keycloak` (`KeycloakLoginView`). */
 export interface KeycloakLoginView {

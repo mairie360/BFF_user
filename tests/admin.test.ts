@@ -22,7 +22,9 @@ jest.mock('../src/clients/coreClient', () => {
     );
     const operations = Object.fromEntries(Object.keys(getCoreAPIMairie360()).map((operation) => [operation, jest.fn()]));
     return {
-        CORE_PAGE_SIZE: { limit: 100 },
+        CORE_LARGEST_PAGE: { limit: 500 },
+        CORE_MAX_LIMIT: 500,
+        CORE_MAX_OFFSET: 1_000_000,
         coreAdminRolesClient: operations,
         coreAdminUsersClient: operations,
         coreGroupsClient: { ...operations, getGroupUsers: operations.getGroupMembers },

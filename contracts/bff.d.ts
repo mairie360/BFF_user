@@ -2108,10 +2108,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liste les groupes via le Core API */
+        /** Lists the groups through Core API, one page chosen with `limit` / `offset` */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -3157,10 +3160,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Récupère l’historique des sessions via le Core API */
+        /** Reads the session history through Core API, one page chosen with `limit` / `offset` */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    limit?: number;
+                    offset?: number | null;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;

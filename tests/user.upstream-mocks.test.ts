@@ -610,6 +610,35 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test.each([
+      ['/bff/admin/groups', 'getGetGroupsUrl', CORE.groups, () => groupsResult([group(1)])],
+      ['/bff/admin/sessions/history', 'getHistoryUrl', CORE.sessionsHistory, () => sessionsResult([])],
+    ] as const)('GET %s forwards the page the front asks for to Core API', async (route, urlOf, template, body) => {
+      coreApi.on('get', template, { body: body() });
+
+      const response = await request(app).get(`${route}?limit=500&offset=40`).set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(200);
+      expectBffContract('get', route, response);
+      const forwarded = coreApi.requests.map((call) => `${call.method} ${call.url.pathname}${call.url.search}`);
+      expect(forwarded).toContain(called('GET', coreApiUrls[urlOf]({ limit: 500, offset: 40 })));
+    });
+
+    test.each([
+      ['a limit of 0', 'limit=0'],
+      ['a limit above the Core maximum', 'limit=501'],
+      ['a negative offset', 'offset=-1'],
+      ['an offset above the Core maximum', 'offset=1000001'],
+      ['a decimal limit', 'limit=1.5'],
+      ['an unknown parameter', 'page=2'],
+    ])('GET /bff/admin/groups refuses %s with 400 before calling Core API for the groups', async (_label, query) => {
+      const response = await request(app).get(`/bff/admin/groups?${query}`).set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(400);
+      expectBffContract('get', '/bff/admin/groups', response);
+      expect(upstreamSequence()).not.toContain(called('GET', CORE.groups));
+    });
+
+    test.each([
       ['no credential', undefined],
       ['an unsigned token', 'Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.'],
       ['a malformed token', 'Bearer not-a-jwt'],

@@ -72,8 +72,10 @@ group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing fil
 the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
 which validates the one-time token, saves the password and consumes the token. The admin role of the
 caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
-Core ≥ 2.0.0 paginates the groups, group members and session history (`limit`, 100 by default): the
-BFF reads a single page of Core's default size, `CORE_PAGE_SIZE` (100) of `coreClient.ts`.
+Core ≥ 2.0.0 paginates the groups, group members and session history (`limit` 1-500, 100 by default;
+`offset`). `GET /bff/admin/groups` and `/bff/admin/sessions/history` forward the `limit` / `offset` the front
+sends (`CorePageQuery`, Core's bounds, 400 outside them); the BFF's own reads (`/me` groups, membership checks)
+use `CORE_LARGEST_PAGE` (500) of `coreClient.ts`.
 
 The generated packages ship `.ts` sources: `tsx` (dev), ts-jest (tests) and esbuild (`npm run build`:
 `tsc --noEmit`, then `scripts/build.mjs` bundles `dist/index.js` inlining those packages) load them, so the
