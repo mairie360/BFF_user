@@ -220,10 +220,25 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Two scenarios: `crud`
-(2 VUs) runs every handler through `coverage.run()` and carries the gate; `reads` (ramp to 20 VUs)
-replays the GET handlers only, so GET handlers must read seeded fixtures, never `state`. Every
-operation gets a `p(95)` threshold from its family (`budgetOf`). In `crud`, handlers run path by
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
+runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
+so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
+rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
+seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
+members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
+signed in k6), the admin listings read random pages, and every read checks that it got the seeded rows.
+Thresholds are strict: `checks == 100%`, `http_req_failed == 0`, `dropped_iterations == 0`. `K6_PROFILE`
+(passed by the compose file) sizes the load: `ci` (default, 30 readers, rush at 30/s) is what the 4 vCPU
+CI runner holds, `stress` (100 readers, 100/s) is run by hand. Keep `init-perf.sql` and the id ranges at
+the top of `load-test.js` in step.
+
+Both scripts source `stack_secrets.sh` (MAIR-474): a random `JWT_SECRET` per run, shared by core-api,
+bff-user and k6, and `ADMIN_JWT` (`sub=1`, 4 h) signed with it for the ZAP replacer; the compose files
+refuse to start without them, and nothing signed with a committed secret is left in the repository. They
+drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
+the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
+ignores `100000`: a 500 / 502 answered during the scan fails it. Its only scope-out is `/auth/keycloak`, whose
+documented 503 (Keycloak not configured, the stack has no realm) is the expected answer there. In `crud`, handlers run path by
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens

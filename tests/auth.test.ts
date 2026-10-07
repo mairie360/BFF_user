@@ -436,11 +436,47 @@ describe('authentication rate limiting', () => {
 
         expect(blocked.status).toBe(429);
         expect(blocked.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: RATE_LIMIT_MESSAGE, details: [] } });
-        expect(blocked.headers['retry-after']).toBeDefined();
+        expect(blocked.headers['retry-after']).toMatch(/^\d+$/);
+        expect(Number(blocked.headers['retry-after'])).toBeGreaterThanOrEqual(1);
         expect(blocked.headers.ratelimit).toBeDefined();
         expect(mockedLoginUser).not.toHaveBeenCalled();
         // Another account from the same client is still allowed.
         expect((await failedLogin(target, 'bob@example.com')).status).toBe(400);
+    });
+
+    // The production budget (MAIR-474): the limiters built from the default environment, behind a trusted proxy.
+    it('enforces the production budget: 10 failed logins per account, 100 failed attempts per client IP', async () => {
+        const production = express();
+        production.use(express.json());
+        production.set('trust proxy', true);
+        production.use('/auth', createAuthRouter(createAuthRateLimiters(authRateLimitOptionsFromEnv({ TRUST_PROXY: 'true' }))));
+        production.use(errorHandler({ onError: () => undefined }));
+        const retryAfter = (response: request.Response) => {
+            // A usable wait: whole seconds, at least 1, at most the 15-minute window.
+            expect(response.headers['retry-after']).toMatch(/^\d+$/);
+            const seconds = Number(response.headers['retry-after']);
+            expect(seconds).toBeGreaterThanOrEqual(1);
+            expect(seconds).toBeLessThanOrEqual(900);
+        };
+
+        for (let attempt = 1; attempt <= 10; attempt += 1) {
+            expect((await failedLogin(production, 'budget@example.com')).status).toBe(400);
+        }
+        const accountBlocked = await failedLogin(production, 'budget@example.com', '198.51.100.20');
+        expect(accountBlocked.status).toBe(429);
+        retryAfter(accountBlocked);
+
+        // 89 more failures from the first client on other accounts: 99 in all for that IP, the 100th passes, the 101st is refused.
+        for (let attempt = 1; attempt <= 89; attempt += 1) {
+            expect((await failedLogin(production, `ip-${attempt}@example.com`)).status).toBe(400);
+        }
+        expect((await failedLogin(production, 'ip-last@example.com')).status).toBe(400);
+        const ipBlocked = await failedLogin(production, 'fresh@example.com');
+        expect(ipBlocked.status).toBe(429);
+        retryAfter(ipBlocked);
+        // Another client is not affected.
+        expect((await failedLogin(production, 'fresh@example.com', '198.51.100.21')).status).toBe(400);
+        expect(mockedLoginUser).not.toHaveBeenCalled();
     });
 
     it('limits failed attempts per client IP across accounts and routes', async () => {
