@@ -51,7 +51,14 @@ echo "==> [1/4] Starting the stack and the k6 test..."
 # Fresh volumes on every run (MAIR-474): a volume left by a previous run would hand the stack its
 # rows (rows the scan deleted, a previous seed) instead of the seed under test.
 docker compose -f "$COMPOSE_FILE" -f "$CPUSET_FILE" down -v --remove-orphans > /dev/null 2>&1
-docker compose -f "$COMPOSE_FILE" -f "$CPUSET_FILE" up -d
+# A failed dependency (seeder, migration, upstream readiness) leaves the test container created but
+# never started, and `docker compose wait` then reports its exit code as 0: fail here instead (MAIR-474).
+if ! docker compose -f "$COMPOSE_FILE" -f "$CPUSET_FILE" up -d; then
+    echo "==> The stack did not start: a dependency failed. Logs:"
+    docker compose -f "$COMPOSE_FILE" -f "$CPUSET_FILE" logs --tail 80
+    docker compose -f "$COMPOSE_FILE" -f "$CPUSET_FILE" down -v
+    exit 1
+fi
 
 echo "==> [2/4] Waiting for the end of the k6 test..."
 docker compose -f "$COMPOSE_FILE" -f "$CPUSET_FILE" wait "$SERVICE_NAME"
