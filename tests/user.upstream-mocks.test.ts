@@ -23,7 +23,7 @@ const CORE = {
   adminUsers: '/api/v1/admin/users/', adminUser: '/api/v1/admin/users/{userId}/', adminUserRoles: '/api/v1/admin/users/{userId}/roles/',
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
   groups: '/api/v1/groups/', group: '/api/v1/groups/{groupId}/',
-  sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke',
+  sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -219,7 +219,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     const payload = { refresh_token: 'opaque-refresh-token' };
 
     test('renews the JWT through the public Core refresh without forwarding any session', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' }, headers: { Authorization: 'Bearer refreshed.jwt.token' } });
 
       const response = await request(app).post('/auth/refresh').set('Authorization', `Bearer ${SESSION}`).send(payload);
 
@@ -228,6 +228,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ message: 'JWT refreshed successfully' });
       expect(response.headers.authorization).toBeUndefined();
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=refreshed\.jwt\.token;.*HttpOnly/);
+      // Core rotates the refresh token: the cookie holds the new one, never the body.
+      expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=rotated-refresh-token;.*Path=\/auth;.*HttpOnly/);
       expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRefreshUrl())]);
       expect(coreApi.requests[0].body).toEqual(payload);
       // The refresh token alone identifies the session: an (expired) JWT is never forwarded.
@@ -260,7 +262,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('returns 502 when Core API omits the renewed JWT', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain' });
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' } });
 
       const response = await request(app).post('/auth/refresh').send(payload);
 
@@ -270,7 +272,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('reads the refresh token from the HttpOnly refreshToken cookie when the body has none', async () => {
-      coreApi.on('post', CORE.sessionsRefresh, { raw: 'JWT refreshed successfully', contentType: 'text/plain', headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' }, headers: { Authorization: 'Bearer refreshed.jwt.token' } });
 
       const response = await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=opaque-refresh-token');
 
@@ -297,14 +299,33 @@ describe('BFF User with a contract-driven Core API mock', () => {
       delete process.env.KEYCLOAK_CLIENT_ID;
     });
 
-    test('clears the cookie without calling Core API when no refresh token is sent', async () => {
+    test('revokes the Core session from the JWT alone when no refresh token is sent', async () => {
+      coreApi.on('post', CORE.sessionsLogout, { status: 204 });
+
+      const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getLogoutUrl())]);
+      expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
+    });
+
+    test.each([
+      ['a Core API 401 (session already revoked)', coreError(401, 'Unauthorized')],
+      ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
+      ['a dropped connection', { dropConnection: true }],
+    ] as Array<[string, MockReply]>)('still clears the cookies after %s on the JWT-only logout', async (_label, reply) => {
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      coreApi.on('post', CORE.sessionsLogout, reply);
+
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/logout', response);
       expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-      expect(coreApi.requests).toHaveLength(0);
     });
 
     test('revokes the Core session with the refresh token of the refreshToken cookie and clears both cookies', async () => {
@@ -390,6 +411,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       // Contract fields only: the groups nested in Core's /user/me answer are not relayed under `user`.
       const user: Partial<ReturnType<typeof meResponse>> = { ...meResponse({ role: 'Responsable' }) };
       delete user.groups;
+      delete user.roles;
       expect(response.body).toEqual({
         user,
         groups: [group(1), group(2, { description: null })],
@@ -585,6 +607,35 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(200);
       expectBffContract('get', '/bff/admin/groups', response);
       expect(Object.keys(response.body.groups[0]).sort()).toEqual(['description', 'id', 'name', 'owner_id']);
+    });
+
+    test.each([
+      ['/bff/admin/groups', 'getGetGroupsUrl', CORE.groups, () => groupsResult([group(1)])],
+      ['/bff/admin/sessions/history', 'getHistoryUrl', CORE.sessionsHistory, () => sessionsResult([])],
+    ] as const)('GET %s forwards the page the front asks for to Core API', async (route, urlOf, template, body) => {
+      coreApi.on('get', template, { body: body() });
+
+      const response = await request(app).get(`${route}?limit=500&offset=40`).set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(200);
+      expectBffContract('get', route, response);
+      const forwarded = coreApi.requests.map((call) => `${call.method} ${call.url.pathname}${call.url.search}`);
+      expect(forwarded).toContain(called('GET', coreApiUrls[urlOf]({ limit: 500, offset: 40 })));
+    });
+
+    test.each([
+      ['a limit of 0', 'limit=0'],
+      ['a limit above the Core maximum', 'limit=501'],
+      ['a negative offset', 'offset=-1'],
+      ['an offset above the Core maximum', 'offset=1000001'],
+      ['a decimal limit', 'limit=1.5'],
+      ['an unknown parameter', 'page=2'],
+    ])('GET /bff/admin/groups refuses %s with 400 before calling Core API for the groups', async (_label, query) => {
+      const response = await request(app).get(`/bff/admin/groups?${query}`).set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(400);
+      expectBffContract('get', '/bff/admin/groups', response);
+      expect(upstreamSequence()).not.toContain(called('GET', CORE.groups));
     });
 
     test.each([

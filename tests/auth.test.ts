@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
-import { forceChangeUserPassword, keycloakLoginUser, loginUser, refreshSession, revokeSession } from '../src/routes/core_helpers';
+import { forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, refreshSession, revokeSession } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
@@ -22,6 +22,7 @@ jest.mock('../src/routes/core_helpers', () => ({
     )),
     keycloakLoginUser: jest.fn(),
     loginUser: jest.fn(),
+    logoutSession: jest.fn(),
     refreshSession: jest.fn(),
     revokeSession: jest.fn(),
 }));
@@ -29,6 +30,7 @@ jest.mock('../src/routes/core_helpers', () => ({
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedRevokeSession = jest.mocked(revokeSession);
+const mockedLogoutSession = jest.mocked(logoutSession);
 const mockedRefreshSession = jest.mocked(refreshSession);
 const mockedKeycloakLogin = jest.mocked(keycloakLoginUser);
 
@@ -186,13 +188,15 @@ describe('POST /auth/force_change_password', () => {
 
 describe('POST /auth/refresh', () => {
     const REFRESH_TOKEN = 'opaque-refresh-token';
+    const ROTATED_REFRESH_TOKEN = 'rotated-refresh-token';
+    const refreshed = { refresh_token: ROTATED_REFRESH_TOKEN };
 
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
     it('delivers the renewed JWT like login: HttpOnly cookie only', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN, role: 'Admin' });
 
@@ -204,8 +208,28 @@ describe('POST /auth/refresh', () => {
         expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
     });
 
+    it('replaces the refreshToken cookie with the token rotated by Core', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
+
+        expect(response.status).toBe(200);
+        expect(JSON.stringify(response.body)).not.toContain(ROTATED_REFRESH_TOKEN);
+        const refreshCookie = (response.headers['set-cookie'] as unknown as string[]).find((cookie) => cookie.startsWith('refreshToken='));
+        expect(refreshCookie).toMatch(/^refreshToken=rotated-refresh-token;.*Path=\/auth;.*HttpOnly/);
+    });
+
+    it('returns 502 when Core omits the rotated refresh token', async () => {
+        mockedRefreshSession.mockResolvedValue(axiosResponse({} as typeof refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
+
+        const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN });
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
     it('returns 502 when Core omits the renewed JWT', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully'));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed));
 
         const response = await request(app).post('/auth/refresh').send({ refresh_token: REFRESH_TOKEN });
 
@@ -214,7 +238,7 @@ describe('POST /auth/refresh', () => {
     });
 
     it('reads the refresh token from the refreshToken cookie when the body has none', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
 
@@ -223,7 +247,7 @@ describe('POST /auth/refresh', () => {
     });
 
     it('prefers the body refresh token over the cookie', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse(refreshed, 200, { authorization: 'Bearer renewed.payload.signature' }));
 
         await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=cookie-token').send({ refresh_token: REFRESH_TOKEN });
 
@@ -257,6 +281,7 @@ describe('POST /auth/logout', () => {
         jest.clearAllMocks();
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         mockedRevokeSession.mockResolvedValue();
+        mockedLogoutSession.mockResolvedValue();
         process.env.CORE_API_URL = 'http://core.test';
     });
 
@@ -328,7 +353,6 @@ describe('POST /auth/logout', () => {
     });
 
     it.each([
-        ['no refresh token', (call: request.Test) => call.set('Authorization', 'Bearer header.payload.signature')],
         ['no session', (call: request.Test) => call.send({ refresh_token: REFRESH_TOKEN })],
         ['an empty body', (call: request.Test) => call],
     ])('only clears the cookie with %s', async (_label, prepare) => {
@@ -338,6 +362,46 @@ describe('POST /auth/logout', () => {
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
         expect(mockedRevokeSession).not.toHaveBeenCalled();
+        expect(mockedLogoutSession).not.toHaveBeenCalled();
+    });
+
+    it('revokes the session from the JWT alone when no refresh token is available', async () => {
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
+        expect(mockedLogoutSession).toHaveBeenCalledWith({
+            baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: 'Bearer header.payload.signature' },
+        });
+        expect(mockedRevokeSession).not.toHaveBeenCalled();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=;/);
+    });
+
+    it('keeps the refresh-token revocation when the refreshToken cookie is present', async () => {
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature')
+            .set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
+
+        expect(response.body.session_revoked).toBe(true);
+        expect(mockedRevokeSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
+        expect(mockedLogoutSession).not.toHaveBeenCalled();
+    });
+
+    it('still clears the cookies when Core API refuses the JWT-only logout', async () => {
+        mockedLogoutSession.mockRejectedValue(new Error('Request failed with status code 401'));
+
+        const response = await request(app)
+            .post('/auth/logout')
+            .set('Authorization', 'Bearer header.payload.signature');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+        expect(JSON.stringify(jest.mocked(console.warn).mock.calls)).not.toContain('header.payload.signature');
     });
 });
 
@@ -454,7 +518,7 @@ describe('authentication rate limiting', () => {
     });
 
     it('does not count successful refreshes', async () => {
-        mockedRefreshSession.mockResolvedValue(axiosResponse('JWT refreshed successfully', 200, { authorization: 'Bearer renewed.payload.signature' }));
+        mockedRefreshSession.mockResolvedValue(axiosResponse({ refresh_token: 'rotated-token' }, 200, { authorization: 'Bearer renewed.payload.signature' }));
         const target = limitedApp({ accountMax: 1, ipMax: 1 });
 
         for (let attempt = 0; attempt < 3; attempt += 1) {

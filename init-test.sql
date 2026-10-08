@@ -12,7 +12,8 @@
 --   * two sessions hold example refresh tokens: user 2's (the former /bff/admin/sessions/refresh
 --     example, kept as a valid session) and the one of /bff/admin/sessions/revoke (user 1: Core API
 --     only revokes the caller's own sessions).
---     Core API stores the refresh token itself in token_hash.
+--     Core API >= 2.0.0 stores the SHA-256 digest (lowercase hex) of the refresh token in token_hash
+--     and rotates the token on every refresh.
 
 -- Passwords must be argon2id hashes (chk_users_password_hashed, MAIR-169): this is the
 -- Database template hash, nobody signs in with it (the tests use forged JWTs).
@@ -43,7 +44,7 @@ ON CONFLICT DO NOTHING;
 
 -- Core API >= 1.1.1 requires at least one role on the user for GET /user/me and
 -- GET /user/{id} (otherwise Core panics with "index out of bounds" -> 502 on the BFF).
--- Core returns a single role: user 1 must only hold Admin for requireAdmin to pass.
+-- User 1 only holds Admin, so its `role` (the first of Core's `roles`) is Admin as well.
 DELETE FROM user_roles
 WHERE user_id = 1 AND role_id <> (SELECT id FROM roles WHERE lower(name) = 'admin');
 
@@ -61,8 +62,8 @@ ON CONFLICT DO NOTHING;
 
 INSERT INTO sessions (user_id, token_hash, device_info, ip_address)
 VALUES
-    (2, 'opaque-refresh-token', 'ZAP scan', '127.0.0.1'),
-    (1, 'opaque-revoked-token', 'ZAP scan', '127.0.0.1')
+    (2, encode(sha256('opaque-refresh-token'::bytea), 'hex'), 'ZAP scan', '127.0.0.1'),
+    (1, encode(sha256('opaque-revoked-token'::bytea), 'hex'), 'ZAP scan', '127.0.0.1')
 ON CONFLICT (token_hash) DO NOTHING;
 
 -- Explicit ids do not advance the sequences: move them past the seeded rows so that the

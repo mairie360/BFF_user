@@ -15,6 +15,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ErrorResponse, registry } from '../openapi-registry';
 import {
+    CORE_LARGEST_PAGE,
+    CORE_MAX_LIMIT,
+    CORE_MAX_OFFSET,
     coreAdminRolesClient,
     coreAdminUsersClient,
     coreGroupsClient,
@@ -55,6 +58,16 @@ const UserListQuery = z.object({
     page_size: z.coerce.number().int().min(1).max(20).default(20),
     search: z.string().trim().max(100).optional(),
 }).openapi('AdminUserListQuery');
+// Page of a Core list, chosen by the front and forwarded as is; the bounds are Core's. Without them, Core
+// answers its first page of 100 items.
+const CorePageQuery = z.object({
+    limit: z.coerce.number().int().min(1).max(CORE_MAX_LIMIT).optional().openapi({ example: 100 }),
+    offset: z.coerce.number().int().min(0).max(CORE_MAX_OFFSET).optional().openapi({ example: 0 }),
+}).strict().openapi('CorePageQuery');
+const corePage = (req: Request) => {
+    const { limit, offset } = parseRequest(CorePageQuery, req.query, 'query');
+    return { ...(limit === undefined ? {} : { limit }), ...(offset === undefined ? {} : { offset }) };
+};
 // Stored labels are rendered by the fronts: `<` and `>` are refused, as Core API does.
 const noMarkup = (schema: z.ZodString) => schema.regex(/^[^<>]*$/, 'Must not contain < or >');
 const GroupName = noMarkup(z.string().trim().min(1).max(64)).openapi({ example: 'Culture' });
@@ -300,11 +313,13 @@ async function requireAdmin(req: Request): Promise<void> {
         throw new HttpError(401, 'Invalid or expired session token');
     }
 
-    // The role comes from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
+    // The roles come from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
+    // Core >= 2.0.0 lists every role in `roles` (`role` is only the first one) and, like its own admin guard,
+    // any `admin` role grants the access.
     const caller = asCaller('CORE_API', req);
-    const { data: { role } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
+    const { data: { roles } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
-    if (role?.trim().toLowerCase() !== 'admin') {
+    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && role.trim().toLowerCase() === 'admin')) {
         throw new HttpError(403, 'Administrator role required');
     }
 }
@@ -587,12 +602,13 @@ registry.registerPath({
     method: 'get',
     path: '/bff/admin/groups',
     tags: ['Administration'],
-    summary: 'Liste les groupes via le Core API',
+    summary: 'Lists the groups through Core API, one page chosen with `limit` / `offset`',
+    request: { query: CorePageQuery },
     responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupsListSchema } } } },
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
-    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    const response = await callUpstream('CORE_API', () => coreGroupsClient.getGroups(corePage(req), asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
     return forwardCoreResponse(res, response, GroupsListSchema);
 });
 
@@ -721,8 +737,8 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
     const userId = body.user_id;
 
     try {
-        // Core does not tell a duplicate addition apart: the membership is read before adding.
-        const members = await coreGroupsClient.getGroupUsers(groupId, asCaller('CORE_API', req));
+        // The membership is read before adding, so a duplicate answers 200 `created: false` rather than Core's 409.
+        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_LARGEST_PAGE, asCaller('CORE_API', req));
         if (members.data.users.includes(userId)) {
             return res.status(200).json({ created: false });
         }
@@ -747,7 +763,7 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
     const { groupId, userId } = parseRequest(GroupUserParams, req.params, 'params');
 
     try {
-        const members = await coreGroupsClient.getGroupUsers(groupId, asCaller('CORE_API', req));
+        const members = await coreGroupsClient.getGroupUsers(groupId, CORE_LARGEST_PAGE, asCaller('CORE_API', req));
         if (!members.data.users.includes(userId)) {
             throw new HttpError(404, 'Unknown group member');
         }
@@ -776,12 +792,13 @@ registry.registerPath({
     method: 'get',
     path: '/bff/admin/sessions/history',
     tags: ['Administration'],
-    summary: 'Récupère l’historique des sessions via le Core API',
+    summary: 'Reads the session history through Core API, one page chosen with `limit` / `offset`',
+    request: { query: CorePageQuery },
     responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {
-    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    const response = await callUpstream('CORE_API', () => coreSessionsClient.history(corePage(req), asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
     return forwardCoreResponse(res, response, SessionsListSchema);
 });
 

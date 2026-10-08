@@ -78,11 +78,6 @@ function json(response) {
   }
 }
 
-// Core API bug (core-api 1.2.0): POST /api/v1/groups/{id}/users/ swaps user_id and group_id in
-// its INSERT, so adding a member answers 404 "Unknow user." (foreign key violation) and removing
-// it answers 404 as well. Both are accepted until Core API is fixed; any other status still fails.
-const memberStatuses = { responseCallback: http.expectedStatuses(200, 201, 204, 404) };
-
 const handlers = {
   // --- Connectivity (public) ---
   'GET /health': ({ request }) =>
@@ -253,12 +248,12 @@ const handlers = {
       'group members 200': (r) => r.status === 200,
     }),
   'POST /bff/admin/groups/{groupId}/users': ({ request, data }) =>
-    check(request({ path: { groupId: FIXTURE_GROUP_ID }, body: { user_id: need(state.userId, 'created user') }, headers: data.admin, params: memberStatuses }), {
-      'add member 201 (404: Core bug)': (r) => r.status === 201 || r.status === 404,
+    check(request({ path: { groupId: FIXTURE_GROUP_ID }, body: { user_id: need(state.userId, 'created user') }, headers: data.admin }), {
+      'add member 201': (r) => r.status === 201,
     }),
   'DELETE /bff/admin/groups/{groupId}/users/{userId}': ({ request, data }) =>
-    check(request({ path: { groupId: FIXTURE_GROUP_ID, userId: need(state.userId, 'created user') }, headers: data.admin, params: memberStatuses }), {
-      'remove member 204 (404: Core bug)': (r) => r.status === 204 || r.status === 404,
+    check(request({ path: { groupId: FIXTURE_GROUP_ID, userId: need(state.userId, 'created user') }, headers: data.admin }), {
+      'remove member 204': (r) => r.status === 204,
     }),
 
   // --- Admin: sessions ---

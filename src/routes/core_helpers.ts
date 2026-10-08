@@ -4,6 +4,7 @@ import type {
     ForceChangePasswordView,
     LoginResponseView,
     LoginView,
+    RefreshResponseView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { KeycloakLoginView } from '../clients/coreClient';
@@ -25,8 +26,9 @@ export async function loginUser(loginView: LoginView): Promise<AxiosResponse<Log
 /**
  * Renews the access JWT from a refresh token alone: Core serves POST /api/v1/sessions/refresh outside
  * its JWT middleware (>= 1.2.0), so no session is forwarded and an expired JWT is not needed.
+ * Core >= 2.0.0 rotates the refresh token: the one sent stops working and the body carries its replacement.
  */
-export async function refreshSession(refreshToken: string): Promise<AxiosResponse<string>> {
+export async function refreshSession(refreshToken: string): Promise<AxiosResponse<RefreshResponseView>> {
     return coreSessionsClient.refresh({ refresh_token: refreshToken }, withoutSession('CORE_API'));
 }
 
@@ -36,6 +38,14 @@ export async function refreshSession(refreshToken: string): Promise<AxiosRespons
  */
 export async function revokeSession(refreshToken: string, caller: UpstreamRequestOptions): Promise<void> {
     await coreSessionsClient.revoke({ refresh_token: refreshToken }, caller);
+}
+
+/**
+ * Revokes the session the caller's JWT belongs to, from the JWT alone (POST /api/v1/sessions/logout,
+ * Core >= 2.0.0): used by /auth/logout when no refresh token is available.
+ */
+export async function logoutSession(caller: UpstreamRequestOptions): Promise<void> {
+    await coreSessionsClient.logout(caller);
 }
 
 /** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */

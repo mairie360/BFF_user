@@ -14,7 +14,7 @@ jest.mock('../src/clients/coreClient', () => {
         '@mairie360/core-api-openapi/endpoints/coreAPIMairie360',
     );
     const operations = Object.fromEntries(Object.keys(getCoreAPIMairie360()).map((operation) => [operation, jest.fn()]));
-    return { coreGroupsClient: operations, coreUsersClient: operations };
+    return { CORE_LARGEST_PAGE: { limit: 500 }, coreGroupsClient: operations, coreUsersClient: operations };
 });
 
 const mockedGetMe = jest.mocked(coreUsersClient.getMe);
@@ -58,9 +58,10 @@ describe('GET /session/me', () => {
         // Contract fields only: the groups nested in Core's /user/me answer are not relayed under `user`.
         const user: Partial<ReturnType<typeof meResponse>> = { ...me };
         delete user.groups;
+        delete user.roles;
         expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
         expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
-        expect(mockedGetGroups).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
+        expect(mockedGetGroups).toHaveBeenCalledWith({ limit: 500 }, { baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
     });
 
     it.each([

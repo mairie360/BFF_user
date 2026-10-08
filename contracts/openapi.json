@@ -249,7 +249,7 @@
           "refresh_token": {
             "type": "string",
             "minLength": 1,
-            "description": "Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. When available with the session, the Core API session is revoked, which invalidates the access JWT immediately.",
+            "description": "Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. With the session, the Core API session is revoked through it (POST /api/v1/sessions/revoke); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
           },
           "post_logout_redirect_uri": {
@@ -269,7 +269,7 @@
           },
           "session_revoked": {
             "type": "boolean",
-            "description": "Whether the Core API session was revoked. `false` when no session or refresh token was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.",
+            "description": "Whether the Core API session was revoked. `false` when no session was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.",
             "example": true
           },
           "logout_url": {
@@ -1291,7 +1291,7 @@
           "Authentication"
         ],
         "summary": "Renews the access JWT",
-        "description": "Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Like /auth/login, the new JWT is only delivered in the HttpOnly accessToken cookie. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.",
+        "description": "Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.",
         "requestBody": {
           "required": false,
           "content": {
@@ -1304,10 +1304,10 @@
         },
         "responses": {
           "200": {
-            "description": "JWT renewed; the new access JWT is in the accessToken cookie.",
+            "description": "JWT renewed; the new access JWT is in the accessToken cookie and the rotated refresh token in the refreshToken cookie (the one sent no longer works).",
             "headers": {
               "Set-Cookie": {
-                "description": "HttpOnly `accessToken` cookie",
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
                 "schema": {
                   "type": "string"
                 }
@@ -1399,7 +1399,7 @@
           "Authentication"
         ],
         "summary": "Signs a user out",
-        "description": "Revokes the caller's Core API session (POST /api/v1/sessions/revoke) when the session (`Authorization: Bearer` header) and the refresh token (body field or refreshToken cookie) are both sent, then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.",
+        "description": "Revokes the caller's Core API session when the session (`Authorization: Bearer` header) is sent: with the refresh token (body field or refreshToken cookie) through POST /api/v1/sessions/revoke, else from the JWT alone through POST /api/v1/sessions/logout. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.",
         "requestBody": {
           "required": false,
           "content": {
@@ -3181,7 +3181,34 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Liste les groupes via le Core API",
+        "summary": "Lists the groups through Core API, one page chosen with `limit` / `offset`",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "example": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1000000,
+              "example": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Données de l’administration",
@@ -4297,7 +4324,34 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Récupère l’historique des sessions via le Core API",
+        "summary": "Reads the session history through Core API, one page chosen with `limit` / `offset`",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "example": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1000000,
+              "example": 0
+            },
+            "required": false,
+            "name": "offset",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Données de l’administration",

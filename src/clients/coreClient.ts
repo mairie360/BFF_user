@@ -22,6 +22,14 @@ export const coreClient = axios.create({
 /** Client generated from the Core API OpenAPI contract. */
 export const coreApi = getCoreAPIMairie360(coreClient);
 
+/**
+ * Core API's paginated lists (>= 2.0.0) take `limit` (1 to 500, 100 by default) and `offset` (0 to 1000000).
+ * The list routes forward the page the front asks for; internal membership checks read the largest page.
+ */
+export const CORE_MAX_LIMIT = 500;
+export const CORE_MAX_OFFSET = 1_000_000;
+export const CORE_LARGEST_PAGE = { limit: CORE_MAX_LIMIT } as const;
+
 /** Body of Core's `POST /api/v1/auth/keycloak` (`KeycloakLoginView`). */
 export interface KeycloakLoginView {
     code: string;
@@ -33,8 +41,8 @@ export interface KeycloakLoginView {
 
 /**
  * Keycloak single sign-on: Core redeems the authorization code and answers like `POST /api/v1/auth/login`.
- * Hand-written because `@mairie360/core-api-openapi` 1.2.0 predates this route: replace it with
- * `coreApi.keycloakLogin` once the package that ships it is installed.
+ * Still hand-written: `@mairie360/core-api-openapi` >= 2.0.0 ships `coreApi.keycloakLogin`, the switch is
+ * left for a later change.
  */
 export const keycloakLogin = (keycloakLoginView: KeycloakLoginView, options?: AxiosRequestConfig) => (
     coreClient.post<LoginResponseView>('/api/v1/auth/keycloak', keycloakLoginView, options)
@@ -90,6 +98,7 @@ export const coreGroupsClient = {
 export const coreSessionsClient = {
     getActiveSessions: coreApi.getActiveSessions,
     history: coreApi.history,
+    logout: coreApi.logout,
     refresh: coreApi.refresh,
     revoke: coreApi.revoke,
 };

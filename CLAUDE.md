@@ -72,6 +72,10 @@ group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing fil
 the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
 which validates the one-time token, saves the password and consumes the token. The admin role of the
 caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
+Core ≥ 2.0.0 paginates the groups, group members and session history (`limit` 1-500, 100 by default;
+`offset`). `GET /bff/admin/groups` and `/bff/admin/sessions/history` forward the `limit` / `offset` the front
+sends (`CorePageQuery`, Core's bounds, 400 outside them); the BFF's own reads (`/me` groups, membership checks)
+use `CORE_LARGEST_PAGE` (500) of `coreClient.ts`.
 
 The generated packages ship `.ts` sources: `tsx` (dev), ts-jest (tests) and esbuild (`npm run build`:
 `tsc --noEmit`, then `scripts/build.mjs` bundles `dist/index.js` inlining those packages) load them, so the
@@ -107,12 +111,14 @@ and the legacy `/me` resolve.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
-  `refreshToken` cookie; the JWT is delivered like login (cookie only). `/bff/admin/sessions/refresh`
+  `refreshToken` cookie; the JWT is delivered like login (cookie only). Core ≥ 2.0.0 rotates the refresh token
+  (the one sent stops working): its replacement, from the JSON body, overwrites the `refreshToken` cookie. `/bff/admin/sessions/refresh`
   was removed (it replaced the admin's own cookie with the refreshed JWT; Core has no revoke-by-session-id).
 - **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
-  Core publishes no "revoke the current session by JWT" operation, so without a `refresh_token`
-  logout only clears the cookie (`session_revoked: false`).
+  Without a `refresh_token` (body or cookie) it revokes the session from the JWT alone through Core ≥ 2.0.0's
+  `POST /api/v1/sessions/logout`. Any Core failure is only logged (status only): the cookies are still
+  cleared and `session_revoked` is `false`. Without a Bearer session nothing is called.
 - **Rate limiting** (`src/middleware/rateLimit.ts`, three lib `createRateLimiter` instances with
   `envPrefix: 'AUTH_RATE_LIMIT'`, 412 counted as a success): failed attempts on
   `/auth/login` (per IP and per e-mail), `/auth/force_change_password` (per IP) and
@@ -125,11 +131,10 @@ and the legacy `/me` resolve.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.
 - **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
   `POST /api/v1/auth/keycloak` and sets the session exactly like `/auth/login`; Core's 503
-  (Keycloak not configured) is kept so the front can fall back to password login. That Core route
-  is absent from `@mairie360/core-api-openapi` 1.2.0, so `coreClient.ts` calls it by hand
-  (`keycloakLogin`) and the upstream-mock test cannot cover it: switch to the generated function
-  and add it to `upstream-contracts.test.ts` once the package that ships it is installed.
-- **`/auth/logout`**: clears the `accessToken` cookie, never calls Core. Single logout (MAIR-143):
+  (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
+  (`keycloakLogin`), although `@mairie360/core-api-openapi` 2.0.0 ships it: switching to the generated
+  function (and adding it to `upstream-contracts.test.ts`) is left for later.
+- **`/auth/logout`** single logout (MAIR-143):
   when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
   call), the response adds `logout_url`, the realm's OIDC end-session URL
   (`/protocol/openid-connect/logout?client_id=…&post_logout_redirect_uri=…`) that the front must
@@ -139,8 +144,8 @@ and the legacy `/me` resolve.
   `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
-  *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the `admin`
-  role from Core `GET /api/v1/user/me/`. A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
+  *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
+  `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
@@ -222,7 +227,7 @@ operation gets a `p(95)` threshold from its family (`budgetOf`). In `crud`, hand
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens
-are not rotated, group membership calls answer 404 (Core swaps `user_id`/`group_id`).
+are rotated by `/auth/refresh` (each refresh needs its own login).
 
 ## Conventions
 
