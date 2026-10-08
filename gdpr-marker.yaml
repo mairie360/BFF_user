@@ -1,0 +1,120 @@
+# GDPR log marker journey (MAIR-290), played by mairie360/CICD tests/gdpr/marker.
+#
+# A marker user with unique values goes through the BFF flows that handle personal data,
+# deliberate errors included; the logs of every container of docker-compose-gdpr-marker.yml (the
+# BFF, Core API, Postgres, Redis...) are then searched for those values (see
+# gdpr_marker_test.sh). A log describes an error by its type and context, never by the value it
+# received.
+version: 1
+target: http://bff-user:4000
+wait: /health
+# The admin JWT of the stack (sub=1, the seeded Admin), the same one the ZAP scan uses.
+env: [ADMIN_JWT]
+steps:
+  # There is no public sign-up: an administrator creates the account.
+  - name: create the marker account (admin)
+    request:
+      method: POST
+      path: /bff/admin/users
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.email}}", password: "{{marker.password}}", phone_number: "{{marker.phone}}"}
+    expect: [201]
+  - name: create the same e-mail again (deliberate error)
+    request:
+      method: POST
+      path: /bff/admin/users
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.email}}", password: "{{marker.password}}"}
+    expect: [409]
+  - name: create an account with a too short password (deliberate error)
+    request:
+      method: POST
+      path: /bff/admin/users
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "x{{marker.email}}", password: "Mk1!"}
+    expect: [400]
+  - name: create an account with an invalid e-mail (deliberate error)
+    request:
+      method: POST
+      path: /bff/admin/users
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.last_name}}", password: "{{marker.password}}"}
+    expect: [400]
+  - name: search the marker in the admin list (query string)
+    request:
+      method: GET
+      path: "/bff/admin/users?search={{marker.email}}"
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+    capture:
+      user_id: body.users.0.id
+  - name: log in with a wrong password (deliberate error)
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "x{{marker.password}}", device_info: "gdpr marker"}}
+    expect: [401]
+  - name: log in with an unknown e-mail (deliberate error)
+    request: {method: POST, path: /auth/login, json: {email: "x{{marker.email}}", password: "{{marker.password}}", device_info: "gdpr marker"}}
+    expect: [401]
+  - name: log in with a malformed body (deliberate error)
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}"}}
+    expect: [400]
+  - name: first login, password change required
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}", device_info: "gdpr marker"}}
+    expect: [412]
+    capture:
+      first_connection_token: {from: body.token, sensitive: true}
+  - name: change the password with a too short one (deliberate error)
+    request: {method: POST, path: /auth/force_change_password, json: {token: "{{first_connection_token}}", new_password: "Mk1!"}}
+    expect: [400]
+  - name: change the password at first connection
+    request: {method: POST, path: /auth/force_change_password, json: {token: "{{first_connection_token}}", new_password: "{{marker.password}}2"}}
+    expect: [204]
+  - name: log in
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}2", device_info: "gdpr marker"}}
+    capture:
+      access_token: {from: cookie.accessToken, sensitive: true}
+      refresh_token: {from: cookie.refreshToken, sensitive: true}
+  - name: read the own session
+    request: {method: GET, path: /me, headers: {Authorization: "Bearer {{access_token}}"}}
+  - name: read the own public profile
+    request: {method: GET, path: "/user/{{user_id}}/about", headers: {Authorization: "Bearer {{access_token}}"}}
+  - name: refresh the session
+    request: {method: POST, path: /auth/refresh, json: {refresh_token: "{{refresh_token}}"}}
+    capture:
+      refreshed_token: {from: cookie.accessToken, sensitive: true}
+      rotated_refresh_token: {from: cookie.refreshToken, sensitive: true}
+  - name: refresh with the consumed refresh token (deliberate error)
+    request: {method: POST, path: /auth/refresh, json: {refresh_token: "{{refresh_token}}"}}
+    expect: [401]
+  - name: update the marker as admin (names and phone)
+    request:
+      method: PATCH
+      path: "/bff/admin/users/{{user_id}}"
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", phone_number: "{{marker.phone}}"}
+  - name: update the marker with an invalid phone (deliberate error)
+    request:
+      method: PATCH
+      path: "/bff/admin/users/{{user_id}}"
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {phone_number: "{{marker.phone}}{{marker.last_name}}"}
+    expect: [400]
+  - name: reset the marker's password as admin
+    request:
+      method: PATCH
+      path: "/bff/admin/users/{{user_id}}/password"
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+      json: {new_password: "{{marker.password}}3"}
+  - name: log in with the new password
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}3", device_info: "gdpr marker"}}
+    capture:
+      last_access_token: {from: cookie.accessToken, sensitive: true}
+      last_refresh_token: {from: cookie.refreshToken, sensitive: true}
+  - name: log out
+    request: {method: POST, path: /auth/logout, headers: {Authorization: "Bearer {{last_access_token}}"}, json: {refresh_token: "{{last_refresh_token}}"}}
+  - name: archive the marker account (admin)
+    request:
+      method: DELETE
+      path: "/bff/admin/users/{{user_id}}"
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+  - name: log in to the archived account (deliberate error)
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}3", device_info: "gdpr marker"}}
+    expect: [401]
