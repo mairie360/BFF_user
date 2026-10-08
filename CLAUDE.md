@@ -134,6 +134,20 @@ and the legacy `/me` resolve.
   (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
   (`keycloakLogin`), although `@mairie360/core-api-openapi` 2.0.0 ships it: switching to the generated
   function (and adding it to `upstream-contracts.test.ts`) is left for later.
+- **Passkeys** (MAIR-505): `/auth/passkey/options` + `/auth/passkey` (public, `limiters.perIp`) run the
+  WebAuthn sign-in through Core's public `POST /api/v1/auth/passkey/options` / `POST /api/v1/auth/passkey`
+  and set the session exactly like `/auth/login`; `/user/me/passkeys/options`, `/user/me/passkeys` (POST
+  201, GET) and `/user/me/passkeys/{passkeyId}` (DELETE 204) proxy the registration, list and deletion with
+  the caller's session (`requireBearer`, Core 404 relayed). The WebAuthn documents (ceremony options,
+  `PublicKeyCredential.toJSON()`) are `z.object({}).passthrough()` in the contract and relayed as is:
+  Core builds and checks them, the BFF types the envelope only (`PasskeyCeremonyOptionsResponse`,
+  `PasskeyLoginView`, `RegisterPasskeyView`, `Passkey`, `PasskeyListResponse`), and reads go through
+  `whitelist`. Core's 503 (no WebAuthn relying party: `WEBAUTHN_RP_ID` unset on the instance) is kept
+  on every passkey route (`PasskeysNotConfigured`) so the front falls back to the password login. The
+  Core calls are hand-written in `coreClient.ts` like `keycloakLogin` (`@mairie360/core-api-openapi`
+  2.0.0 predates them): switch to the generated functions and add them to `upstream-contracts.test.ts`
+  once a Core contract with them is published. The ZAP/k6 stacks run a Core without relying party, so
+  the k6 handlers expect the 503 (and the empty list / 404 of the routes that need none).
 - **`/auth/logout`** single logout (MAIR-143):
   when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
   call), the response adds `logout_url`, the realm's OIDC end-session URL
@@ -172,7 +186,8 @@ for the call options, and `callUpstream('CORE_API', call, { declared, retry })` 
 error, declared)`: only the Core 4xx the route declares are kept (generic message), any other status, a network
 failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
 relayed. `retry: true` (one retry on no answer / 502 / 503 / 504) is only set on Core GETs. Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
-`{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
+`{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), passkey sign-in `[400, 401, 429]` and
+its options `[429]` (+ 503 kept), passkey management `[401]` / `[400, 401, 409]` / `[401, 404]` (+ 503 kept), force_change_password
 `[400, 401, 403]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
 `READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
 must add `errorHandler()` after it. The rate limiters answer 429 in the same envelope.

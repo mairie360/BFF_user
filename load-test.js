@@ -142,7 +142,51 @@ const handlers = {
       { 'keycloak 503 (not configured)': (r) => r.status === 503 },
     ),
 
+  // The test stack's Core has no WebAuthn relying party (WEBAUTHN_RP_ID unset): the passkey routes
+  // relay its declared 503, like /auth/keycloak. The management routes still need the session first.
+  'POST /auth/passkey/options': ({ request }) =>
+    check(request({ params: { responseCallback: http.expectedStatuses(503) } }), {
+      'passkey options 503 (not configured)': (r) => r.status === 503,
+    }),
+  'POST /auth/passkey': ({ request }) =>
+    check(
+      request({
+        // Contract examples: a well-formed assertion that only fails because passkeys are not configured.
+        body: {
+          challenge_id: '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35',
+          credential: { id: 'vJd5R8m2oA7N_3kQ1eF2hWfYbZcTx9L0', rawId: 'vJd5R8m2oA7N_3kQ1eF2hWfYbZcTx9L0', type: 'public-key', response: {}, clientExtensionResults: {} },
+          device_info: 'k6',
+        },
+        params: { responseCallback: http.expectedStatuses(503) },
+      }),
+      { 'passkey sign-in 503 (not configured)': (r) => r.status === 503 },
+    ),
+
   // --- User ---
+  'POST /user/me/passkeys/options': ({ request }) =>
+    check(request({ params: { responseCallback: http.expectedStatuses(503) } }), {
+      'passkey registration options 503 (not configured)': (r) => r.status === 503,
+    }),
+  'POST /user/me/passkeys': ({ request }) =>
+    check(
+      request({
+        body: {
+          challenge_id: '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35',
+          label: 'k6',
+          credential: { id: 'vJd5R8m2oA7N_3kQ1eF2hWfYbZcTx9L0', rawId: 'vJd5R8m2oA7N_3kQ1eF2hWfYbZcTx9L0', type: 'public-key', response: {}, clientExtensionResults: {} },
+        },
+        params: { responseCallback: http.expectedStatuses(503) },
+      }),
+      { 'register passkey 503 (not configured)': (r) => r.status === 503 },
+    ),
+  // Listing needs no relying party on Core: an account without passkeys answers an empty list.
+  'GET /user/me/passkeys': ({ request }) =>
+    check(request(), { 'passkeys 200': (r) => r.status === 200 && Array.isArray(json(r) && json(r).passkeys) }),
+  // No passkey can exist without a relying party: Core answers 404 for any id.
+  'DELETE /user/me/passkeys/{passkeyId}': ({ request }) =>
+    check(request({ path: { passkeyId: 1 }, params: { responseCallback: http.expectedStatuses(404) } }), {
+      'delete passkey 404': (r) => r.status === 404,
+    }),
   'GET /user/{userId}/about': ({ request }) =>
     check(request({ path: { userId: USER_ID } }), { 'about 200': (r) => r.status === 200 }),
 

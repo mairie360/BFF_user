@@ -12,10 +12,16 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | GET | `/check_apis` | 200 CheckApiResponse |
 | POST | `/auth/login` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
 | POST | `/auth/keycloak` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
+| POST | `/auth/passkey/options` | 200 PasskeyCeremonyOptionsResponse |
+| POST | `/auth/passkey` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
 | POST | `/auth/force_change_password` | 204 Mot de passe changé avec succès |
 | POST | `/auth/refresh` | 200 RefreshResponse |
 | POST | `/auth/logout` | 200 LogoutResponse |
 | GET | `/user/{userId}/about` | 200 AboutResponseView |
+| POST | `/user/me/passkeys/options` | 200 PasskeyCeremonyOptionsResponse |
+| POST | `/user/me/passkeys` | 201 Passkey |
+| GET | `/user/me/passkeys` | 200 PasskeyListResponse |
+| DELETE | `/user/me/passkeys/{passkeyId}` | 204 Passkey supprimée |
 | GET | `/bff/admin/users` | 200 AdministrationUsersPage ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | POST | `/bff/admin/users` | 200 CoreResponse ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | PATCH | `/bff/admin/users/{userId}` | 200 CoreResponse ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
