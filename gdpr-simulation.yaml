@@ -1,0 +1,22 @@
+# GDPR usage simulation (MAIR-497), played by mairie360/CICD tests/gdpr/simulation on the test
+# stack only (docker-compose-gdpr-simulation.yml, gdpr_simulation_test.sh).
+#
+# Fictitious personas with unique values go through the marker journey of MAIR-290 through the BFF
+# (account creation by an admin, logins, first-connection password change, session, refresh,
+# admin update and password reset, logout, archive); the last one is then erased. The logs of
+# every container (BFF, Core API, Postgres, Redis), the database after the purge and a sample of
+# its free-text columns are then checked and reviewed (CICD analyze.mjs).
+version: 1
+journey: gdpr-marker.yaml
+personas: 4
+erased: 1
+# The marker journey already archives every persona, the only deletion the BFF offers today: the
+# erase step archives again. It becomes the anonymization of MAIR-289 once Core and the BFF expose
+# it; until then the erasure findings of the analysis are expected failures.
+erase:
+  - name: erase the persona (archive, until the anonymization of MAIR-289)
+    request:
+      method: DELETE
+      path: "/bff/admin/users/{{user_id}}"
+      headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
+    expect: [204, 404]
