@@ -180,7 +180,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -286,7 +286,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -387,7 +387,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -641,7 +641,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3447,7 +3447,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3509,7 +3509,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;

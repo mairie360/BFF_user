@@ -649,7 +649,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('get', '/bff/admin/groups', response);
-      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (session\.|or expired session token)$/), details: [] } });
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (session\.|or expired session token\.)$/), details: [] } });
       expect(coreApi.requests).toHaveLength(0);
     });
 

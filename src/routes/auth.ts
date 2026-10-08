@@ -186,6 +186,7 @@ registry.registerPath({
 registry.registerPath({
     method: 'post',
     path: '/auth/refresh',
+    security: [],
     tags: ['Authentication'],
     summary: 'Renews the access JWT',
     description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.',
@@ -299,6 +300,7 @@ registry.registerPath({
 registry.registerPath({
     method: 'post',
     path: '/auth/keycloak',
+    security: [],
     tags: ['Authentication'],
     summary: 'Signs a user in with Keycloak',
     description: 'Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the '

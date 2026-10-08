@@ -46,7 +46,6 @@ const ADMIN_ID = __ENV.PERF_ADMIN_ID || '1';
 const AGENTS = { first: 500001, count: 10000 };
 const PERF_GROUPS = { first: 50000, count: 2000, members: 20 };
 const ADMIN_PAGE_SIZE = 20;
-const ADMIN_BROWSED_PAGES = 10;
 // The Admin is a member of the first 300 perf groups (plus the scan groups): its group listing.
 const ADMIN_GROUPS = 300;
 
@@ -187,23 +186,34 @@ const handlers = {
   },
 
   // --- Admin: users ---
-  // One of the first pages of the 10 000 seeded agents, as an admin browses them. The cost of the deep
-  // pages is Core's (OFFSET over every user) and is measured by Core API's own load test.
-  'GET /bff/admin/users': ({ request, data }) =>
-    check(request({ query: { page: 1 + randomInt(ADMIN_BROWSED_PAGES), page_size: ADMIN_PAGE_SIZE }, headers: data.admin }), {
-      'admin users 200': (r) => r.status === 200,
-      'admin users reads the seed': (r) =>
-        r.status === 200 && r.json('total') >= AGENTS.count && r.json('users').length === ADMIN_PAGE_SIZE,
-    }),
-  // Core answers without the id: it is read back from the admin listing.
+  // Any page of the 10 000 seeded agents, deep ones included (Core >= MAIR-477 reads them through the name
+  // index), or a search by e-mail that matches a handful of them (the trigram index of the search text).
+  'GET /bff/admin/users': ({ request, data }) => {
+    if (Math.random() < 0.5) {
+      const pages = Math.floor(AGENTS.count / ADMIN_PAGE_SIZE);
+      check(request({ query: { page: 1 + randomInt(pages), page_size: ADMIN_PAGE_SIZE }, headers: data.admin }), {
+        'admin users 200': (r) => r.status === 200,
+        'admin users reads the seed': (r) =>
+          r.status === 200 && r.json('total') >= AGENTS.count && r.json('users').length === ADMIN_PAGE_SIZE,
+      });
+      return;
+    }
+    const agent = randomAgent();
+    check(request({ query: { page: 1, page_size: ADMIN_PAGE_SIZE, search: `perf.agent.${agent.id}@` }, headers: data.admin }), {
+      'admin users search 200': (r) => r.status === 200,
+      'admin users search finds the agent': (r) =>
+        r.status === 200 && r.json('total') === 1 && r.json('users.0.email') === `perf.agent.${agent.id}@mairie360.fr`,
+    });
+  },
+  // Core (MAIR-474) answers the id of the created account.
   'POST /bff/admin/users': ({ request, data }) => {
     const email = `${unique('perf-admin-user')}@perf.mairie360.fr`;
     const res = request({
       body: { email, first_name: 'Perf', last_name: 'Managed', password: USER_PASSWORD },
       headers: data.admin,
     });
-    check(res, { 'create user 201': (r) => r.status === 201 });
-    state.userId = findUserId(email, data);
+    check(res, { 'create user 201 with its id': (r) => r.status === 201 && Number.isInteger(r.json('id')) });
+    state.userId = res.status === 201 ? res.json('id') : undefined;
   },
   'PATCH /bff/admin/users/{userId}': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { first_name: 'Patched' }, headers: data.admin }), {

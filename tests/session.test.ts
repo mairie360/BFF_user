@@ -5,7 +5,7 @@ import express from 'express';
 import request from 'supertest';
 import sessionRouter from '../src/routes/session';
 import { coreGroupsClient, coreUsersClient } from '../src/clients/coreClient';
-import { axiosResponse, group, groupsResult, meResponse } from './support/core-fixtures';
+import { JWT_SECRET, axiosResponse, group, groupsResult, meResponse, sessionToken } from './support/core-fixtures';
 
 // Core API est simulée au niveau du client généré : chaque regroupement expose exactement les opérations de
 // getCoreAPIMairie360 (@mairie360/core-api-openapi), une opération renommée ou retirée par le contrat casse le test.
@@ -20,12 +20,8 @@ jest.mock('../src/clients/coreClient', () => {
 const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedGetGroups = jest.mocked(coreGroupsClient.getGroups);
 
-function tokenFor(userId: number) {
-    const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({ sub: String(userId) })).toString('base64url');
-
-    return `${header}.${payload}.test`;
-}
+// Signed with the JWT_SECRET of the tests: `requireSession` verifies it before any Core call.
+const tokenFor = (userId: number) => sessionToken(userId);
 
 const app = express();
 // Cookies are parsed, as in the application: the accessToken cookie must still be ignored.
@@ -43,6 +39,7 @@ describe('GET /session/me', () => {
         jest.clearAllMocks();
         // Read on every call (MAIR-431): no localhost default, no URL frozen at import.
         process.env.CORE_API_URL = 'http://core.test';
+        process.env.JWT_SECRET = JWT_SECRET;
     });
 
     it('returns the current user with their groups and the role of GetMeResponseView', async () => {

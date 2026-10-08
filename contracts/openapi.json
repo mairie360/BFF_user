@@ -1170,7 +1170,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1273,7 +1273,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1287,6 +1287,7 @@
     },
     "/auth/refresh": {
       "post": {
+        "security": [],
         "tags": [
           "Authentication"
         ],
@@ -1380,7 +1381,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1446,6 +1447,7 @@
     },
     "/auth/keycloak": {
       "post": {
+        "security": [],
         "tags": [
           "Authentication"
         ],
@@ -1626,7 +1628,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -4618,7 +4620,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -4664,7 +4666,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {

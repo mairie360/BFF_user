@@ -160,7 +160,7 @@ describe('Administration routes', () => {
 
     it.each([
         ['no session', undefined, 'Invalid session.'],
-        ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token'],
+        ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token.'],
     ])('answers 401 with %s before calling Core API', async (_label, authorization, message) => {
         const call = request(app).delete('/bff/admin/users/42');
         const response = await (authorization ? call.set('Authorization', authorization) : call);

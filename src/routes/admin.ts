@@ -9,9 +9,9 @@ import {
     parseRequest,
     upstreamError,
     validationError,
+    verifySessionToken,
 } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { ErrorResponse, registry } from '../openapi-registry';
 import {
@@ -279,39 +279,9 @@ async function requireAdmin(req: Request): Promise<void> {
         throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
-    let userId: number;
-
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) throw new Error('Invalid token');
-
-        const [encodedHeader, encodedPayload, signature] = parts;
-        const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8')) as {
-            alg?: unknown;
-        };
-        const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
-            sub?: unknown;
-            exp?: unknown;
-        };
-        const expectedSignature = createHmac('sha256', secret)
-            .update(`${encodedHeader}.${encodedPayload}`)
-            .digest();
-        const receivedSignature = Buffer.from(signature, 'base64url');
-        const validSignature =
-            header.alg === 'HS256' &&
-            expectedSignature.length === receivedSignature.length &&
-            timingSafeEqual(expectedSignature, receivedSignature);
-        userId = Number(payload.sub);
-        const validExpiration =
-            typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000);
-
-        if (!validSignature || !validExpiration || !Number.isInteger(userId) || userId <= 0) {
-            throw new Error('Invalid token');
-        }
-    } catch {
-        // Never send the parsing detail (JSON.parse, base64) to the client.
-        throw new HttpError(401, 'Invalid or expired session token');
-    }
+    // HS256 signature with JWT_SECRET, expiry and a positive integer `sub` (`@mairie360/bffs-lib`, the checks of
+    // Core): a forged or expired token gets its 401 without any Core call, and never learns which check failed.
+    verifySessionToken(token, secret);
 
     // The roles come from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
     // Core >= 2.0.0 lists every role in `roles` (`role` is only the first one) and, like its own admin guard,
