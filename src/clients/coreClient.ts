@@ -48,11 +48,83 @@ export const keycloakLogin = (keycloakLoginView: KeycloakLoginView, options?: Ax
     coreClient.post<LoginResponseView>('/api/v1/auth/keycloak', keycloakLoginView, options)
 );
 
+// --- Passkeys (MAIR-505), hand-written like the Keycloak sign-in: `@mairie360/core-api-openapi` 2.0.0
+// predates them. Switch to the generated functions once a Core contract with them is published, and add
+// them to `upstream-contracts.test.ts` at the same time.
+
+/** WebAuthn JSON (options of a ceremony, `PublicKeyCredential.toJSON()`): relayed as is, Core checks it. */
+export type WebAuthnJson = Record<string, unknown>;
+
+/** Body of Core's `POST /api/v1/auth/passkey` (`PasskeyLoginView`). */
+export interface PasskeyLoginView {
+    challenge_id: string;
+    credential: WebAuthnJson;
+    device_info: string;
+}
+
+/** Answer of Core's `POST /api/v1/auth/passkey/options` and `POST /api/v1/user/me/passkeys/options`. */
+export interface PasskeyCeremonyOptionsView {
+    challenge_id: string;
+    public_key: WebAuthnJson;
+}
+
+/** Body of Core's `POST /api/v1/user/me/passkeys/` (`RegisterPasskeyView`). */
+export interface RegisterPasskeyView {
+    challenge_id: string;
+    label: string;
+    credential: WebAuthnJson;
+}
+
+/** A registered passkey as Core lists it (`PasskeySummary`): never the public key. */
+export interface PasskeySummaryView {
+    id: number;
+    label: string;
+    created_at: string;
+    last_used_at: string | null;
+}
+
+/** Answer of Core's `GET /api/v1/user/me/passkeys/` (`PasskeyListResponseView`). */
+export interface PasskeyListView {
+    passkeys: PasskeySummaryView[];
+}
+
+/** Opens a discoverable passkey sign-in: public on Core API, no body. */
+export const passkeyLoginOptions = (options?: AxiosRequestConfig) => (
+    coreClient.post<PasskeyCeremonyOptionsView>('/api/v1/auth/passkey/options', undefined, options)
+);
+
+/** Completes a passkey sign-in: Core answers like `POST /api/v1/auth/login`. */
+export const passkeyLogin = (passkeyLoginView: PasskeyLoginView, options?: AxiosRequestConfig) => (
+    coreClient.post<LoginResponseView>('/api/v1/auth/passkey', passkeyLoginView, options)
+);
+
+/** Opens the registration of a passkey for the caller's account. */
+export const passkeyRegistrationOptions = (options?: AxiosRequestConfig) => (
+    coreClient.post<PasskeyCeremonyOptionsView>('/api/v1/user/me/passkeys/options', undefined, options)
+);
+
+/** Registers the passkey answering a registration ceremony (Core answers 201). */
+export const registerPasskey = (registerPasskeyView: RegisterPasskeyView, options?: AxiosRequestConfig) => (
+    coreClient.post<PasskeySummaryView>('/api/v1/user/me/passkeys/', registerPasskeyView, options)
+);
+
+/** The passkeys of the caller's account. */
+export const listPasskeys = (options?: AxiosRequestConfig) => (
+    coreClient.get<PasskeyListView>('/api/v1/user/me/passkeys/', options)
+);
+
+/** Deletes one passkey of the caller's account (Core answers 204, or 404 for someone else's). */
+export const deletePasskey = (passkeyId: number, options?: AxiosRequestConfig) => (
+    coreClient.delete<void>(`/api/v1/user/me/passkeys/${passkeyId}/`, options)
+);
+
 // The groups below keep the interface the BFF routes consume, on top of the single generated client
 // `getCoreAPIMairie360`.
 export const coreAuthClient = {
     login: coreApi.login,
     keycloakLogin,
+    passkeyLoginOptions,
+    passkeyLogin,
     forceChangePassword: coreApi.forceChangePassword,
     forgotPassword: coreApi.forgotPassword,
     resetPassword: coreApi.resetPassword,
@@ -81,6 +153,10 @@ export const coreUsersClient = {
     getMe: coreApi.getMe,
     patchMe: coreApi.patchMe,
     getUser: coreApi.getUser,
+    passkeyRegistrationOptions,
+    registerPasskey,
+    listPasskeys,
+    deletePasskey,
 };
 
 export const coreGroupsClient = {

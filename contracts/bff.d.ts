@@ -564,6 +564,184 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Starts a passkey sign-in
+         * @description Opens a passkey (WebAuthn) sign-in ceremony on Core API (POST /api/v1/auth/passkey/options) and returns the options to hand to `navigator.credentials.get()`. No e-mail is sent: the credential is discoverable, the browser lists the passkeys registered for the site (conditional UI or modal). The `challenge_id` identifies the ceremony for POST /auth/passkey; it is single use and expires after two minutes.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ceremony opened: the request options and the id of the ceremony. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyCeremonyOptionsResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signs a user in with a passkey
+         * @description Completes the passkey (WebAuthn) sign-in opened by POST /auth/passkey/options: forwards the assertion to Core API (POST /api/v1/auth/passkey), which checks it against the registered passkey and opens a session for the account owning it. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged. Failed attempts are rate limited per client IP when TRUST_PROXY is set.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyLoginView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid payload (missing `challenge_id`, `credential` or `device_info`, or a credential Core API cannot read) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or already used `challenge_id`, unknown passkey, assertion refused or archived account: start the sign-in again. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/user/{userId}/about": {
         parameters: {
             query?: never;
@@ -655,6 +833,331 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Starts the registration of a passkey
+         * @description Opens a passkey (WebAuthn) registration ceremony for the signed-in user on Core API (POST /api/v1/user/me/passkeys/options) and returns the options to hand to `navigator.credentials.create()`: the account as the user entity, user verification required, the passkeys already registered excluded. The `challenge_id` identifies the ceremony for POST /user/me/passkeys; it is single use, expires after two minutes and can only be finished by the same account.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ceremony opened: the creation options and the id of the ceremony. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyCeremonyOptionsResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lists the passkeys of the signed-in user
+         * @description Forwards the caller's session to Core API (GET /api/v1/user/me/passkeys/) and returns the registered passkeys, oldest first: id, label and dates only (contract fields), never the public keys.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The registered passkeys, possibly none. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyListResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Registers a passkey
+         * @description Completes the registration opened by POST /user/me/passkeys/options: forwards the attestation and the label to Core API (POST /api/v1/user/me/passkeys/), which checks it and stores the passkey of the signed-in user. The passkey can then sign in through POST /auth/passkey.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegisterPasskeyView"];
+                };
+            };
+            responses: {
+                /** @description Passkey registered. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Passkey"];
+                    };
+                };
+                /** @description Invalid payload, label empty or longer than 100 characters, unknown or expired `challenge_id`, or attestation refused by Core API: start the registration again. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description This passkey is already registered. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys/{passkeyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Deletes a passkey of the signed-in user
+         * @description Forwards the deletion to Core API (DELETE /api/v1/user/me/passkeys/{id}/): the passkey can no longer sign in. A passkey of another account answers 404, like an unknown one.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Id of the passkey, from GET /user/me/passkeys. */
+                    passkeyId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Passkey deleted. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid passkey id */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description No passkey with this id on this account. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -3678,6 +4181,82 @@ export interface components {
              * @example 42
              */
             userId: number;
+        };
+        PasskeyCeremonyOptionsResponse: {
+            /**
+             * @description Id of the pending ceremony, to send back with the browser's answer. Single use, expires after two minutes.
+             * @example 2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35
+             */
+            challenge_id: string;
+            /** @description WebAuthn options in their JSON form (`PublicKeyCredentialRequestOptions` for a sign-in, `PublicKeyCredentialCreationOptions` for a registration), binary fields base64url: hand it to `PublicKeyCredential.parseRequestOptionsFromJSON()` / `parseCreationOptionsFromJSON()`. */
+            public_key: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeyLoginView: {
+            /**
+             * @description The `challenge_id` of the options this assertion answers.
+             * @example 2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35
+             */
+            challenge_id: string;
+            /** @description The `PublicKeyCredential` returned by `navigator.credentials.get()`, as given by its `toJSON()`. */
+            credential: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Description of the device, stored on the session (empty string accepted, like the password login).
+             * @example Safari 26 on iPhone
+             */
+            device_info: string;
+        };
+        RegisterPasskeyView: {
+            /**
+             * @description The `challenge_id` of the registration options this attestation answers.
+             * @example 2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35
+             */
+            challenge_id: string;
+            /**
+             * @description Label the user gives the passkey (1 to 100 characters), shown in the list so they recognise the device.
+             * @example iPhone de Jean
+             */
+            label: string;
+            /** @description The `PublicKeyCredential` returned by `navigator.credentials.create()`, as given by its `toJSON()`. */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        Passkey: {
+            /**
+             * @description Id of the passkey, for DELETE /user/me/passkeys/{passkeyId}.
+             * @example 12
+             */
+            id: number;
+            /**
+             * @description Label chosen at registration.
+             * @example iPhone de Jean
+             */
+            label: string;
+            /**
+             * @description Registration date (RFC 3339).
+             * @example 2026-10-08T09:30:00Z
+             */
+            created_at: string;
+            /**
+             * @description Last sign-in with this passkey (RFC 3339), `null` when never used.
+             * @example 2026-10-08T14:02:11Z
+             */
+            last_used_at: string | null;
+        };
+        PasskeyListResponse: {
+            /** @description The passkeys of the signed-in user, oldest first. The public keys never leave Core API. */
+            passkeys: components["schemas"]["Passkey"][];
+        };
+        PasskeyIdParams: {
+            /**
+             * @description Id of the passkey, from GET /user/me/passkeys.
+             * @example 12
+             */
+            passkeyId: number;
         };
         CheckApisResponse: {
             /** @enum {string} */

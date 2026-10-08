@@ -12,6 +12,9 @@ import {
     LoginViewSchema,
     LogoutResponse,
     LogoutViewSchema,
+    PasskeyCeremonyOptionsResponse,
+    PasskeyLoginViewSchema,
+    PasskeysNotConfigured,
     RefreshResponse,
     RefreshViewSchema,
     registry,
@@ -32,10 +35,13 @@ import {
     isLoginResponseView,
     keycloakLoginUser,
     loginUser,
+    passkeyLoginOptions,
+    passkeyLoginUser,
     refreshSession,
     logoutSession,
     revokeSession,
 } from './core_helpers';
+import { whitelist } from './admin_helpers';
 
 const tooManyAttempts = {
     description: `Too many failed attempts from this client (or for this account); retry after the \`Retry-After\` delay. Body: \`{ "error": { "code": "TOO_MANY_REQUESTS", "message": "${RATE_LIMIT_MESSAGE}", "details": [] } }\`.`,
@@ -349,6 +355,77 @@ registry.registerPath({
     },
 });
 
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey/options',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Starts a passkey sign-in',
+    description: 'Opens a passkey (WebAuthn) sign-in ceremony on Core API (POST /api/v1/auth/passkey/options) and returns the '
+        + 'options to hand to `navigator.credentials.get()`. No e-mail is sent: the credential is discoverable, the browser '
+        + 'lists the passkeys registered for the site (conditional UI or modal). The `challenge_id` identifies the ceremony '
+        + 'for POST /auth/passkey; it is single use and expires after two minutes.',
+    responses: {
+        200: {
+            description: 'Ceremony opened: the request options and the id of the ceremony.',
+            content: { 'application/json': { schema: PasskeyCeremonyOptionsResponse } },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        502: {
+            description: 'Core API unavailable or invalid upstream answer',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        503: PasskeysNotConfigured,
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Signs a user in with a passkey',
+    description: 'Completes the passkey (WebAuthn) sign-in opened by POST /auth/passkey/options: forwards the assertion to Core '
+        + 'API (POST /api/v1/auth/passkey), which checks it against the registered passkey and opens a session for the account '
+        + 'owning it. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), '
+        + 'so every front and BFF keeps working unchanged. Failed attempts are rate limited per client IP when TRUST_PROXY is set.',
+    request: {
+        body: {
+            required: true,
+            content: { 'application/json': { schema: PasskeyLoginViewSchema } },
+        },
+    },
+    responses: {
+        200: {
+            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
+        },
+        400: {
+            description: 'Invalid payload (missing `challenge_id`, `credential` or `device_info`, or a credential Core API cannot read)',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        401: {
+            description: 'Unknown, expired or already used `challenge_id`, unknown passkey, assertion refused or archived account: start the sign-in again.',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        502: {
+            description: 'Core API unavailable or invalid upstream answer',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        503: PasskeysNotConfigured,
+    },
+});
+
 // =============== Routes ===============
 
 /** One-time token of a Core 412 (first sign-in, password to change), or undefined for any other error. */
@@ -372,6 +449,11 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
     setRefreshTokenCookie(res, coreResponse.data.refresh_token);
 
     return res.status(coreResponse.status).json({ message: 'Logged in successfully' });
+}
+
+/** Core answers 503 when it has no WebAuthn relying party: kept so the front can fall back to the password login. */
+function passkeysNotConfigured(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 503;
 }
 
 /** Refresh token of the caller: the body field, else the HttpOnly `refreshToken` cookie set at sign-in. */
@@ -416,6 +498,32 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
                 throw new HttpError(503, 'Keycloak sign-in is not configured');
             }
             throw upstreamError('CORE_API', error, [400, 401, 403]);
+        }
+    });
+
+    router.post('/passkey/options', limiters.perIp, async (_req: Request, res: Response) => {
+        try {
+            const coreResponse = await passkeyLoginOptions();
+            // Only the envelope is typed: the WebAuthn options go to the browser as Core built them.
+            return res.status(200).json(whitelist(PasskeyCeremonyOptionsResponse, coreResponse.data));
+        } catch (error) {
+            if (passkeysNotConfigured(error)) {
+                throw new HttpError(503, 'Passkeys are not configured');
+            }
+            throw upstreamError('CORE_API', error, [429]);
+        }
+    });
+
+    router.post('/passkey', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(PasskeyLoginViewSchema, req.body, 'body');
+
+        try {
+            return sendSession(res, await passkeyLoginUser(body));
+        } catch (error) {
+            if (passkeysNotConfigured(error)) {
+                throw new HttpError(503, 'Passkeys are not configured');
+            }
+            throw upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 

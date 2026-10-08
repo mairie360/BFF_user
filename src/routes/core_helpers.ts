@@ -7,7 +7,9 @@ import type {
     RefreshResponseView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
-import type { KeycloakLoginView } from '../clients/coreClient';
+import type {
+    KeycloakLoginView, PasskeyCeremonyOptionsView, PasskeyListView, PasskeyLoginView, PasskeySummaryView, RegisterPasskeyView,
+} from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 export function isLoginResponseView(value: unknown): value is LoginResponseView {
@@ -53,6 +55,48 @@ export async function keycloakLoginUser(
     keycloakLoginView: KeycloakLoginView,
 ): Promise<AxiosResponse<LoginResponseView>> {
     return coreAuthClient.keycloakLogin(keycloakLoginView, withoutSession('CORE_API'));
+}
+
+/** Passkey sign-in, step 1: Core's public `POST /api/v1/auth/passkey/options` (no body, anonymous). */
+export async function passkeyLoginOptions(): Promise<AxiosResponse<PasskeyCeremonyOptionsView>> {
+    return coreAuthClient.passkeyLoginOptions(withoutSession('CORE_API'));
+}
+
+/** Passkey sign-in, step 2: Core's public `POST /api/v1/auth/passkey`, which answers like the password login. */
+export async function passkeyLoginUser(
+    passkeyLoginView: PasskeyLoginView,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.passkeyLogin(passkeyLoginView, withoutSession('CORE_API'));
+}
+
+/** Passkey registration, step 1, with the caller's session. */
+export async function passkeyRegistrationOptions(
+    caller: UpstreamRequestOptions,
+): Promise<AxiosResponse<PasskeyCeremonyOptionsView>> {
+    return coreUsersClient.passkeyRegistrationOptions(caller);
+}
+
+/** Passkey registration, step 2: Core stores the credential and answers its summary (201). */
+export async function registerUserPasskey(
+    registerPasskeyView: RegisterPasskeyView,
+    caller: UpstreamRequestOptions,
+): Promise<AxiosResponse<PasskeySummaryView>> {
+    return coreUsersClient.registerPasskey(registerPasskeyView, caller);
+}
+
+/** The caller's passkeys (`GET /api/v1/user/me/passkeys/`), an idempotent read retried once. */
+export async function fetchPasskeys(caller: UpstreamRequestOptions): Promise<PasskeyListView> {
+    const response: AxiosResponse<PasskeyListView> = await callUpstream(
+        'CORE_API',
+        () => coreUsersClient.listPasskeys(caller),
+        { declared: [401], retry: true },
+    );
+    return response.data;
+}
+
+/** Deletes one of the caller's passkeys; Core's 404 (unknown or someone else's) is relayed. */
+export async function deleteUserPasskey(passkeyId: number, caller: UpstreamRequestOptions): Promise<void> {
+    await callUpstream('CORE_API', () => coreUsersClient.deletePasskey(passkeyId, caller), { declared: [401, 404] });
 }
 
 export async function forceChangeUserPassword(

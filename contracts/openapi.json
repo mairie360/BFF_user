@@ -298,6 +298,146 @@
           "userId"
         ]
       },
+      "PasskeyCeremonyOptionsResponse": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the pending ceremony, to send back with the browser's answer. Single use, expires after two minutes.",
+            "example": "2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35"
+          },
+          "public_key": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {},
+            "description": "WebAuthn options in their JSON form (`PublicKeyCredentialRequestOptions` for a sign-in, `PublicKeyCredentialCreationOptions` for a registration), binary fields base64url: hand it to `PublicKeyCredential.parseRequestOptionsFromJSON()` / `parseCreationOptionsFromJSON()`."
+          }
+        },
+        "required": [
+          "challenge_id",
+          "public_key"
+        ]
+      },
+      "PasskeyLoginView": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The `challenge_id` of the options this assertion answers.",
+            "example": "2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35"
+          },
+          "credential": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {},
+            "description": "The `PublicKeyCredential` returned by `navigator.credentials.get()`, as given by its `toJSON()`."
+          },
+          "device_info": {
+            "type": "string",
+            "description": "Description of the device, stored on the session (empty string accepted, like the password login).",
+            "example": "Safari 26 on iPhone"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential",
+          "device_info"
+        ]
+      },
+      "RegisterPasskeyView": {
+        "type": "object",
+        "properties": {
+          "challenge_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The `challenge_id` of the registration options this attestation answers.",
+            "example": "2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Label the user gives the passkey (1 to 100 characters), shown in the list so they recognise the device.",
+            "example": "iPhone de Jean"
+          },
+          "credential": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {},
+            "description": "The `PublicKeyCredential` returned by `navigator.credentials.create()`, as given by its `toJSON()`."
+          }
+        },
+        "required": [
+          "challenge_id",
+          "label",
+          "credential"
+        ]
+      },
+      "Passkey": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "Id of the passkey, for DELETE /user/me/passkeys/{passkeyId}.",
+            "example": 12
+          },
+          "label": {
+            "type": "string",
+            "description": "Label chosen at registration.",
+            "example": "iPhone de Jean"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "Registration date (RFC 3339).",
+            "example": "2026-10-08T09:30:00Z"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last sign-in with this passkey (RFC 3339), `null` when never used.",
+            "example": "2026-10-08T14:02:11Z"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "created_at",
+          "last_used_at"
+        ]
+      },
+      "PasskeyListResponse": {
+        "type": "object",
+        "properties": {
+          "passkeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Passkey"
+            },
+            "description": "The passkeys of the signed-in user, oldest first. The public keys never leave Core API."
+          }
+        },
+        "required": [
+          "passkeys"
+        ]
+      },
+      "PasskeyIdParams": {
+        "type": "object",
+        "properties": {
+          "passkeyId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Id of the passkey, from GET /user/me/passkeys.",
+            "example": 12
+          }
+        },
+        "required": [
+          "passkeyId"
+        ]
+      },
       "CheckApisResponse": {
         "type": "object",
         "properties": {
@@ -1543,6 +1683,184 @@
         }
       }
     },
+    "/auth/passkey/options": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Starts a passkey sign-in",
+        "description": "Opens a passkey (WebAuthn) sign-in ceremony on Core API (POST /api/v1/auth/passkey/options) and returns the options to hand to `navigator.credentials.get()`. No e-mail is sent: the credential is discoverable, the browser lists the passkeys registered for the site (conditional UI or modal). The `challenge_id` identifies the ceremony for POST /auth/passkey; it is single use and expires after two minutes.",
+        "responses": {
+          "200": {
+            "description": "Ceremony opened: the request options and the id of the ceremony.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyCeremonyOptionsResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/passkey": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Signs a user in with a passkey",
+        "description": "Completes the passkey (WebAuthn) sign-in opened by POST /auth/passkey/options: forwards the assertion to Core API (POST /api/v1/auth/passkey), which checks it against the registered passkey and opens a session for the account owning it. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged. Failed attempts are rate limited per client IP when TRUST_PROXY is set.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyLoginView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid payload (missing `challenge_id`, `credential` or `device_info`, or a credential Core API cannot read)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired or already used `challenge_id`, unknown passkey, assertion refused or archived account: start the sign-in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/user/{userId}/about": {
       "get": {
         "tags": [
@@ -1597,6 +1915,305 @@
           },
           "404": {
             "description": "Unknown user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me/passkeys/options": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Starts the registration of a passkey",
+        "description": "Opens a passkey (WebAuthn) registration ceremony for the signed-in user on Core API (POST /api/v1/user/me/passkeys/options) and returns the options to hand to `navigator.credentials.create()`: the account as the user entity, user verification required, the passkeys already registered excluded. The `challenge_id` identifies the ceremony for POST /user/me/passkeys; it is single use, expires after two minutes and can only be finished by the same account.",
+        "responses": {
+          "200": {
+            "description": "Ceremony opened: the creation options and the id of the ceremony.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyCeremonyOptionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me/passkeys": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Registers a passkey",
+        "description": "Completes the registration opened by POST /user/me/passkeys/options: forwards the attestation and the label to Core API (POST /api/v1/user/me/passkeys/), which checks it and stores the passkey of the signed-in user. The passkey can then sign in through POST /auth/passkey.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPasskeyView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Passkey registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Passkey"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid payload, label empty or longer than 100 characters, unknown or expired `challenge_id`, or attestation refused by Core API: start the registration again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This passkey is already registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core API has no WebAuthn relying party), or CORE_API_URL is not set: fall back to the password login.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Lists the passkeys of the signed-in user",
+        "description": "Forwards the caller's session to Core API (GET /api/v1/user/me/passkeys/) and returns the registered passkeys, oldest first: id, label and dates only (contract fields), never the public keys.",
+        "responses": {
+          "200": {
+            "description": "The registered passkeys, possibly none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me/passkeys/{passkeyId}": {
+      "delete": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Deletes a passkey of the signed-in user",
+        "description": "Forwards the deletion to Core API (DELETE /api/v1/user/me/passkeys/{id}/): the passkey can no longer sign in. A passkey of another account answers 404, like an unknown one.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Id of the passkey, from GET /user/me/passkeys.",
+              "example": 12
+            },
+            "required": true,
+            "description": "Id of the passkey, from GET /user/me/passkeys.",
+            "name": "passkeyId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Passkey deleted."
+          },
+          "400": {
+            "description": "Invalid passkey id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No passkey with this id on this account.",
             "content": {
               "application/json": {
                 "schema": {
