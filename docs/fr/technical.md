@@ -69,6 +69,8 @@ Les valeurs ci-dessous sont des exemples locaux ou des comportements expliciteme
 | `KEYCLOAK_REALM_URL` | https://auth.mairie360.fr/realms/mairie360 | URL publique du realm Keycloak, telle que le navigateur l’atteint. Avec `KEYCLOAK_CLIENT_ID`, active la déconnexion unique. |
 | `KEYCLOAK_CLIENT_ID` | mairie360 | Client OIDC avec lequel les fronts se connectent (le même que Core). |
 | `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | https://login.mairie360.fr/ | Page par défaut vers laquelle Keycloak renvoie le navigateur après la déconnexion; le client doit l’autoriser. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | non défini (télémétrie désactivée) | Collecteur OpenTelemetry de l’instance, par ex. `http://otel-collector:4318` : les traces et les métriques HTTP y sont exportées en OTLP (MAIR-504). Seuls la méthode, le statut, la route paramétrée et l’hôte appelé sortent du BFF, jamais une URL, une query string, un en-tête, un identifiant ou une IP. |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | `bff-user` ; non défini | Remplacent le nom du service ; attributs de ressource supplémentaires comme `service.version=<tag de l’image>,deployment.environment.name=prod`. `OTEL_SDK_DISABLED=true` désactive la télémétrie. |
 
 ## Routes et contrat de données
 
