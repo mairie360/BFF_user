@@ -87,13 +87,20 @@ const UserPasswordResetBody = z.object({
 const atLeastOneField = (value: Record<string, unknown>) => Object.values(value).some((field) => field !== undefined);
 const Email = z.string().trim().email().max(320).openapi({ example: 'jane.doe@mairie360.fr' });
 const PersonName = noMarkup(z.string().trim().min(1).max(64));
-const PhoneNumber = z.string().regex(/^\d{10,15}$/).openapi({ example: '0612345678' });
+// Core API (MAIR-480) parses the number as typed against `phone_country`, or its own `+` prefix in E.164
+// (400 otherwise), and clears it on `null` or `""`; same characters and length as Core.
+const PhoneNumber = z.string().max(32)
+    .regex(/^(?:\+?[\d\s.()-]+)?$/, 'Expected a phone number: digits, spaces, `.`, `-`, `(`, `)` and a leading `+`')
+    .openapi({ example: '06 12 34 56 78' });
+// Country of a national number (ISO 3166-1 alpha-2); Core refuses it without `phone_number`.
+const PhoneCountry = z.string().regex(/^[A-Z]{2}$/, 'Expected an ISO 3166-1 alpha-2 code').openapi({ example: 'FR' });
 const UserCreateBody = z.object({
     email: Email,
     first_name: PersonName.openapi({ example: 'Jane' }),
     last_name: PersonName.openapi({ example: 'Doe' }),
     password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
     phone_number: PhoneNumber.nullable().optional(),
+    phone_country: PhoneCountry.nullable().optional(),
 }).openapi('AdminUserCreateBody');
 // The password is not accepted here: Core writes it without any length check, the
 // PATCH /bff/admin/users/{userId}/password route enforces the policy and revokes the sessions.
@@ -102,6 +109,7 @@ const UserPatchBody = z.object({
     first_name: PersonName.nullable().optional().openapi({ example: 'Scan' }),
     last_name: PersonName.nullable().optional().openapi({ example: 'Target' }),
     phone_number: PhoneNumber.nullable().optional(),
+    phone_country: PhoneCountry.nullable().optional(),
 }).refine(atLeastOneField, { message: 'At least one field is required' }).openapi('AdminUserPatchBody');
 const UserRoleBody = z.object({
     role_id: z.number().int().positive().openapi({ example: 3 }),

@@ -367,6 +367,12 @@
               "null"
             ]
           },
+          "phone_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "type": "string"
           },
@@ -475,6 +481,12 @@
             "type": "string"
           },
           "phone_number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone_country": {
             "type": [
               "string",
               "null"
@@ -687,8 +699,17 @@
               "string",
               "null"
             ],
-            "pattern": "^\\d{10,15}$",
-            "example": "0612345678"
+            "maxLength": 32,
+            "pattern": "^(?:\\+?[\\d\\s.()-]+)?$",
+            "example": "06 12 34 56 78"
+          },
+          "phone_country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{2}$",
+            "example": "FR"
           }
         },
         "required": [
@@ -735,8 +756,17 @@
               "string",
               "null"
             ],
-            "pattern": "^\\d{10,15}$",
-            "example": "0612345678"
+            "maxLength": 32,
+            "pattern": "^(?:\\+?[\\d\\s.()-]+)?$",
+            "example": "06 12 34 56 78"
+          },
+          "phone_country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{2}$",
+            "example": "FR"
           }
         }
       },
@@ -928,6 +958,12 @@
                 "type": "string"
               },
               "phone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "phone_country": {
                 "type": [
                   "string",
                   "null"

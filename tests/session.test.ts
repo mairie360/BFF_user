@@ -20,8 +20,10 @@ jest.mock('../src/clients/coreClient', () => {
 const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedGetGroups = jest.mocked(coreGroupsClient.getGroups);
 
-// Signed with the JWT_SECRET of the tests: `requireSession` verifies it before any Core call.
-const tokenFor = (userId: number) => sessionToken(userId);
+// Signed with the JWT_SECRET of the tests: `requireSession` verifies it before any Core call. One token per user
+// (its `exp` follows the clock), so the token sent and the one expected upstream are the same.
+const tokens = new Map<number, string>();
+const tokenFor = (userId: number) => tokens.get(userId) ?? tokens.set(userId, sessionToken(userId)).get(userId)!;
 
 const app = express();
 // Cookies are parsed, as in the application: the accessToken cookie must still be ignored.

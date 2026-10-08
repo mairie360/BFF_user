@@ -374,6 +374,11 @@ describe('Administration routes', () => {
         ['post', '/bff/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
         ['post', '/bff/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
         ['patch', '/bff/admin/users/7', {}],
+        // MAIR-480: Core's phone characters, an upper-case ISO 3166-1 alpha-2 country.
+        ['patch', '/bff/admin/users/7', { phone_number: '06+12345678' }],
+        ['patch', '/bff/admin/users/7', { phone_number: '0'.repeat(33) }],
+        ['patch', '/bff/admin/users/7', { phone_number: '0612345678', phone_country: 'fr' }],
+        ['post', '/bff/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd', phone_number: '0612345678', phone_country: 'FRA' }],
         ['post', '/bff/admin/users/7/roles', { role_id: '3' }],
         ['post', '/bff/admin/roles', { name: 'Agent' }],
         ['put', '/bff/admin/roles/3', { name: '', description: 'Municipal agent' }],

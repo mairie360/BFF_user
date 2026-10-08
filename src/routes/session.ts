@@ -17,7 +17,7 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
     user: z.object({
         id: z.union([z.string(), z.number()]).optional(),
         first_name: z.string(), last_name: z.string(), email: z.string(),
-        phone: z.string().nullable().optional(), status: z.string(), role: z.string().optional(),
+        phone: z.string().nullable().optional(), phone_country: z.string().nullable().optional(), status: z.string(), role: z.string().optional(),
     }),
     groups: z.array(z.object({ id: z.number(), name: z.string(), owner_id: z.number(), description: z.string().nullable().optional() })),
     roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() })])),

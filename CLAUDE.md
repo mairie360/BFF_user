@@ -163,6 +163,9 @@ and the legacy `/me` resolve.
   swapped payload, RS256, non-numeric `sub`) without calling Core, and get past the check with a genuine
   one; the public operations are pinned there, so a route added without `security: []` is covered by default.
   `/user/{userId}/about` only returns the public fields of its contract (no role/groups).
+  Admin user writes take `phone_number` (Core's characters, 32 at most, forwarded as typed) and an optional
+  `phone_country` (upper-case ISO 3166-1 alpha-2): Core API (MAIR-480) needs it for a national number, not for
+  a `+` E.164 one, and clears the phone on `null`; the admin list and `/me` relay `phone_country`.
   Read routes (`/me`, admin GET lists) pass Core's answer through `whitelist(schema, data)`: only
   contract fields are returned, a non-matching answer is a 502. Never log tokens or Core URLs.
 
