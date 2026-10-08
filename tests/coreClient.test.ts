@@ -58,7 +58,7 @@ describe('passkey calls of coreClient', () => {
         const post = jest.spyOn(coreClient, 'post').mockResolvedValue(axiosResponse({ id: 12 }, 201));
         const del = jest.spyOn(coreClient, 'delete').mockResolvedValue(axiosResponse(undefined, 204));
         process.env.CORE_API_URL = 'http://core.test';
-        const caller = { baseURL: 'http://core.test', headers: { Authorization: 'Bearer jwt' } };
+        const caller = { baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: 'Bearer jwt' } };
         const view = { challenge_id: '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35', label: 'Clé', credential: { id: 'x' } };
 
         await registerUserPasskey(view, caller);

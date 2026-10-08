@@ -14,6 +14,7 @@ import {
     registerUserPasskey,
 } from '../src/routes/core_helpers';
 import { createAuthRateLimiters } from '../src/middleware/rateLimit';
+import type { PasskeySummaryView } from '../src/clients/coreClient';
 import { axiosResponse, loginResponse, sessionToken } from './support/core-fixtures';
 
 // Passkeys (MAIR-505): the BFF relays the WebAuthn documents between the browser and Core API, which
@@ -63,7 +64,7 @@ const assertion = {
 };
 const passkeyLogin = { challenge_id: CHALLENGE_ID, credential: assertion, device_info: 'Safari 26 on iPhone' };
 const registration = { challenge_id: CHALLENGE_ID, label: 'iPhone de Jean', credential: { ...assertion, response: { attestationObject: 'o2Nm', clientDataJSON: 'eyJ0' } } };
-const summary = { id: 12, label: 'iPhone de Jean', created_at: '2026-10-08T09:30:00Z', last_used_at: null };
+const summary: PasskeySummaryView = { id: 12, label: 'iPhone de Jean', created_at: '2026-10-08T09:30:00Z', last_used_at: null };
 const SESSION = { Authorization: `Bearer ${sessionToken(1)}` };
 
 const app = express();
@@ -231,7 +232,7 @@ describe('/user/me/passkeys', () => {
     });
 
     it('lists the passkeys with the contract fields only', async () => {
-        mockedList.mockResolvedValue({ passkeys: [{ ...summary, last_used_at: '2026-10-08T14:02:11Z', credential_id: 'abcd' } as typeof summary] });
+        mockedList.mockResolvedValue({ passkeys: [{ ...summary, last_used_at: '2026-10-08T14:02:11Z', credential_id: 'abcd' } as PasskeySummaryView] });
 
         const response = await request(app).get('/user/me/passkeys').set(SESSION);
 
