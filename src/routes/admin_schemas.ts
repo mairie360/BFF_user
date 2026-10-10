@@ -6,6 +6,7 @@ export const AdministrationRoleSchema = registry.register('AdministrationRole', 
 }));
 export const AdministrationUserSchema = registry.register('AdministrationUser', z.object({
   id: z.number(), first_name: z.string(), last_name: z.string(), email: z.string(), phone_number: z.string().nullable(),
+  phone_country: z.string().nullable().optional(),
   status: z.string(), is_archived: z.boolean(), roles: z.array(AdministrationRoleSchema.pick({ id: true, name: true })),
 }));
 export const AdministrationUsersPageSchema = registry.register('AdministrationUsersPage', z.object({

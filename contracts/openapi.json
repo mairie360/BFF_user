@@ -367,6 +367,12 @@
               "null"
             ]
           },
+          "phone_country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "type": "string"
           },
@@ -475,6 +481,12 @@
             "type": "string"
           },
           "phone_number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phone_country": {
             "type": [
               "string",
               "null"
@@ -687,8 +699,17 @@
               "string",
               "null"
             ],
-            "pattern": "^\\d{10,15}$",
-            "example": "0612345678"
+            "maxLength": 32,
+            "pattern": "^(?:\\+?[\\d\\s.()-]+)?$",
+            "example": "06 12 34 56 78"
+          },
+          "phone_country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{2}$",
+            "example": "FR"
           }
         },
         "required": [
@@ -735,8 +756,17 @@
               "string",
               "null"
             ],
-            "pattern": "^\\d{10,15}$",
-            "example": "0612345678"
+            "maxLength": 32,
+            "pattern": "^(?:\\+?[\\d\\s.()-]+)?$",
+            "example": "06 12 34 56 78"
+          },
+          "phone_country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[A-Z]{2}$",
+            "example": "FR"
           }
         }
       },
@@ -928,6 +958,12 @@
                 "type": "string"
               },
               "phone": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "phone_country": {
                 "type": [
                   "string",
                   "null"
@@ -1170,7 +1206,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1273,7 +1309,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1287,6 +1323,7 @@
     },
     "/auth/refresh": {
       "post": {
+        "security": [],
         "tags": [
           "Authentication"
         ],
@@ -1380,7 +1417,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1446,6 +1483,7 @@
     },
     "/auth/keycloak": {
       "post": {
+        "security": [],
         "tags": [
           "Authentication"
         ],
@@ -1626,7 +1664,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -4618,7 +4656,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -4664,7 +4702,7 @@
             }
           },
           "503": {
-            "description": "Instance misconfigured: CORE_API_URL is not set or invalid",
+            "description": "Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid",
             "content": {
               "application/json": {
                 "schema": {

@@ -23,15 +23,39 @@ import { createCoverage } from '/coverage.js';
 //   the iteration.
 // - `reads` (up to 20 VUs): replays only the GET handlers, which read seeded fixtures and never
 //   depend on `state`.
+// - `me_rush`: `GET /me` as seeded agents at a fixed arrival rate (MAIR-474), failing if k6 has to
+//   drop iterations because the BFF (and Core behind it) no longer keeps up.
 // Every operation gets a p(95) threshold, whose budget depends on its family (`budgetOf`).
+//
+// MAIR-474: the stack also runs init-perf.sql (10 000 agents in 2 000 groups, their sessions), the
+// session reads run as a random seeded agent, the admin listings read random pages, every read
+// checks that it got the seeded rows, and the thresholds are strict (every check passes, no failed
+// request, no dropped iteration). K6_PROFILE sizes the load: `ci` (default) is what the 4 vCPU CI
+// runner holds, `stress` is the high load, run by hand to find the breaking point.
 // ---------------------------------------------------------------------------
 
-// Must match the JWT_SECRET of the core-api / bff-user services of the test stack.
-const JWT_SECRET = __ENV.JWT_SECRET || 'b"secret"';
+// The JWT_SECRET of the core-api / bff-user services of the test stack: random per run, generated
+// by stack_secrets.sh (MAIR-474). No default: nothing is signed with a committed secret.
+const JWT_SECRET = __ENV.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET is not set: run ./performance_test.sh, which generates it');
 // User role only, seeded by init-test.sql: session reads.
 const USER_ID = __ENV.PERF_USER_ID || '2';
 // Admin role (seeded by the liquibase migrations): /bff/admin/* and the login flow.
 const ADMIN_ID = __ENV.PERF_ADMIN_ID || '1';
+// Rows of init-perf.sql: agents 500001..510000, groups 50000..51999 of 20 members each.
+const AGENTS = { first: 500001, count: 10000 };
+const PERF_GROUPS = { first: 50000, count: 2000, members: 20 };
+const ADMIN_PAGE_SIZE = 20;
+// The Admin is a member of the first 300 perf groups (plus the scan groups): its group listing.
+const ADMIN_GROUPS = 300;
+
+const PROFILES = {
+  ci: { readVus: 30, crudVus: 2, rushRate: 30 },
+  stress: { readVus: 100, crudVus: 4, rushRate: 100 },
+};
+const PROFILE = PROFILES[__ENV.K6_PROFILE || 'ci'];
+if (!PROFILE) throw new Error(`Unknown K6_PROFILE ${__ENV.K6_PROFILE}: ${Object.keys(PROFILES).join(', ')}`);
+
 // Role and group seeded by init-test.sql, used by the role and group membership operations.
 const FIXTURE_ROLE_ID = 10;
 const FIXTURE_GROUP_ID = 10;
@@ -57,6 +81,16 @@ function mintJwt(sub, role) {
 
 function bearer(token) {
   return { Authorization: `Bearer ${token}` };
+}
+
+const randomInt = (max) => Math.floor(Math.random() * max);
+const agentTokens = {};
+
+/** A random seeded agent: its id and `Authorization` header (one token per agent and VU). */
+function randomAgent() {
+  const id = AGENTS.first + randomInt(AGENTS.count);
+  if (!agentTokens[id]) agentTokens[id] = bearer(mintJwt(String(id), 'user'));
+  return { id, headers: agentTokens[id] };
 }
 
 function unique(prefix) {
@@ -143,23 +177,43 @@ const handlers = {
     ),
 
   // --- User ---
-  'GET /user/{userId}/about': ({ request }) =>
-    check(request({ path: { userId: USER_ID } }), { 'about 200': (r) => r.status === 200 }),
+  'GET /user/{userId}/about': ({ request }) => {
+    const agent = randomAgent();
+    check(request({ path: { userId: agent.id }, headers: agent.headers }), {
+      'about 200': (r) => r.status === 200,
+      'about reads the seeded agent': (r) => r.status === 200 && r.json('email') === `perf.agent.${agent.id}@mairie360.fr`,
+    });
+  },
 
   // --- Admin: users ---
-  'GET /bff/admin/users': ({ request, data }) =>
-    check(request({ query: { page: 1, page_size: 20 }, headers: data.admin }), {
-      'admin users 200': (r) => r.status === 200,
-    }),
-  // Core answers without the id: it is read back from the admin listing.
+  // Any page of the 10 000 seeded agents, deep ones included (Core >= MAIR-477 reads them through the name
+  // index), or a search by e-mail that matches a handful of them (the trigram index of the search text).
+  'GET /bff/admin/users': ({ request, data }) => {
+    if (Math.random() < 0.5) {
+      const pages = Math.floor(AGENTS.count / ADMIN_PAGE_SIZE);
+      check(request({ query: { page: 1 + randomInt(pages), page_size: ADMIN_PAGE_SIZE }, headers: data.admin }), {
+        'admin users 200': (r) => r.status === 200,
+        'admin users reads the seed': (r) =>
+          r.status === 200 && r.json('total') >= AGENTS.count && r.json('users').length === ADMIN_PAGE_SIZE,
+      });
+      return;
+    }
+    const agent = randomAgent();
+    check(request({ query: { page: 1, page_size: ADMIN_PAGE_SIZE, search: `perf.agent.${agent.id}@` }, headers: data.admin }), {
+      'admin users search 200': (r) => r.status === 200,
+      'admin users search finds the agent': (r) =>
+        r.status === 200 && r.json('total') === 1 && r.json('users.0.email') === `perf.agent.${agent.id}@mairie360.fr`,
+    });
+  },
+  // Core (MAIR-474) answers the id of the created account.
   'POST /bff/admin/users': ({ request, data }) => {
     const email = `${unique('perf-admin-user')}@perf.mairie360.fr`;
     const res = request({
       body: { email, first_name: 'Perf', last_name: 'Managed', password: USER_PASSWORD },
       headers: data.admin,
     });
-    check(res, { 'create user 201': (r) => r.status === 201 });
-    state.userId = findUserId(email, data);
+    check(res, { 'create user 201 with its id': (r) => r.status === 201 && Number.isInteger(r.json('id')) });
+    state.userId = res.status === 201 ? res.json('id') : undefined;
   },
   'PATCH /bff/admin/users/{userId}': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { first_name: 'Patched' }, headers: data.admin }), {
@@ -222,7 +276,10 @@ const handlers = {
 
   // --- Admin: groups ---
   'GET /bff/admin/groups': ({ request, data }) =>
-    check(request({ headers: data.admin }), { 'groups 200': (r) => r.status === 200 }),
+    check(request({ query: { limit: 100, offset: randomInt(ADMIN_GROUPS - 100) }, headers: data.admin }), {
+      'groups 200': (r) => r.status === 200,
+      'groups reads the seed': (r) => r.status === 200 && r.json('groups').length === 100,
+    }),
   // Two groups: one kept for GET/PATCH, one for DELETE (which runs before PATCH).
   'POST /bff/admin/groups': ({ request, data }) => {
     [state.groupId, state.disposableGroupId] = [unique('perf-group'), unique('perf-group-deleted')].map((name) => {
@@ -244,8 +301,9 @@ const handlers = {
       'delete group 204': (r) => r.status === 204,
     }),
   'GET /bff/admin/groups/{groupId}/users': ({ request, data }) =>
-    check(request({ path: { groupId: FIXTURE_GROUP_ID }, headers: data.admin }), {
+    check(request({ path: { groupId: PERF_GROUPS.first + randomInt(PERF_GROUPS.count) }, headers: data.admin }), {
       'group members 200': (r) => r.status === 200,
+      'group members reads the seed': (r) => r.status === 200 && r.json('users').length >= PERF_GROUPS.members,
     }),
   'POST /bff/admin/groups/{groupId}/users': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID }, body: { user_id: need(state.userId, 'created user') }, headers: data.admin }), {
@@ -260,7 +318,10 @@ const handlers = {
   'GET /bff/admin/sessions': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'sessions 200': (r) => r.status === 200 }),
   'GET /bff/admin/sessions/history': ({ request, data }) =>
-    check(request({ headers: data.admin }), { 'sessions history 200': (r) => r.status === 200 }),
+    check(request({ query: { limit: 100, offset: randomInt(900) }, headers: data.admin }), {
+      'sessions history 200': (r) => r.status === 200,
+      'sessions history reads the seed': (r) => r.status === 200 && r.json('sessions').length === 100,
+    }),
   // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
   // sessions, hence the admin login).
   'POST /bff/admin/sessions/revoke': ({ request, data }) =>
@@ -269,10 +330,17 @@ const handlers = {
     }),
 
   // --- Session reads ---
+  // A random seeded agent, member of 4 perf groups.
   'GET /me': ({ request }) =>
-    check(request(), { 'me 200': (r) => r.status === 200 }),
+    check(request({ headers: randomAgent().headers }), {
+      'me 200': (r) => r.status === 200,
+      'me reads the seeded groups': (r) => r.status === 200 && r.json('groups').length >= 1,
+    }),
   'GET /session/me': ({ request }) =>
-    check(request(), { 'session/me 200': (r) => r.status === 200 }),
+    check(request({ headers: randomAgent().headers }), {
+      'session/me 200': (r) => r.status === 200,
+      'session/me reads the seeded groups': (r) => r.status === 200 && r.json('groups').length >= 1,
+    }),
 };
 
 const coverage = createCoverage(handlers);
@@ -320,23 +388,37 @@ export const options = {
       executor: 'ramping-vus',
       exec: 'reads',
       stages: [
-        { duration: '30s', target: 20 }, // ramp-up
-        { duration: '1m', target: 20 }, // steady load
-        { duration: '10s', target: 0 }, // ramp-down
+        { duration: '30s', target: Math.ceil(PROFILE.readVus / 2) }, // ramp-up
+        { duration: '30s', target: PROFILE.readVus },
+        { duration: '2m', target: PROFILE.readVus }, // steady load
+        { duration: '20s', target: 0 }, // ramp-down
       ],
     },
     crud: {
       executor: 'constant-vus',
       exec: 'crud',
-      vus: 2,
-      duration: '1m40s',
+      vus: PROFILE.crudVus,
+      duration: '3m20s',
+    },
+    me_rush: {
+      executor: 'constant-arrival-rate',
+      exec: 'meRush',
+      startTime: '1m', // once the reads are at their peak
+      rate: PROFILE.rushRate,
+      timeUnit: '1s',
+      duration: '1m',
+      preAllocatedVUs: 30,
+      maxVUs: 200,
     },
   },
   thresholds: {
     ...coverage.thresholds,
     ...perOperationThresholds,
-    http_req_failed: ['rate<0.01'], // < 1% errors
-    checks: ['rate>0.99'],
+    'http_req_duration{op:me_rush}': ['p(95)<500'],
+    dropped_iterations: ['count==0'], // the rush kept its rate
+    // Strict (MAIR-474): one wrong status, one missing seeded row or one failed request fails the run.
+    http_req_failed: ['rate==0'],
+    checks: ['rate==1'],
   },
 };
 
@@ -367,6 +449,15 @@ export function reads(data) {
     handlers[operation.op]({ request, data, op: operation.op, method: operation.method, path: operation.path });
   }
   sleep(1);
+}
+
+export function meRush() {
+  const agent = randomAgent();
+  const res = http.get(coverage.url('GET /me'), { headers: agent.headers, tags: { op: 'me_rush' } });
+  check(res, {
+    'me rush 200': (r) => r.status === 200,
+    'me rush reads the seeded groups': (r) => r.status === 200 && r.json('groups').length >= 1,
+  });
 }
 
 export function crud(data) {

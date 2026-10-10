@@ -144,18 +144,28 @@ and the legacy `/me` resolve.
   `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
 - **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
-  *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
+  *locally* with the lib's `verifySessionToken` — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
   `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
-  header, read with `authorization()` / `requireBearer` / `bearerToken()` of `@mairie360/bffs-lib`
-  (the fronts' proxy builds it from the `accessToken` cookie). The `accessToken` cookie, `x-session-token`
+  header, read with `authorization()` / `requireSession` / `bearerToken()` of `@mairie360/bffs-lib`
+  (the fronts' proxy builds it from the `accessToken` cookie). `/me`, `/session/me` and `/user/*` go through
+  `requireSession` (bffs-lib >= 1.2.0, MAIR-474): the token is verified like the admin one (HS256 with
+  `JWT_SECRET`, `exp`, positive `sub`), so a forged or expired token gets its 401 without any Core call; Core
+  still checks revocation and archived accounts. The `accessToken` cookie, `x-session-token`
   and other schemes are ignored, also by `/auth/logout` and `requireAdmin`; the `refreshToken` cookie of
   `/auth/refresh` and `/auth/logout` is a different credential and is kept. `/me`, `/session/me` and
   `/user/*` answer 401 before any validation or Core call without one, and every `/auth`, `/me`,
   `/session`, `/user` and `/bff/admin` answer carries `Cache-Control: no-store` (lib `noStore`).
+  `tests/token-refusals.test.ts` walks `contracts/openapi.json`: every operation that inherits `bearerAuth`
+  must answer 401 to a missing or forged token (other scheme, garbage, other secret, expired, `alg: none`,
+  swapped payload, RS256, non-numeric `sub`) without calling Core, and get past the check with a genuine
+  one; the public operations are pinned there, so a route added without `security: []` is covered by default.
   `/user/{userId}/about` only returns the public fields of its contract (no role/groups).
+  Admin user writes take `phone_number` (Core's characters, 32 at most, forwarded as typed) and an optional
+  `phone_country` (upper-case ISO 3166-1 alpha-2): Core API (MAIR-480) needs it for a national number, not for
+  a `+` E.164 one, and clears the phone on `null`; the admin list and `/me` relay `phone_country`.
   Read routes (`/me`, admin GET lists) pass Core's answer through `whitelist(schema, data)`: only
   contract fields are returned, a non-matching answer is a 502. Never log tokens or Core URLs.
 
@@ -220,10 +230,25 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Two scenarios: `crud`
-(2 VUs) runs every handler through `coverage.run()` and carries the gate; `reads` (ramp to 20 VUs)
-replays the GET handlers only, so GET handlers must read seeded fixtures, never `state`. Every
-operation gets a `p(95)` threshold from its family (`budgetOf`). In `crud`, handlers run path by
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
+runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
+so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
+rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
+seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
+members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
+signed in k6), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.
+Thresholds are strict: `checks == 100%`, `http_req_failed == 0`, `dropped_iterations == 0`. `K6_PROFILE`
+(passed by the compose file) sizes the load: `ci` (default, 30 readers, rush at 30/s) is what the 4 vCPU
+CI runner holds, `stress` (100 readers, 100/s) is run by hand. Keep `init-perf.sql` and the id ranges at
+the top of `load-test.js` in step.
+
+Both scripts source `stack_secrets.sh` (MAIR-474): a random `JWT_SECRET` per run, shared by core-api,
+bff-user and k6, and `ADMIN_JWT` (`sub=1`, 4 h) signed with it for the ZAP replacer; the compose files
+refuse to start without them, and nothing signed with a committed secret is left in the repository. They
+drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
+the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
+ignores `100000`: a 500 / 502 answered during the scan fails it. Its only scope-out is `/auth/keycloak`, whose
+documented 503 (Keycloak not configured, the stack has no realm) is the expected answer there. In `crud`, handlers run path by
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens

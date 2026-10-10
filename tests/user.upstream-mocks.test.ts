@@ -512,9 +512,16 @@ describe('BFF User with a contract-driven Core API mock', () => {
     const cases: ProxyCase[] = [
       {
         route: 'POST /bff/admin/users', body: { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123' },
-        upstream: called('POST', coreApiUrls.getAdminPostUserUrl()), template: CORE.adminUsers, reply: { status: 201, raw: 'User created successfully!', contentType: 'text/plain' },
-        status: 201, responseBody: { message: 'User created successfully!' },
+        upstream: called('POST', coreApiUrls.getAdminPostUserUrl()), template: CORE.adminUsers, reply: { status: 201, body: { id: 12, message: 'User created successfully!' } },
+        status: 201, responseBody: { id: 12, message: 'User created successfully!' },
       },
+      // Core API (MAIR-480): a national number with its country, as typed, or an E.164 one.
+      {
+        route: 'POST /bff/admin/users', body: { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123', phone_number: '06 12 34 56 78', phone_country: 'FR' },
+        upstream: called('POST', coreApiUrls.getAdminPostUserUrl()), template: CORE.adminUsers, reply: { status: 201, body: { id: 12, message: 'User created successfully!' } },
+        status: 201, responseBody: { id: 12, message: 'User created successfully!' },
+      },
+      { route: 'PATCH /bff/admin/users/7', body: { phone_number: '+262692123456' }, upstream: called('PATCH', coreApiUrls.getAdminPatchUserUrl(7)), template: CORE.adminUser, reply: { status: 200 }, status: 200 },
       { route: 'PATCH /bff/admin/users/7', body: { first_name: 'Alicia', phone_number: null }, upstream: called('PATCH', coreApiUrls.getAdminPatchUserUrl(7)), template: CORE.adminUser, reply: { status: 200 }, status: 200 },
       { route: 'POST /bff/admin/users/7/roles', body: { user_id: 7, role_id: 3 }, upstream: called('POST', coreApiUrls.getAdminAddRoleToUserUrl(7)), template: CORE.adminUserRoles, reply: { status: 200 }, status: 200 },
       { route: 'DELETE /bff/admin/users/7/roles/3', upstream: called('DELETE', coreApiUrls.getAdminDeleteUserRoleUrl(7, 3)), template: CORE.adminUserRole, reply: { status: 204 }, status: 204 },
@@ -649,7 +656,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(401);
       expectBffContract('get', '/bff/admin/groups', response);
-      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (session\.|or expired session token)$/), details: [] } });
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (session\.|or expired session token\.)$/), details: [] } });
       expect(coreApi.requests).toHaveLength(0);
     });
 

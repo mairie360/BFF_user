@@ -180,7 +180,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -286,7 +286,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -387,7 +387,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -641,7 +641,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3447,7 +3447,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3509,7 +3509,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL is not set or invalid */
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3697,6 +3697,7 @@ export interface components {
             last_name: string;
             email: string;
             phone_number: string | null;
+            phone_country?: string | null;
             status: string;
             is_archived: boolean;
             roles: {
@@ -3723,6 +3724,7 @@ export interface components {
             last_name: string;
             email: string;
             phone_number: string | null;
+            phone_country?: string | null;
             status: string;
             is_archived: boolean;
         };
@@ -3780,8 +3782,10 @@ export interface components {
             last_name: string;
             /** @example Temporary-Passw0rd */
             password: string;
-            /** @example 0612345678 */
+            /** @example 06 12 34 56 78 */
             phone_number?: string | null;
+            /** @example FR */
+            phone_country?: string | null;
         };
         AdminUserPatchBody: {
             /**
@@ -3793,8 +3797,10 @@ export interface components {
             first_name?: string | null;
             /** @example Target */
             last_name?: string | null;
-            /** @example 0612345678 */
+            /** @example 06 12 34 56 78 */
             phone_number?: string | null;
+            /** @example FR */
+            phone_country?: string | null;
         };
         AdminUserRoleBody: {
             /** @example 3 */
@@ -3850,6 +3856,7 @@ export interface components {
                 last_name: string;
                 email: string;
                 phone?: string | null;
+                phone_country?: string | null;
                 status: string;
                 role?: string;
             };
