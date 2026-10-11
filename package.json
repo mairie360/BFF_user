@@ -21,7 +21,7 @@
     "express": "5.3.0",
     "swagger-ui-express": "5.0.1",
     "tsx": "4.23.15",
-    "zod": "4.6.5"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
