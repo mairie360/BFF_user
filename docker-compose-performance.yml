@@ -102,7 +102,7 @@ services:
       retries: 5
 
   core-api:
-    image: ${CORE_API_IMAGE:-ghcr.io/mairie360/core-api:dev-abaa6c2}
+    image: ${CORE_API_IMAGE:-ghcr.io/mairie360/core-api:dev-2529974}
     container_name: bff-user-perf-core-api
     depends_on:
       liquibase:
