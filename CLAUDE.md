@@ -256,7 +256,8 @@ are rotated by `/auth/refresh` (each refresh needs its own login).
 
 ## Conventions
 
-- ESLint: `@typescript-eslint/no-explicit-any` is an **error**. Unused args must be
+- ESLint: `@typescript-eslint/no-explicit-any` and `no-await-in-loop` (MAIR-525: independent upstream calls start
+  together; a loop that must stay sequential says why in a comment) are **errors**. Unused args must be
   `_`-prefixed.
 - Tests use `supertest`. Unit tests (`auth`, `session`, `admin`, ...) mount one router on a bare
   Express app and `jest.mock` `coreClient` (upstream-mock tests: see the section above).
