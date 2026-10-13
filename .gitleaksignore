@@ -1,2 +1,6 @@
 # False positive: the made-up password of an admin user creation request in a validation test (MAIR-474).
 183b12f2e0a6be05fb09104354b82824e21d7544:tests/admin.test.ts:generic-api-key:381
+
+# False positives: the made-up password of the admin user creation tests (MAIR-474), reported again on the squash commit of MAIR-521 because the line of the route was renamed.
+9ae54f223140b4e29e2b40f68e6c6e0010f7b39f:tests/admin.test.ts:generic-api-key:374
+9ae54f223140b4e29e2b40f68e6c6e0010f7b39f:tests/admin.test.ts:generic-api-key:381
