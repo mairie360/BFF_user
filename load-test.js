@@ -40,7 +40,7 @@ const JWT_SECRET = __ENV.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET is not set: run ./performance_test.sh, which generates it');
 // User role only, seeded by init-test.sql: session reads.
 const USER_ID = __ENV.PERF_USER_ID || '2';
-// Admin role (seeded by the liquibase migrations): /bff/admin/* and the login flow.
+// Admin role (seeded by the liquibase migrations): /admin/* and the login flow.
 const ADMIN_ID = __ENV.PERF_ADMIN_ID || '1';
 // Rows of init-perf.sql: agents 500001..510000, groups 50000..51999 of 20 members each.
 const AGENTS = { first: 500001, count: 10000 };
@@ -121,7 +121,7 @@ const handlers = {
 
   // --- Authentication (public) ---
   // Logs the admin in: the refresh token (HttpOnly refreshToken cookie, never in the body) feeds
-  // /bff/admin/sessions/revoke.
+  // /admin/sessions/revoke.
   'POST /auth/login': ({ request, data }) => {
     const res = request({ body: { email: data.adminEmail, password: ADMIN_PASSWORD, device_info: 'k6' } });
     check(res, { 'login 200': (r) => r.status === 200 });
@@ -129,13 +129,13 @@ const handlers = {
   },
   // Accounts created by an admin start with first_connect = true: their first sign-in answers 412
   // with the one-time token. The account is created here (outside the coverage of
-  // POST /bff/admin/users, which runs later) and deleted by DELETE /bff/admin/users/{userId}.
+  // POST /admin/users, which runs later) and deleted by DELETE /admin/users/{userId}.
   'POST /auth/force_change_password': ({ request, data }) => {
     state.firstConnectEmail = `${unique('perf-first-connect')}@perf.mairie360.fr`;
     const created = http.post(
-      coverage.url('POST /bff/admin/users'),
+      coverage.url('POST /admin/users'),
       JSON.stringify({ email: state.firstConnectEmail, first_name: 'Perf', last_name: 'FirstConnect', password: USER_PASSWORD }),
-      { headers: Object.assign({ 'Content-Type': 'application/json' }, data.admin), tags: { op: 'POST /bff/admin/users' } },
+      { headers: Object.assign({ 'Content-Type': 'application/json' }, data.admin), tags: { op: 'POST /admin/users' } },
     );
     check(created, { 'first-connect user 201': (r) => r.status === 201 });
     const firstLogin = http.post(
@@ -152,7 +152,7 @@ const handlers = {
     check(res, { 'force_change_password 204': (r) => r.status === 204 });
   },
   // Refreshes a session of its own: Core rotates the refresh token, and the one of POST /auth/login
-  // must stay valid for /bff/admin/sessions/revoke.
+  // must stay valid for /admin/sessions/revoke.
   'POST /auth/refresh': ({ request, data }) => {
     const login = http.post(
       coverage.url('POST /auth/login'),
@@ -188,7 +188,7 @@ const handlers = {
   // --- Admin: users ---
   // Any page of the 10 000 seeded agents, deep ones included (Core >= MAIR-477 reads them through the name
   // index), or a search by e-mail that matches a handful of them (the trigram index of the search text).
-  'GET /bff/admin/users': ({ request, data }) => {
+  'GET /admin/users': ({ request, data }) => {
     if (Math.random() < 0.5) {
       const pages = Math.floor(AGENTS.count / ADMIN_PAGE_SIZE);
       check(request({ query: { page: 1 + randomInt(pages), page_size: ADMIN_PAGE_SIZE }, headers: data.admin }), {
@@ -206,7 +206,7 @@ const handlers = {
     });
   },
   // Core (MAIR-474) answers the id of the created account.
-  'POST /bff/admin/users': ({ request, data }) => {
+  'POST /admin/users': ({ request, data }) => {
     const email = `${unique('perf-admin-user')}@perf.mairie360.fr`;
     const res = request({
       body: { email, first_name: 'Perf', last_name: 'Managed', password: USER_PASSWORD },
@@ -215,45 +215,45 @@ const handlers = {
     check(res, { 'create user 201 with its id': (r) => r.status === 201 && Number.isInteger(r.json('id')) });
     state.userId = res.status === 201 ? res.json('id') : undefined;
   },
-  'PATCH /bff/admin/users/{userId}': ({ request, data }) =>
+  'PATCH /admin/users/{userId}': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { first_name: 'Patched' }, headers: data.admin }), {
       'patch user 200': (r) => r.status === 200,
     }),
   // Deletes the first-connect user of POST /auth/force_change_password, the created one is still needed below.
-  'DELETE /bff/admin/users/{userId}': ({ request, data }) => {
+  'DELETE /admin/users/{userId}': ({ request, data }) => {
     const userId = findUserId(need(state.firstConnectEmail, 'first-connect user'), data);
     check(request({ path: { userId: need(userId, 'first-connect user id') }, headers: data.admin }), {
       'delete user 2xx': (r) => r.status === 200 || r.status === 204,
     });
   },
-  'PATCH /bff/admin/users/{userId}/password': ({ request, data }) =>
+  'PATCH /admin/users/{userId}/password': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { new_password: `${USER_PASSWORD}-3` }, headers: data.admin }), {
       'reset password 204': (r) => r.status === 204,
     }),
-  'POST /bff/admin/users/{userId}/roles': ({ request, data }) =>
+  'POST /admin/users/{userId}/roles': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { role_id: FIXTURE_ROLE_ID }, headers: data.admin }), {
       'add role 200': (r) => r.status === 200,
     }),
-  'DELETE /bff/admin/users/{userId}/roles/{roleId}': ({ request, data }) =>
+  'DELETE /admin/users/{userId}/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user'), roleId: FIXTURE_ROLE_ID }, headers: data.admin }), {
       'remove role 204': (r) => r.status === 204,
     }),
 
   // --- Admin: roles ---
-  'GET /bff/admin/roles': ({ request, data }) =>
+  'GET /admin/roles': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'roles 200': (r) => r.status === 200 }),
   // Two roles: one kept for PUT/PATCH, one for DELETE (which runs before PATCH). Core answers
   // without the id: both are read back from the role listing.
-  'POST /bff/admin/roles': ({ request, data }) => {
+  'POST /admin/roles': ({ request, data }) => {
     const names = [unique('perf-role'), unique('perf-role-deleted')];
     for (const name of names) {
       check(request({ body: { name, description: 'k6 role' }, headers: data.admin }), {
         'create role 200': (r) => r.status === 200,
       });
     }
-    const listing = http.get(coverage.url('GET /bff/admin/roles'), {
+    const listing = http.get(coverage.url('GET /admin/roles'), {
       headers: data.admin,
-      tags: { op: 'GET /bff/admin/roles' },
+      tags: { op: 'GET /admin/roles' },
     });
     const roles = (json(listing) || {}).roles || [];
     [state.roleId, state.disposableRoleId] = names.map((name) => {
@@ -261,70 +261,70 @@ const handlers = {
       return role ? role.id : undefined;
     });
   },
-  'PUT /bff/admin/roles/{roleId}': ({ request, data }) =>
+  'PUT /admin/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { roleId: need(state.roleId, 'created role') }, body: { name: unique('perf-role-put'), description: 'k6 role, replaced' }, headers: data.admin }), {
       'put role 200': (r) => r.status === 200,
     }),
-  'PATCH /bff/admin/roles/{roleId}': ({ request, data }) =>
+  'PATCH /admin/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { roleId: need(state.roleId, 'created role') }, body: { description: 'k6 role, patched' }, headers: data.admin }), {
       'patch role 200': (r) => r.status === 200,
     }),
-  'DELETE /bff/admin/roles/{roleId}': ({ request, data }) =>
+  'DELETE /admin/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { roleId: need(state.disposableRoleId, 'disposable role') }, headers: data.admin }), {
       'delete role 204': (r) => r.status === 204,
     }),
 
   // --- Admin: groups ---
-  'GET /bff/admin/groups': ({ request, data }) =>
+  'GET /admin/groups': ({ request, data }) =>
     check(request({ query: { limit: 100, offset: randomInt(ADMIN_GROUPS - 100) }, headers: data.admin }), {
       'groups 200': (r) => r.status === 200,
       'groups reads the seed': (r) => r.status === 200 && r.json('groups').length === 100,
     }),
   // Two groups: one kept for GET/PATCH, one for DELETE (which runs before PATCH).
-  'POST /bff/admin/groups': ({ request, data }) => {
+  'POST /admin/groups': ({ request, data }) => {
     [state.groupId, state.disposableGroupId] = [unique('perf-group'), unique('perf-group-deleted')].map((name) => {
       const res = request({ body: { name, description: 'k6 group' }, headers: data.admin });
       check(res, { 'create group 200': (r) => r.status === 200 });
       return (json(res) || {}).id;
     });
   },
-  'GET /bff/admin/groups/{groupId}': ({ request, data }) =>
+  'GET /admin/groups/{groupId}': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID }, headers: data.admin }), {
       'group 200': (r) => r.status === 200,
     }),
-  'PATCH /bff/admin/groups/{groupId}': ({ request, data }) =>
+  'PATCH /admin/groups/{groupId}': ({ request, data }) =>
     check(request({ path: { groupId: need(state.groupId, 'created group') }, body: { description: 'k6 group, patched' }, headers: data.admin }), {
       'patch group 200': (r) => r.status === 200,
     }),
-  'DELETE /bff/admin/groups/{groupId}': ({ request, data }) =>
+  'DELETE /admin/groups/{groupId}': ({ request, data }) =>
     check(request({ path: { groupId: need(state.disposableGroupId, 'disposable group') }, headers: data.admin }), {
       'delete group 204': (r) => r.status === 204,
     }),
-  'GET /bff/admin/groups/{groupId}/users': ({ request, data }) =>
+  'GET /admin/groups/{groupId}/users': ({ request, data }) =>
     check(request({ path: { groupId: PERF_GROUPS.first + randomInt(PERF_GROUPS.count) }, headers: data.admin }), {
       'group members 200': (r) => r.status === 200,
       'group members reads the seed': (r) => r.status === 200 && r.json('users').length >= PERF_GROUPS.members,
     }),
-  'POST /bff/admin/groups/{groupId}/users': ({ request, data }) =>
+  'POST /admin/groups/{groupId}/users': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID }, body: { user_id: need(state.userId, 'created user') }, headers: data.admin }), {
       'add member 201': (r) => r.status === 201,
     }),
-  'DELETE /bff/admin/groups/{groupId}/users/{userId}': ({ request, data }) =>
+  'DELETE /admin/groups/{groupId}/users/{userId}': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID, userId: need(state.userId, 'created user') }, headers: data.admin }), {
       'remove member 204': (r) => r.status === 204,
     }),
 
   // --- Admin: sessions ---
-  'GET /bff/admin/sessions': ({ request, data }) =>
+  'GET /admin/sessions': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'sessions 200': (r) => r.status === 200 }),
-  'GET /bff/admin/sessions/history': ({ request, data }) =>
+  'GET /admin/sessions/history': ({ request, data }) =>
     check(request({ query: { limit: 100, offset: randomInt(900) }, headers: data.admin }), {
       'sessions history 200': (r) => r.status === 200,
       'sessions history reads the seed': (r) => r.status === 200 && r.json('sessions').length === 100,
     }),
   // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
   // sessions, hence the admin login).
-  'POST /bff/admin/sessions/revoke': ({ request, data }) =>
+  'POST /admin/sessions/revoke': ({ request, data }) =>
     check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
       'revoke 200': (r) => r.status === 200,
     }),
@@ -349,9 +349,9 @@ const readOperations = coverage.operations.filter((o) => o.method === 'GET');
 // Deletes the resources kept by the handlers, so that the listings do not grow during the test.
 function cleanup(data) {
   const kept = [
-    ['DELETE /bff/admin/users/{userId}', { userId: state.userId }],
-    ['DELETE /bff/admin/roles/{roleId}', { roleId: state.roleId }],
-    ['DELETE /bff/admin/groups/{groupId}', { groupId: state.groupId }],
+    ['DELETE /admin/users/{userId}', { userId: state.userId }],
+    ['DELETE /admin/roles/{roleId}', { roleId: state.roleId }],
+    ['DELETE /admin/groups/{groupId}', { groupId: state.groupId }],
   ];
   for (const [op, pathParams] of kept) {
     if (Object.values(pathParams).some((id) => id === undefined || id === null)) continue;
@@ -360,9 +360,9 @@ function cleanup(data) {
 }
 
 function findUserId(email, data) {
-  const listing = http.get(coverage.url('GET /bff/admin/users', {}, { search: email }), {
+  const listing = http.get(coverage.url('GET /admin/users', {}, { search: email }), {
     headers: data.admin,
-    tags: { op: 'GET /bff/admin/users' },
+    tags: { op: 'GET /admin/users' },
   });
   const user = ((json(listing) || {}).users || []).find((u) => u.email === email);
   return user ? user.id : undefined;
@@ -428,7 +428,7 @@ export function setup() {
   const about = http.get(coverage.url('GET /user/{userId}/about', { userId: ADMIN_ID }), { headers: admin });
   const adminEmail = (json(about) || {}).email;
   const reset = http.patch(
-    coverage.url('PATCH /bff/admin/users/{userId}/password', { userId: ADMIN_ID }),
+    coverage.url('PATCH /admin/users/{userId}/password', { userId: ADMIN_ID }),
     JSON.stringify({ new_password: ADMIN_PASSWORD }),
     { headers: Object.assign({ 'Content-Type': 'application/json' }, admin) },
   );
@@ -462,7 +462,7 @@ export function meRush() {
 
 export function crud(data) {
   state = {};
-  // User token by default; the /bff/admin/* handlers pass the admin one.
+  // User token by default; the /admin/* handlers pass the admin one.
   coverage.run({ headers: data.user, data });
   cleanup(data);
   sleep(1);

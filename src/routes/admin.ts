@@ -103,7 +103,7 @@ const UserCreateBody = z.object({
     phone_country: PhoneCountry.nullable().optional(),
 }).openapi('AdminUserCreateBody');
 // The password is not accepted here: Core writes it without any length check, the
-// PATCH /bff/admin/users/{userId}/password route enforces the policy and revokes the sessions.
+// PATCH /admin/users/{userId}/password route enforces the policy and revokes the sessions.
 const UserPatchBody = z.object({
     email: Email.nullable().optional().openapi({ example: 'scan-target@mairie360.fr' }),
     first_name: PersonName.nullable().optional().openapi({ example: 'Scan' }),
@@ -302,7 +302,7 @@ async function requireAdmin(req: Request): Promise<void> {
     }
 }
 
-// Every /bff/admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
+// Every /admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
 // The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
 // Administration answers are session-bound: never cached by a proxy or the browser.
@@ -314,7 +314,7 @@ router.use(async (req: Request, _res: Response, next: NextFunction) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/users',
+    path: '/admin/users',
     tags: ['Administration'],
     summary: 'Liste les utilisateurs administrables, 20 éléments maximum par page',
     request: { query: UserListQuery },
@@ -332,7 +332,7 @@ router.get('/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/users',
+    path: '/admin/users',
     tags: ['Administration'],
     summary: 'Crée un utilisateur via le Core API',
     request: { body: jsonBodyRequest(UserCreateBody) },
@@ -352,7 +352,7 @@ router.post('/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/users/{userId}',
+    path: '/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Met à jour un utilisateur via le Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserPatchBody) },
@@ -374,7 +374,7 @@ router.patch('/users/:userId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/users/{userId}/password',
+    path: '/admin/users/{userId}/password',
     tags: ['Administration'],
     summary: 'Modifie le mot de passe et révoque les sessions utilisateur',
     request: {
@@ -408,7 +408,7 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/users/{userId}',
+    path: '/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Supprime définitivement un utilisateur via le Core API',
     request: { params: DeletedUserIdParams },
@@ -431,7 +431,7 @@ router.delete('/users/:userId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/users/{userId}/roles',
+    path: '/admin/users/{userId}/roles',
     tags: ['Administration'],
     summary: 'Ajoute un rôle à un utilisateur via le Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserRoleBody) },
@@ -461,7 +461,7 @@ router.post('/users/:userId/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/users/{userId}/roles/{roleId}',
+    path: '/admin/users/{userId}/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Retire un rôle à un utilisateur via le Core API',
     request: { params: UserRoleParams },
@@ -481,7 +481,7 @@ router.delete('/users/:userId/roles/:roleId', async (req: Request, res: Response
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/roles',
+    path: '/admin/roles',
     tags: ['Administration'],
     summary: 'Liste les rôles admin via le Core API',
     responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: RolesListSchema } } } },
@@ -494,7 +494,7 @@ router.get('/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/roles',
+    path: '/admin/roles',
     tags: ['Administration'],
     summary: 'Crée un rôle via le Core API',
     request: { body: jsonBodyRequest(RoleWriteBody) },
@@ -514,7 +514,7 @@ router.post('/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'put',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Remplace un rôle via le Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RoleReplaceBody) },
@@ -536,7 +536,7 @@ router.put('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Met à jour un rôle via le Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RolePatchBody) },
@@ -558,7 +558,7 @@ router.patch('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Supprime un rôle via le Core API',
     request: { params: DeletedRoleIdParams },
@@ -578,7 +578,7 @@ router.delete('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups',
+    path: '/admin/groups',
     tags: ['Administration'],
     summary: 'Lists the groups through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
@@ -592,7 +592,7 @@ router.get('/groups', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/groups',
+    path: '/admin/groups',
     tags: ['Administration'],
     summary: 'Crée un groupe via le Core API',
     request: { body: jsonBodyRequest(GroupCreateBody) },
@@ -612,7 +612,7 @@ router.post('/groups', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Récupère un groupe via le Core API',
     request: { params: GroupIdParams },
@@ -628,7 +628,7 @@ router.get('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Met à jour le nom ou la description d’un groupe',
     request: {
@@ -656,7 +656,7 @@ router.patch('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Supprime un groupe via le Core API',
     request: { params: DeletedGroupIdParams },
@@ -676,7 +676,7 @@ router.delete('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups/{groupId}/users',
+    path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
     summary: 'Liste les utilisateurs d’un groupe via le Core API',
     request: { params: GroupIdParams },
@@ -698,7 +698,7 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/groups/{groupId}/users',
+    path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
     summary: 'Ajoute un utilisateur à un groupe via le Core API',
     request: { params: GroupIdParams, body: jsonBodyRequest(GroupUserBody) },
@@ -730,7 +730,7 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/groups/{groupId}/users/{userId}',
+    path: '/admin/groups/{groupId}/users/{userId}',
     tags: ['Administration'],
     summary: 'Retire un utilisateur d’un groupe via le Core API',
     request: { params: GroupUserParams },
@@ -755,7 +755,7 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/sessions',
+    path: '/admin/sessions',
     tags: ['Administration'],
     summary: 'Liste les sessions actives via le Core API',
     responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
@@ -768,7 +768,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/sessions/history',
+    path: '/admin/sessions/history',
     tags: ['Administration'],
     summary: 'Reads the session history through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
@@ -782,7 +782,7 @@ router.get('/sessions/history', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/sessions/revoke',
+    path: '/admin/sessions/revoke',
     tags: ['Administration'],
     summary: 'Revokes a session through Core API',
     description: 'Core POST /api/v1/sessions/revoke: Core only revokes a session of the caller (the refresh token must belong to the JWT user). '

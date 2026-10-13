@@ -185,7 +185,7 @@ services:
     #   (WARN/FAIL) makes zap-api-scan.py exit non-zero.
     # -z ... replacer: injects ADMIN_JWT on every request (sub=1, the Admin seeded by liquibase,
     #   valid 4 hours, signed by stack_secrets.sh with this run's random JWT_SECRET, MAIR-474),
-    #   so every operation, /bff/admin/* included, is scanned as an authenticated admin.
+    #   so every operation, /admin/* included, is scanned as an authenticated admin.
     # --hook zap_hooks.py: OpenAPI coverage gate, run after the scan (public operations are the
     #   ones the contract marks with `security: []`).
     # -silent: no check-for-update or telemetry when the ZAP daemon starts (otherwise

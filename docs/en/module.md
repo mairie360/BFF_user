@@ -14,7 +14,7 @@ Business domain: Identity and administration.
 
 - Sign-in, first-sign-in password change and logout (no public self-registration: administrators create accounts).
 - Session lookup with identity, groups and roles through `/me` and `/session/me`.
-- User, role, group, membership and session operations under `/bff/admin`.
+- User, role, group, membership and session operations under `/admin`.
 
 ## Typical workflow
 
