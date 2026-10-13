@@ -165,6 +165,21 @@ const handlers = {
   },
   'POST /auth/logout': ({ request }) =>
     check(request(), { 'logout 200': (r) => r.status === 200 }),
+  // An address matching no account: Core answers the same empty 200 as for a known one, without
+  // sending any e-mail (the stack has no mail delivery to read the reset token back from).
+  'POST /auth/forgot_password': ({ request }) =>
+    check(request({ body: { email: `${unique('perf-forgot')}@perf.mairie360.fr` } }), {
+      'forgot_password 200': (r) => r.status === 200,
+    }),
+  // A well-formed token Core never issued: the reset reaches Core, which refuses it with the declared 401.
+  'POST /auth/reset_password': ({ request }) =>
+    check(
+      request({
+        body: { token: '00000000-0000-4000-8000-000000000000', new_password: `${USER_PASSWORD}-reset`, device_info: 'k6' },
+        params: { responseCallback: http.expectedStatuses(401) },
+      }),
+      { 'reset_password 401 (unknown token)': (r) => r.status === 401 },
+    ),
   // The test stack has no Keycloak: the BFF answers its declared 503 without calling Core.
   'POST /auth/keycloak': ({ request }) =>
     check(

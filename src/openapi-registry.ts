@@ -79,6 +79,31 @@ export const ForceChangePasswordViewSchema = z.object({
     }),
 }).openapi('ForceChangePasswordView');
 
+export const ForgotPasswordViewSchema = z.object({
+    email: z.email().max(320).openapi({
+        description: 'E-mail address of the account whose password is to be reset (at most 320 characters).',
+        example: 'alice.dupont@mairie360.fr',
+    }),
+}).openapi('ForgotPasswordView');
+
+/** Format of the reset token Core API e-mails (a UUID), as its `ResetPasswordView` declares it. */
+const RESET_TOKEN_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+export const ResetPasswordViewSchema = z.object({
+    token: z.string().regex(RESET_TOKEN_PATTERN).openapi({
+        description: 'One-time reset token, the `token` query parameter of the link of the reset e-mail (a UUID).',
+        example: '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35',
+    }),
+    new_password: z.string().min(8).max(255).openapi({
+        description: 'New password of the user (8 to 255 characters).',
+        example: 'NouveauMotDePasse123',
+    }),
+    device_info: z.string().max(512).openapi({
+        description: 'Description of the device, kept on the session the reset opens (at most 512 characters).',
+        example: 'Firefox',
+    }),
+}).openapi('ResetPasswordView');
+
 export const AboutResponseViewSchema = z.object({
     email: z.email().openapi({
         description: 'Adresse email de l\'utilisateur',
@@ -162,6 +187,8 @@ export const UserIdParams = z.object({
 registry.register('LoginView', LoginViewSchema);
 registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
+registry.register('ForgotPasswordView', ForgotPasswordViewSchema);
+registry.register('ResetPasswordView', ResetPasswordViewSchema);
 registry.register('AboutResponseView', AboutResponseViewSchema);
 registry.register('AuthSessionResponse', AuthSessionResponse);
 registry.register('RefreshView', RefreshViewSchema);

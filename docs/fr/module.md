@@ -12,7 +12,7 @@ Domaine fonctionnel: Identité et administration.
 
 ## Fonctions disponibles
 
-- Connexion, changement de mot de passe de première connexion et déconnexion (pas d’inscription publique: les administrateurs créent les comptes).
+- Connexion, changement de mot de passe de première connexion, mot de passe oublié (e-mail de réinitialisation, puis réinitialisation avec le jeton reçu, qui connecte l’utilisateur) et déconnexion (pas d’inscription publique: les administrateurs créent les comptes).
 - Consultation de la session avec identité, groupes et rôles via `/me` et `/session/me`.
 - Gestion des utilisateurs, rôles, groupes, membres et opérations de session sous `/admin`.
 

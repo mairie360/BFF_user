@@ -8,6 +8,7 @@ import {
     ErrorResponse,
     AuthSessionResponse,
     ForceChangePasswordViewSchema,
+    ForgotPasswordViewSchema,
     KeycloakLoginViewSchema,
     LoginViewSchema,
     LogoutResponse,
@@ -15,6 +16,7 @@ import {
     RefreshResponse,
     RefreshViewSchema,
     registry,
+    ResetPasswordViewSchema,
 } from '../openapi-registry';
 import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
 import {
@@ -34,6 +36,8 @@ import {
     loginUser,
     refreshSession,
     logoutSession,
+    requestPasswordReset,
+    resetUserPassword,
     revokeSession,
 } from './core_helpers';
 
@@ -178,6 +182,96 @@ registry.registerPath({
                     schema: ErrorResponse,
                 },
             },
+        },
+        503: CoreApiNotConfigured,
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/forgot_password',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Requests a password reset e-mail',
+    description: 'Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link '
+        + '(`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the '
+        + 'same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. '
+        + 'Malformed requests are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For; '
+        + 'Core API limits the requests per client and per e-mail address.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: ForgotPasswordViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        200: {
+            description: 'Request accepted, empty body. Does not tell whether an e-mail was sent.',
+        },
+        400: {
+            description: 'Invalid payload (missing `email`, or not an e-mail address of at most 320 characters)',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        502: {
+            description: 'Core API unavailable, or it could not send the e-mail',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        503: CoreApiNotConfigured,
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/reset_password',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Resets a password with the e-mailed token',
+    description: 'Forwards the reset token of the e-mail, the new password and the device to Core API (POST /api/v1/auth/reset_password), '
+        + 'which saves the password, revokes every other session of the account and opens a new one. The session is then set exactly '
+        + 'like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies): the user is signed in. The token is single use: '
+        + 'a second reset with it answers 401. Failed attempts are rate limited per client IP when TRUST_PROXY is set and the request '
+        + 'carries X-Forwarded-For.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: ResetPasswordViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        200: {
+            description: 'Password reset and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
+        },
+        400: {
+            description: 'Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character)',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        401: {
+            description: 'Reset token unknown, expired or already used, or account archived since the e-mail was sent; request a new e-mail.',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        502: {
+            description: 'Core API unavailable or invalid upstream answer',
+            content: { 'application/json': { schema: ErrorResponse } },
         },
         503: CoreApiNotConfigured,
     },
@@ -430,6 +524,29 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             return res.status(204).send();
         } catch (error) {
             throw upstreamError('CORE_API', error, [400, 401, 403, 429]);
+        }
+    });
+
+    router.post('/forgot_password', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(ForgotPasswordViewSchema, req.body, 'body');
+
+        try {
+            // Core answers the same empty 200 for a known or an unknown address (no account enumeration).
+            await requestPasswordReset(body);
+            return res.status(200).send();
+        } catch (error) {
+            throw upstreamError('CORE_API', error, [400, 429]);
+        }
+    });
+
+    router.post('/reset_password', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(ResetPasswordViewSchema, req.body, 'body');
+
+        try {
+            // Core consumes the token, saves the password and opens a session answered like a login.
+            return sendSession(res, await resetUserPassword(body));
+        } catch (error) {
+            throw upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 

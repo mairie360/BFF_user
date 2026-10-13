@@ -2,9 +2,12 @@ import { callUpstream, withoutSession, type UpstreamRequestOptions } from '@mair
 import type { AxiosResponse } from 'axios';
 import type {
     ForceChangePasswordView,
+    ForgotPasswordView,
     LoginResponseView,
     LoginView,
     RefreshResponseView,
+    ResetPasswordResponseView,
+    ResetPasswordView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { KeycloakLoginView } from '../clients/coreClient';
@@ -59,6 +62,24 @@ export async function forceChangeUserPassword(
     forceChangePasswordView: ForceChangePasswordView,
 ): Promise<void> {
     await coreAuthClient.forceChangePassword(forceChangePasswordView, withoutSession('CORE_API'));
+}
+
+/**
+ * Asks Core to e-mail a reset link (POST /api/v1/auth/forgot_password, public). Core answers the same empty 200
+ * whether the e-mail matches an account or not.
+ */
+export async function requestPasswordReset(forgotPasswordView: ForgotPasswordView): Promise<void> {
+    await coreAuthClient.forgotPassword(forgotPasswordView, withoutSession('CORE_API'));
+}
+
+/**
+ * Consumes the e-mailed reset token (POST /api/v1/auth/reset_password, public): Core saves the new password,
+ * revokes the other sessions and opens one, answered like a login (JWT in `Authorization`, refresh token in the body).
+ */
+export async function resetUserPassword(
+    resetPasswordView: ResetPasswordView,
+): Promise<AxiosResponse<ResetPasswordResponseView>> {
+    return coreAuthClient.resetPassword(resetPasswordView, withoutSession('CORE_API'));
 }
 
 /**

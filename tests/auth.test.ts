@@ -5,7 +5,9 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
-import { forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, refreshSession, revokeSession } from '../src/routes/core_helpers';
+import {
+    forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, refreshSession, requestPasswordReset, resetUserPassword, revokeSession,
+} from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
@@ -24,6 +26,8 @@ jest.mock('../src/routes/core_helpers', () => ({
     loginUser: jest.fn(),
     logoutSession: jest.fn(),
     refreshSession: jest.fn(),
+    requestPasswordReset: jest.fn(),
+    resetUserPassword: jest.fn(),
     revokeSession: jest.fn(),
 }));
 
@@ -33,6 +37,8 @@ const mockedRevokeSession = jest.mocked(revokeSession);
 const mockedLogoutSession = jest.mocked(logoutSession);
 const mockedRefreshSession = jest.mocked(refreshSession);
 const mockedKeycloakLogin = jest.mocked(keycloakLoginUser);
+const mockedRequestPasswordReset = jest.mocked(requestPasswordReset);
+const mockedResetUserPassword = jest.mocked(resetUserPassword);
 
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
@@ -181,6 +187,125 @@ describe('POST /auth/force_change_password', () => {
         const response = await request(app)
             .post('/auth/force_change_password')
             .send({ token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' });
+
+        expect(response.status).toBe(502);
+    });
+});
+
+describe('POST /auth/forgot_password', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockedRequestPasswordReset.mockResolvedValue();
+    });
+
+    it('forwards the e-mail to Core API and answers an empty 200', async () => {
+        const response = await request(app).post('/auth/forgot_password').send({ email: 'user@example.com', role: 'Admin' });
+
+        expect(response.status).toBe(200);
+        expect(response.text).toBe('');
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(response.headers['cache-control']).toBe('no-store');
+        // Undeclared fields are stripped.
+        expect(mockedRequestPasswordReset).toHaveBeenCalledWith({ email: 'user@example.com' });
+    });
+
+    it.each([
+        ['a missing e-mail', {}],
+        ['an invalid e-mail', { email: 'user' }],
+        ['an e-mail longer than 320 characters', { email: `${'a'.repeat(310)}@example.com` }],
+    ])('rejects %s without calling Core API', async (_label, body) => {
+        const response = await request(app).post('/auth/forgot_password').send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
+        expect(mockedRequestPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [400, 'BAD_REQUEST'],
+        [429, 'TOO_MANY_REQUESTS'],
+    ])('keeps a declared Core %i', async (status, code) => {
+        mockedRequestPasswordReset.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/forgot_password').send({ email: 'user@example.com' });
+
+        expect(response.status).toBe(status);
+        expect(response.body.error.code).toBe(code);
+    });
+
+    it('turns a Core 500 (e-mail not sent) into a 502 without relaying the Core body', async () => {
+        mockedRequestPasswordReset.mockRejectedValue(coreError(500, 'An error occurred while sending the email.'));
+
+        const response = await request(app).post('/auth/forgot_password').send({ email: 'user@example.com' });
+
+        expect(response.status).toBe(502);
+        expect(JSON.stringify(response.body)).not.toContain('email');
+    });
+});
+
+describe('POST /auth/reset_password', () => {
+    const RESET_TOKEN = '11111111-2222-4333-8444-555555555555';
+    const reset = { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('opens the session like login: HttpOnly cookies only', async () => {
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers.authorization).toBeUndefined();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*Path=\/;.*HttpOnly;.*SameSite=Strict/);
+        expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly;.*SameSite=Strict`));
+        expect(mockedResetUserPassword).toHaveBeenCalledWith(reset);
+    });
+
+    it('returns 502 when Core omits the Authorization Bearer header', async () => {
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(loginResponse()));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([
+        ['a token that is not a UUID', { ...reset, token: 'not-a-token' }],
+        ['a 7-character password', { ...reset, new_password: 'Short-7' }],
+        ['a password longer than 255 characters', { ...reset, new_password: 'x'.repeat(256) }],
+        ['a missing device_info', { token: RESET_TOKEN, new_password: 'Updated-456!' }],
+        ['a device_info longer than 512 characters', { ...reset, device_info: 'x'.repeat(513) }],
+    ])('rejects %s without calling Core API', async (_label, body) => {
+        const response = await request(app).post('/auth/reset_password').send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
+        expect(mockedResetUserPassword).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [400, 'BAD_REQUEST'],
+        [401, 'UNAUTHORIZED'],
+        [429, 'TOO_MANY_REQUESTS'],
+    ])('keeps a declared Core %i and sets no cookie', async (status, code) => {
+        mockedResetUserPassword.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(status);
+        expect(response.body.error.code).toBe(code);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('turns a Core 404 into a 502', async () => {
+        mockedResetUserPassword.mockRejectedValue(coreError(404));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
 
         expect(response.status).toBe(502);
     });
@@ -495,6 +620,28 @@ describe('authentication rate limiting', () => {
         expect(login.status).toBe(429);
         expect(forceChange.status).toBe(429);
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
+    });
+
+    it('limits the failed password resets per client IP', async () => {
+        const target = limitedApp({ ipMax: 2 });
+        const badReset = () => request(target).post('/auth/reset_password').set('X-Forwarded-For', '203.0.113.9')
+            .send({ token: 'guess', new_password: 'Updated-456!', device_info: 'test' });
+        const badForgot = () => request(target).post('/auth/forgot_password').set('X-Forwarded-For', '203.0.113.9').send({ email: 'x' });
+
+        expect((await badReset()).status).toBe(400);
+        expect((await badForgot()).status).toBe(400);
+        expect((await badReset()).status).toBe(429);
+        expect((await badForgot()).status).toBe(429);
+        expect(mockedResetUserPassword).not.toHaveBeenCalled();
+    });
+
+    it('does not count the accepted reset e-mail requests', async () => {
+        mockedRequestPasswordReset.mockResolvedValue();
+        const target = limitedApp({ ipMax: 1 });
+        const forgot = () => request(target).post('/auth/forgot_password').set('X-Forwarded-For', '203.0.113.10').send({ email: 'user@example.com' });
+
+        expect((await forgot()).status).toBe(200);
+        expect((await forgot()).status).toBe(200);
     });
 
     it('does not count successful sign-ins', async () => {

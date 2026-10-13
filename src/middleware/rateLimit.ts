@@ -17,7 +17,8 @@ import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
  * - `AUTH_RATE_LIMIT_MAX`         failed logins per account e-mail and window, default 10.
  *                                 Also the failed refreshes per refresh token on `/auth/refresh`.
  * - `AUTH_RATE_LIMIT_IP_MAX`      failed attempts per client IP and window over every limited route,
- *                                 default 100. Only applied when `TRUST_PROXY` is set and the request
+ *                                 default 100, over /auth/login, /auth/force_change_password,
+ *                                 /auth/forgot_password, /auth/reset_password and /auth/refresh. Only applied when `TRUST_PROXY` is set and the request
  *                                 carries `X-Forwarded-For`.
  *
  * The per-e-mail and per-refresh-token counters are keyed on the account / token hash alone
