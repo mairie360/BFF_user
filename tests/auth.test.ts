@@ -244,7 +244,7 @@ describe('POST /auth/forgot_password', () => {
 });
 
 describe('POST /auth/reset_password', () => {
-    const RESET_TOKEN = '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35';
+    const RESET_TOKEN = '11111111-2222-4333-8444-555555555555';
     const reset = { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' };
 
     beforeEach(() => {

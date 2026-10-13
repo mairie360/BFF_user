@@ -33,7 +33,7 @@ const ADMIN_ID = 1;
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 /** Reset token of the e-mail: ResetPasswordView.token is a UUID. */
-const RESET_TOKEN = '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35';
+const RESET_TOKEN = '11111111-2222-4333-8444-555555555555';
 const SESSION = sessionToken(ADMIN_ID);
 
 let app: Express;
@@ -944,7 +944,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['POST /auth/login', { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }, undefined],
       ['POST /auth/force_change_password', { token: FIRST_CONNECTION_TOKEN, new_password: 'NouveauMotDePasse123' }, undefined],
       ['POST /auth/forgot_password', { email: 'alice@mairie.test' }, undefined],
-      ['POST /auth/reset_password', { token: RESET_TOKEN, new_password: 'NouveauMotDePasse123', device_info: 'Firefox' }, undefined],
+      ['POST /auth/reset_password', { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' }, undefined],
       ['POST /auth/refresh', { refresh_token: 'opaque-refresh-token' }, undefined],
       ['GET /me', undefined, `Bearer ${SESSION}`],
       ['GET /user/7/about', undefined, `Bearer ${SESSION}`],
