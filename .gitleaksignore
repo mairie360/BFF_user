@@ -5,7 +5,7 @@
 9ae54f223140b4e29e2b40f68e6c6e0010f7b39f:tests/admin.test.ts:generic-api-key:374
 9ae54f223140b4e29e2b40f68e6c6e0010f7b39f:tests/admin.test.ts:generic-api-key:381
 
-# False positives: the made-up reset token and password of the MAIR-527 tests, replaced by low-entropy values in the next commit.
-8eebca1b67d8126372b08165c368d46f35299221:tests/user.upstream-mocks.test.ts:generic-api-key:36
-8eebca1b67d8126372b08165c368d46f35299221:tests/auth.test.ts:generic-api-key:247
-8eebca1b67d8126372b08165c368d46f35299221:tests/user.upstream-mocks.test.ts:generic-api-key:947
+# False positives: the made-up reset token and password of the MAIR-527 tests, replaced by low-entropy values in the next commit (sha of the commit after the rebase onto MAIR-525).
+4842e7d68da2c26a6be56b2da1ce63aca3a2bd13:tests/user.upstream-mocks.test.ts:generic-api-key:36
+4842e7d68da2c26a6be56b2da1ce63aca3a2bd13:tests/auth.test.ts:generic-api-key:247
+4842e7d68da2c26a6be56b2da1ce63aca3a2bd13:tests/user.upstream-mocks.test.ts:generic-api-key:947
