@@ -660,7 +660,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/users": {
+    "/admin/users": {
         parameters: {
             query?: never;
             header?: never;
@@ -891,7 +891,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/users/{userId}": {
+    "/admin/users/{userId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1131,7 +1131,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/users/{userId}/password": {
+    "/admin/users/{userId}/password": {
         parameters: {
             query?: never;
             header?: never;
@@ -1261,7 +1261,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/users/{userId}/roles": {
+    "/admin/users/{userId}/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -1391,7 +1391,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/users/{userId}/roles/{roleId}": {
+    "/admin/users/{userId}/roles/{roleId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1518,7 +1518,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/roles": {
+    "/admin/roles": {
         parameters: {
             query?: never;
             header?: never;
@@ -1747,7 +1747,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/roles/{roleId}": {
+    "/admin/roles/{roleId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2101,7 +2101,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/groups": {
+    "/admin/groups": {
         parameters: {
             query?: never;
             header?: never;
@@ -2333,7 +2333,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/groups/{groupId}": {
+    "/admin/groups/{groupId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2676,7 +2676,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/groups/{groupId}/users": {
+    "/admin/groups/{groupId}/users": {
         parameters: {
             query?: never;
             header?: never;
@@ -2909,7 +2909,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/groups/{groupId}/users/{userId}": {
+    "/admin/groups/{groupId}/users/{userId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -3036,7 +3036,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions": {
+    "/admin/sessions": {
         parameters: {
             query?: never;
             header?: never;
@@ -3153,7 +3153,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions/history": {
+    "/admin/sessions/history": {
         parameters: {
             query?: never;
             header?: never;
@@ -3273,7 +3273,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions/revoke": {
+    "/admin/sessions/revoke": {
         parameters: {
             query?: never;
             header?: never;

@@ -1676,7 +1676,7 @@
         }
       }
     },
-    "/bff/admin/users": {
+    "/admin/users": {
       "get": {
         "tags": [
           "Administration"
@@ -1932,7 +1932,7 @@
         }
       }
     },
-    "/bff/admin/users/{userId}": {
+    "/admin/users/{userId}": {
       "patch": {
         "tags": [
           "Administration"
@@ -2189,7 +2189,7 @@
         }
       }
     },
-    "/bff/admin/users/{userId}/password": {
+    "/admin/users/{userId}/password": {
       "patch": {
         "tags": [
           "Administration"
@@ -2323,7 +2323,7 @@
         }
       }
     },
-    "/bff/admin/users/{userId}/roles": {
+    "/admin/users/{userId}/roles": {
       "post": {
         "tags": [
           "Administration"
@@ -2457,7 +2457,7 @@
         }
       }
     },
-    "/bff/admin/users/{userId}/roles/{roleId}": {
+    "/admin/users/{userId}/roles/{roleId}": {
       "delete": {
         "tags": [
           "Administration"
@@ -2590,7 +2590,7 @@
         }
       }
     },
-    "/bff/admin/roles": {
+    "/admin/roles": {
       "get": {
         "tags": [
           "Administration"
@@ -2825,7 +2825,7 @@
         }
       }
     },
-    "/bff/admin/roles/{roleId}": {
+    "/admin/roles/{roleId}": {
       "put": {
         "tags": [
           "Administration"
@@ -3214,7 +3214,7 @@
         }
       }
     },
-    "/bff/admin/groups": {
+    "/admin/groups": {
       "get": {
         "tags": [
           "Administration"
@@ -3476,7 +3476,7 @@
         }
       }
     },
-    "/bff/admin/groups/{groupId}": {
+    "/admin/groups/{groupId}": {
       "get": {
         "tags": [
           "Administration"
@@ -3853,7 +3853,7 @@
         }
       }
     },
-    "/bff/admin/groups/{groupId}/users": {
+    "/admin/groups/{groupId}/users": {
       "get": {
         "tags": [
           "Administration"
@@ -4110,7 +4110,7 @@
         }
       }
     },
-    "/bff/admin/groups/{groupId}/users/{userId}": {
+    "/admin/groups/{groupId}/users/{userId}": {
       "delete": {
         "tags": [
           "Administration"
@@ -4243,7 +4243,7 @@
         }
       }
     },
-    "/bff/admin/sessions": {
+    "/admin/sessions": {
       "get": {
         "tags": [
           "Administration"
@@ -4357,7 +4357,7 @@
         }
       }
     },
-    "/bff/admin/sessions/history": {
+    "/admin/sessions/history": {
       "get": {
         "tags": [
           "Administration"
@@ -4498,7 +4498,7 @@
         }
       }
     },
-    "/bff/admin/sessions/revoke": {
+    "/admin/sessions/revoke": {
       "post": {
         "tags": [
           "Administration"

@@ -63,7 +63,7 @@ instance without base URL: every call passes `baseURL: baseUrl('CORE_API')` (`@m
 `coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, `coreUsersClient`, ...) that the routes
 consume. There is **no fallback bearer**: routes forward only the caller's session (Core's `/api/v1/auth/*`
 is exempt from its JWT middleware, so login/force_change_password go anonymous; `/api/v1/sessions/refresh` is also served outside it). There is no public
-self-registration: accounts are created by administrators through `/bff/admin/users`.
+self-registration: accounts are created by administrators through `/admin/users`.
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
@@ -71,9 +71,9 @@ The BFF has **no database or Redis access**: the admin user list/search + pagina
 group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing filtered by `group_id` for
 the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
 which validates the one-time token, saves the password and consumes the token. The admin role of the
-caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
+caller is read from `GET /api/v1/user/me/` before every `/admin` route.
 Core ≥ 2.0.0 paginates the groups, group members and session history (`limit` 1-500, 100 by default;
-`offset`). `GET /bff/admin/groups` and `/bff/admin/sessions/history` forward the `limit` / `offset` the front
+`offset`). `GET /admin/groups` and `/admin/sessions/history` forward the `limit` / `offset` the front
 sends (`CorePageQuery`, Core's bounds, 400 outside them); the BFF's own reads (`/me` groups, membership checks)
 use `CORE_LARGEST_PAGE` (500) of `coreClient.ts`.
 
@@ -94,7 +94,7 @@ and listens on `PORT` (default 4000) only under `require.main === module`. Tests
 
 ### Routing (`src/app.ts`)
 
-Routers: `/health`, `/check_apis`, `/auth`, `/user`, `/session`, `/bff/admin`. `/check_apis` is the lib
+Routers: `/health`, `/check_apis`, `/auth`, `/user`, `/session`, `/admin`. `/check_apis` is the lib
 `checkApis({ core_api })` probing Core's generated `health` operation (`withoutSession('CORE_API', 5_000)`),
 answer `CheckApisResponse` (`{ status: 'OK' | 'Error', core_api: 'Connected' | 'Unreachable' }`, 200 / 502). The
 `session` router is **mounted twice** — at `/session` and at `/` — so both `/session/me`
@@ -112,7 +112,7 @@ and the legacy `/me` resolve.
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
   `refreshToken` cookie; the JWT is delivered like login (cookie only). Core ≥ 2.0.0 rotates the refresh token
-  (the one sent stops working): its replacement, from the JSON body, overwrites the `refreshToken` cookie. `/bff/admin/sessions/refresh`
+  (the one sent stops working): its replacement, from the JSON body, overwrites the `refreshToken` cookie. `/admin/sessions/refresh`
   was removed (it replaced the admin's own cookie with the refreshed JWT; Core has no revoke-by-session-id).
 - **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
@@ -143,7 +143,7 @@ and the legacy `/me` resolve.
   shows a confirmation page). The redirect comes from the optional body
   `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
-- **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
+- **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* with the lib's `verifySessionToken` — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
   `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
@@ -157,7 +157,7 @@ and the legacy `/me` resolve.
   and other schemes are ignored, also by `/auth/logout` and `requireAdmin`; the `refreshToken` cookie of
   `/auth/refresh` and `/auth/logout` is a different credential and is kept. `/me`, `/session/me` and
   `/user/*` answer 401 before any validation or Core call without one, and every `/auth`, `/me`,
-  `/session`, `/user` and `/bff/admin` answer carries `Cache-Control: no-store` (lib `noStore`).
+  `/session`, `/user` and `/admin` answer carries `Cache-Control: no-store` (lib `noStore`).
   `tests/token-refusals.test.ts` walks `contracts/openapi.json`: every operation that inherits `bearerAuth`
   must answer 401 to a missing or forged token (other scheme, garbage, other secret, expired, `alg: none`,
   swapped payload, RS256, non-numeric `sub`) without calling Core, and get past the check with a genuine

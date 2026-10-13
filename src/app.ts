@@ -38,7 +38,7 @@ app.use('/user', userRouter);
 app.use('/session', sessionRouter);
 // Alias kept for the fronts and the BFFs that call GET /me.
 app.use('/', sessionRouter);
-app.use('/bff/admin', adminRouter);
+app.use('/admin', adminRouter);
 
 // Unknown routes and every error end in the shared envelope `{ error: { code, message, details } }`:
 // the status of the error is kept (400 for an unparsable body, 401, 404, 409, 502, 503...) and anything
