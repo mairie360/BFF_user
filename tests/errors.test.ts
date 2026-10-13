@@ -2,6 +2,7 @@ import request from 'supertest';
 import { app } from '../src/app';
 import { fetchUserAbout } from '../src/routes/core_helpers';
 import { JWT_SECRET, sessionToken } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 // Final middlewares of the app (@mairie360/bffs-lib): every error ends in { error: { code, message, details } }.
 jest.mock('../src/routes/core_helpers', () => ({
@@ -11,7 +12,7 @@ jest.mock('../src/routes/core_helpers', () => ({
 
 describe('error envelope of the app', () => {
     beforeEach(() => {
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        captureLogs();
         process.env.CORE_API_URL = 'http://core.test';
         process.env.JWT_SECRET = JWT_SECRET;
     });

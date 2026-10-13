@@ -14,6 +14,7 @@ import {
     RATE_LIMIT_MESSAGE,
 } from '../src/middleware/rateLimit';
 import { axiosResponse, loginResponse } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 jest.mock('../src/routes/core_helpers', () => ({
     forceChangeUserPassword: jest.fn(),
@@ -401,10 +402,11 @@ describe('POST /auth/refresh', () => {
 
 describe('POST /auth/logout', () => {
     const REFRESH_TOKEN = 'opaque-refresh-token';
+    let logs: Record<string, unknown>[];
 
     beforeEach(() => {
         jest.clearAllMocks();
-        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        logs = captureLogs();
         mockedRevokeSession.mockResolvedValue();
         mockedLogoutSession.mockResolvedValue();
         process.env.CORE_API_URL = 'http://core.test';
@@ -472,7 +474,10 @@ describe('POST /auth/logout', () => {
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-        const logged = JSON.stringify(jest.mocked(console.warn).mock.calls);
+        expect(logs).toEqual([
+            expect.objectContaining({ level: 'WARN', target: 'bff-user', message: 'session revocation failed on logout', status: 'network error' }),
+        ]);
+        const logged = JSON.stringify(logs);
         expect(logged).not.toContain(REFRESH_TOKEN);
         expect(logged).not.toContain('header.payload.signature');
     });
@@ -526,7 +531,8 @@ describe('POST /auth/logout', () => {
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-        expect(JSON.stringify(jest.mocked(console.warn).mock.calls)).not.toContain('header.payload.signature');
+        expect(logs).toHaveLength(1);
+        expect(JSON.stringify(logs)).not.toContain('header.payload.signature');
     });
 });
 
@@ -849,18 +855,18 @@ describe('authentication rate limiting', () => {
             jest.isolateModules(() => {
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 const isolated = require('../src/middleware/rateLimit') as typeof import('../src/middleware/rateLimit');
-                const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+                const logs = captureLogs();
                 const base = { windowMs: 60_000, accountMax: 10, ipMax: 100 };
 
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: true });
                 isolated.createAuthRateLimiters({ ...base, enabled: false, perClientIp: false });
-                expect(warn).not.toHaveBeenCalled();
+                expect(logs).toEqual([]);
 
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
-                expect(warn).toHaveBeenCalledTimes(1);
-                expect(warn.mock.calls[0][0]).toContain('TRUST_PROXY is not set');
-                warn.mockRestore();
+                expect(logs).toEqual([expect.objectContaining({ level: 'WARN', target: 'bff-user' })]);
+                expect(logs[0].message).toContain('TRUST_PROXY is not set');
+                jest.restoreAllMocks();
             });
         });
     });
@@ -1039,14 +1045,16 @@ describe('POST /auth/logout', () => {
     });
 
     it('keeps the plain logout when only one of the two Keycloak variables is set', async () => {
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const logs = captureLogs();
         process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
 
         const response = await request(app).post('/auth/logout');
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID'));
-        warn.mockRestore();
+        expect(logs).toEqual(
+            expect.arrayContaining([expect.objectContaining({ level: 'WARN', message: expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID') })]),
+        );
+        jest.restoreAllMocks();
     });
 });

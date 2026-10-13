@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { assertConfigured } from '@mairie360/bffs-lib';
 import app from './app';
+import { logger } from './logger';
 
 /**
  * Fail-fast startup check: refuses to start without a valid `CORE_API_URL` or without `JWT_SECRET`
@@ -17,6 +18,6 @@ if (require.main === module) {
   assertStartupConfiguration();
   const listenPort = Number(process.env.PORT || 4000);
   app.listen(listenPort, '0.0.0.0', () => {
-    console.log(`Server listening on port ${listenPort}, Swagger docs at /docs`);
+    logger.info('server listening', { port: listenPort, docs: '/docs' });
   });
 }
