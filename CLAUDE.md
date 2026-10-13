@@ -108,6 +108,10 @@ and the legacy `/me` resolve.
   No token goes to the response body or a response header (MAIR-397); the body is
   `{ message }`. Login bodies are validated with Zod (unknown fields stripped) before reaching Core.
   `/auth/force_change_password` requires an 8-255 character password, like the admin routes.
+- **`/auth/forgot_password`** / **`/auth/reset_password`** (MAIR-527, public): forgot forwards `{ email }` to Core
+  and answers the same empty 200 for a known or unknown address (Core 400 / 429 kept); reset forwards
+  `{ token (UUID), new_password, device_info }` and opens the session with `sendSession` like login (Core 400 / 401
+  / 429 kept, 401 = token unknown, expired or already used). Both behind the `perIp` limiter.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
@@ -183,7 +187,7 @@ error, declared)`: only the Core 4xx the route declares are kept (generic messag
 failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
 relayed. `retry: true` (one retry on no answer / 502 / 503 / 504) is only set on Core GETs. Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
 `{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
-`[400, 401, 403]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
+`[400, 401, 403]`, forgot_password `[400, 429]`, reset_password `[400, 401, 429]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
 `READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
 must add `errorHandler()` after it. The rate limiters answer 429 in the same envelope.
 

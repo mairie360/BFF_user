@@ -19,6 +19,7 @@ const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract());
 // Gabarits du contrat Core API (clés des mocks) ; les chemins concrets attendus viennent de coreApiUrls.
 const CORE = {
   login: '/api/v1/auth/login', forceChangePassword: '/api/v1/auth/force_change_password',
+  forgotPassword: '/api/v1/auth/forgot_password', resetPassword: '/api/v1/auth/reset_password',
   me: '/api/v1/user/me/', user: '/api/v1/user/{id}/',
   adminUsers: '/api/v1/admin/users/', adminUser: '/api/v1/admin/users/{userId}/', adminUserRoles: '/api/v1/admin/users/{userId}/roles/',
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
@@ -31,6 +32,8 @@ const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts',
 const ADMIN_ID = 1;
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+/** Reset token of the e-mail: ResetPasswordView.token is a UUID. */
+const RESET_TOKEN = '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35';
 const SESSION = sessionToken(ADMIN_ID);
 
 let app: Express;
@@ -211,6 +214,122 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(status);
       expectBffContract('post', '/auth/force_change_password', response);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+  });
+
+  describe('POST /auth/forgot_password', () => {
+    test('sends an anonymous contract-valid request and answers an empty 200', async () => {
+      coreApi.on('post', CORE.forgotPassword, { status: 200 });
+
+      const response = await request(app).post('/auth/forgot_password').set('Authorization', `Bearer ${SESSION}`).send({ email: 'alice@mairie.test' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/forgot_password', response);
+      expect(response.text).toBe('');
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getForgotPasswordUrl())]);
+      expect(coreApi.requests[0].body).toEqual({ email: 'alice@mairie.test' });
+      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
+    });
+
+    test('answers the same for a known and an unknown address', async () => {
+      // Core answers the same empty 200 in both cases: the BFF adds nothing that tells them apart.
+      coreApi.on('post', CORE.forgotPassword, { status: 200 });
+
+      const known = await request(app).post('/auth/forgot_password').send({ email: 'alice@mairie.test' });
+      const unknown = await request(app).post('/auth/forgot_password').send({ email: 'nobody@mairie.test' });
+
+      expect({ status: unknown.status, text: unknown.text, type: unknown.type }).toEqual({ status: known.status, text: known.text, type: known.type });
+    });
+
+    test.each([
+      [400, 'Invalid `email`', { error: { code: 'BAD_REQUEST', message: 'Invalid request', details: [] } }],
+      [429, 'Too many requests, please try again later.', { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests', details: [] } }],
+    ])('relays a Core %i with a generic message', async (status, message, body) => {
+      coreApi.on('post', CORE.forgotPassword, coreError(status, message));
+
+      const response = await request(app).post('/auth/forgot_password').send({ email: 'alice@mairie.test' });
+
+      expect(response.status).toBe(status);
+      expectBffContract('post', '/auth/forgot_password', response);
+      expect(response.body).toEqual(body);
+    });
+
+    test('rejects an invalid e-mail with 400 before calling Core API', async () => {
+      const response = await request(app).post('/auth/forgot_password').send({ email: 'alice' });
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/forgot_password', response);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+  });
+
+  describe('POST /auth/reset_password', () => {
+    const payload = { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' };
+
+    test('sends an anonymous contract-valid reset and opens the session in HttpOnly cookies', async () => {
+      coreApi.on('post', CORE.resetPassword, { body: loginResponse('reset-refresh-token'), headers: { Authorization: 'Bearer core.jwt.token' } });
+
+      const response = await request(app).post('/auth/reset_password').send({ ...payload, role: 'Admin' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(response.body).toEqual({ message: 'Logged in successfully' });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly.*SameSite=Strict/);
+      expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=reset-refresh-token;.*Path=\/auth;.*HttpOnly.*SameSite=Strict/);
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getResetPasswordUrl())]);
+      expect(coreApi.requests[0].body).toEqual(payload);
+      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
+    });
+
+    test('answers 401 to a token already used, without any cookie', async () => {
+      coreApi.on('post', CORE.resetPassword, { body: loginResponse(), headers: { Authorization: 'Bearer core.jwt.token' } });
+      const first = await request(app).post('/auth/reset_password').send(payload);
+      // Core consumed the token: the replay is refused.
+      coreApi.reset();
+      coreApi.on('post', CORE.resetPassword, coreError(401, 'Unknown token'));
+
+      const replay = await request(app).post('/auth/reset_password').send(payload);
+
+      expect(first.status).toBe(200);
+      expect(replay.status).toBe(401);
+      expectBffContract('post', '/auth/reset_password', replay);
+      expect(replay.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
+      expect(replay.headers['set-cookie']).toBeUndefined();
+    });
+
+    test.each([
+      [400, 'Invalid `new_password`', 'BAD_REQUEST'],
+      [429, 'Too many requests, please try again later.', 'TOO_MANY_REQUESTS'],
+    ])('relays a Core %i', async (status, message, code) => {
+      coreApi.on('post', CORE.resetPassword, coreError(status, message));
+
+      const response = await request(app).post('/auth/reset_password').send(payload);
+
+      expect(response.status).toBe(status);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(response.body.error.code).toBe(code);
+    });
+
+    test('returns 502 when Core API answers 200 without the Authorization header', async () => {
+      coreApi.on('post', CORE.resetPassword, { body: loginResponse() });
+
+      const response = await request(app).post('/auth/reset_password').send(payload);
+
+      expect(response.status).toBe(502);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    test.each([
+      ['a token that is not a UUID', { ...payload, token: 'abc' }],
+      ['a 7-character password', { ...payload, new_password: 'Short-7' }],
+      ['a missing device_info', { token: RESET_TOKEN, new_password: 'Updated-456!' }],
+    ])('rejects %s before calling Core API', async (_label, body) => {
+      const response = await request(app).post('/auth/reset_password').send(body);
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/reset_password', response);
       expect(coreApi.requests).toHaveLength(0);
     });
   });
@@ -746,6 +865,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test.each([
       ['POST /auth/login', CORE.login, { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }],
       ['POST /auth/force_change_password', CORE.forceChangePassword, { token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' }],
+      ['POST /auth/forgot_password', CORE.forgotPassword, { email: 'alice@mairie.test' }],
+      ['POST /auth/reset_password', CORE.resetPassword, { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' }],
       ['GET /user/7/about', CORE.user, undefined],
       ['GET /me', CORE.me, undefined],
     ])('%s maps a Core API 500 to a documented 502', async (route, template, body) => {
@@ -822,6 +943,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test.each([
       ['POST /auth/login', { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }, undefined],
       ['POST /auth/force_change_password', { token: FIRST_CONNECTION_TOKEN, new_password: 'NouveauMotDePasse123' }, undefined],
+      ['POST /auth/forgot_password', { email: 'alice@mairie.test' }, undefined],
+      ['POST /auth/reset_password', { token: RESET_TOKEN, new_password: 'NouveauMotDePasse123', device_info: 'Firefox' }, undefined],
       ['POST /auth/refresh', { refresh_token: 'opaque-refresh-token' }, undefined],
       ['GET /me', undefined, `Bearer ${SESSION}`],
       ['GET /user/7/about', undefined, `Bearer ${SESSION}`],

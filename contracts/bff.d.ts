@@ -303,6 +303,195 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/forgot_password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Requests a password reset e-mail
+         * @description Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link (`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. Malformed requests are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For; Core API limits the requests per client and per e-mail address.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ForgotPasswordView"];
+                };
+            };
+            responses: {
+                /** @description Request accepted, empty body. Does not tell whether an e-mail was sent. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid payload (missing `email`, or not an e-mail address of at most 320 characters) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, or it could not send the e-mail */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reset_password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resets a password with the e-mailed token
+         * @description Forwards the reset token of the e-mail, the new password and the device to Core API (POST /api/v1/auth/reset_password), which saves the password, revokes every other session of the account and opens a new one. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies): the user is signed in. The token is single use: a second reset with it answers 401. Failed attempts are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResetPasswordView"];
+                };
+            };
+            responses: {
+                /** @description Password reset and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Reset token unknown, expired or already used, or account archived since the e-mail was sent; request a new e-mail. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/refresh": {
         parameters: {
             query?: never;
@@ -3600,6 +3789,31 @@ export interface components {
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             token: string;
+        };
+        ForgotPasswordView: {
+            /**
+             * Format: email
+             * @description E-mail address of the account whose password is to be reset (at most 320 characters).
+             * @example alice.dupont@mairie360.fr
+             */
+            email: string;
+        };
+        ResetPasswordView: {
+            /**
+             * @description One-time reset token, the `token` query parameter of the link of the reset e-mail (a UUID).
+             * @example 2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35
+             */
+            token: string;
+            /**
+             * @description New password of the user (8 to 255 characters).
+             * @example NouveauMotDePasse123
+             */
+            new_password: string;
+            /**
+             * @description Description of the device, kept on the session the reset opens (at most 512 characters).
+             * @example Firefox
+             */
+            device_info: string;
         };
         AboutResponseView: {
             /**

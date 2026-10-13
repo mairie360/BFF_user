@@ -23,7 +23,7 @@ const contract = JSON.parse(readFileSync(join(__dirname, '..', 'contracts', 'ope
 // route must always clear the cookies (logout), and the probes.
 const PUBLIC_OPERATIONS = [
     'GET /health', 'GET /check_apis', 'POST /auth/login', 'POST /auth/force_change_password', 'POST /auth/refresh',
-    'POST /auth/logout', 'POST /auth/keycloak',
+    'POST /auth/logout', 'POST /auth/keycloak', 'POST /auth/forgot_password', 'POST /auth/reset_password',
 ];
 
 const operations = Object.entries(contract.paths).flatMap(([path, methods]) =>
