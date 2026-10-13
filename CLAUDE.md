@@ -204,8 +204,9 @@ fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
 ## Docker
 
 `docker compose up` uses `development.Dockerfile` (`npm run start`, i.e. `tsx watch`; `develop.watch`
-sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, and
-nginx. The production `Dockerfile` is a `node:24-alpine` (pinned by digest, like `development.Dockerfile`)
+sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, a fake Resend
+(WireMock, `tests/fake-resend/`, journal on `localhost:8025/__admin/requests`: Core ≥ MAIR-522 sends the password
+e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:24-alpine` (pinned by digest, like `development.Dockerfile`)
 multi-stage build running `node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
 
 ## Tests with a contract-driven Core API mock
@@ -246,7 +247,8 @@ Thresholds are strict: `checks == 100%`, `http_req_failed == 0`, `dropped_iterat
 CI runner holds, `stress` (100 readers, 100/s) is run by hand. Keep `init-perf.sql` and the id ranges at
 the top of `load-test.js` in step.
 
-Both scripts source `stack_secrets.sh` (MAIR-474): a random `JWT_SECRET` per run, shared by core-api,
+The ZAP and k6 stacks run the same fake Resend (`fake-resend`, MAIR-552), so `POST /auth/forgot_password` reaches a
+working Core. Both scripts source `stack_secrets.sh` (MAIR-474): a random `JWT_SECRET` per run, shared by core-api,
 bff-user and k6, and `ADMIN_JWT` (`sub=1`, 4 h) signed with it for the ZAP replacer; the compose files
 refuse to start without them, and nothing signed with a committed secret is left in the repository. They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
