@@ -11,6 +11,8 @@
  * `KEYCLOAK_CLIENT_ID`, `POST /auth/logout` only clears the `accessToken` cookie.
  */
 
+import { logger } from '../logger';
+
 export interface KeycloakConfig {
     /** Public URL of the realm, as the browser reaches it (e.g. `https://auth.mairie360.fr/realms/mairie360`). */
     realmUrl: string;
@@ -37,7 +39,7 @@ export function getKeycloakConfig(): KeycloakConfig | null {
 
     if (!realmUrl || !clientId) {
         if (realmUrl || clientId) {
-            console.warn('Keycloak logout disabled: KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID must both be set.');
+            logger.warn('Keycloak logout disabled: KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID must both be set.');
         }
         return null;
     }

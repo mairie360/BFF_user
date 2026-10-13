@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createRateLimiter, parseTrustProxy } from '@mairie360/bffs-lib';
 import type { Request, RequestHandler, Response } from 'express';
+import { logger } from '../logger';
 import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
 
 /**
@@ -105,7 +106,7 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
 export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateLimitOptionsFromEnv()): AuthRateLimiters {
     if (options.enabled && !options.perClientIp && !warnedPerIpDisabled) {
         warnedPerIpDisabled = true;
-        console.warn('[BFF Auth] TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies.');
+        logger.warn('TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies.');
     }
 
     const common = {

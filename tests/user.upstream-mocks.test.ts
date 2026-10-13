@@ -14,6 +14,7 @@ import {
   JWT_SECRET, adminUsersPage, coreApiUrls, expiredToken, group, groupResult, groupsResult, historyResult, loadCoreApiContract,
   loginResponse, meResponse, postGroupResult, role, rolesResult, session, sessionToken, sessionsResult, userResponse,
 } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract());
 // Gabarits du contrat Core API (clés des mocks) ; les chemins concrets attendus viennent de coreApiUrls.
@@ -51,7 +52,7 @@ afterAll(async () => { await coreApi.stop(); });
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.CORE_API_URL = coreApi.url;
-  jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  captureLogs();
   coreApi.reset();
   // Le rôle de l'appelant est lu dans Core API avant toute route d'administration.
   coreApi.on('get', CORE.me, { body: meResponse({ role: 'Admin' }) });
@@ -370,7 +371,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('maps %s to a documented 502 without upstream details', async (_label, reply) => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('post', CORE.sessionsRefresh, reply);
 
       const response = await request(app).post('/auth/refresh').send(payload);
@@ -436,7 +437,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('still clears the cookies after %s on the JWT-only logout', async (_label, reply) => {
-      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('post', CORE.sessionsLogout, reply);
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`);
@@ -478,7 +479,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('still clears the cookie on %s', async (_label, reply) => {
-      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('post', CORE.sessionsRevoke, reply);
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
@@ -852,7 +853,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['500', coreError(500, 'An error occurred while accessing the database.'), 502, { error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } }],
       ['dropped connection', { dropConnection: true }, 502, { error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } }],
     ] as Array<[string, MockReply, number, object]>)('maps a Core API %s on an admin proxy route without leaking upstream details', async (_label, reply, status, body) => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('get', CORE.group, reply);
 
       const response = await request(app).get('/admin/groups/5').set('Authorization', `Bearer ${SESSION}`);
@@ -870,7 +871,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['GET /user/7/about', CORE.user, undefined],
       ['GET /me', CORE.me, undefined],
     ])('%s maps a Core API 500 to a documented 502', async (route, template, body) => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      captureLogs();
       const [method, pathname] = route.split(' ');
       coreApi.on(body ? 'post' : 'get', template, coreError(500, 'An error occurred while accessing the database.'));
       if (pathname === '/me') coreApi.on('get', CORE.groups, { body: groupsResult([]) });
@@ -885,14 +886,19 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('hides the details of a Core API failure on the administration listing', async () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const logs = captureLogs();
       coreApi.on('get', CORE.adminUsers, coreError(500, 'An error occurred while accessing the database.'));
 
       const response = await request(app).get('/admin/users').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(502);
       expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
-      expect(consoleError).toHaveBeenCalled();
+      expect(logs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ level: 'ERROR', target: 'bff-user', message: 'request failed', status: 502, request_id: response.headers['x-request-id'] }),
+          expect.objectContaining({ message: 'request completed', method: 'GET', path: '/admin/users', status: 502 }),
+        ]),
+      );
     });
   });
 
@@ -926,7 +932,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['nothing listens on CORE_API_URL', async () => { process.env.CORE_API_URL = await unreachableUrl(); }],
       ['CORE_API_URL is not set', async () => { delete process.env.CORE_API_URL; }],
     ])('reports Core API unreachable without leaking network details when %s', async (_label, arrange) => {
-      const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const logs = captureLogs();
       await arrange();
 
       const response = await request(app).get('/check_apis');
@@ -935,7 +941,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expectBffContract('get', '/check_apis', response);
       expect(response.body).toEqual({ status: 'Error', core_api: 'Unreachable' });
       // The cause is only logged server side.
-      expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('[check_apis] core_api unreachable'));
+      expect(logs).toEqual(expect.arrayContaining([expect.objectContaining({ level: 'WARN', message: 'upstream unreachable', upstream: 'core_api' })]));
     });
   });
 

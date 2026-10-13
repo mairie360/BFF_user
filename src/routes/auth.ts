@@ -1,4 +1,4 @@
-import { asCaller, bearerToken, HttpError, noStore, parseRequest, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
+import { asCaller, bearerToken, HttpError, noStore, parseRequest, requestId, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { z } from 'zod';
@@ -19,6 +19,7 @@ import {
     ResetPasswordViewSchema,
 } from '../openapi-registry';
 import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
+import { logger } from '../logger';
 import {
     clearRefreshTokenCookie,
     clearTokenCookie,
@@ -601,7 +602,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             } catch (error) {
                 // Never log the tokens: the status is enough to diagnose.
                 const status = error instanceof HttpError ? error.status : upstreamStatus(error);
-                console.warn('[BFF Auth] Session revocation failed on logout', { status: status ?? 'network error' });
+                logger.warn('session revocation failed on logout', { request_id: requestId(req), status: status ?? 'network error' });
             }
         }
 
