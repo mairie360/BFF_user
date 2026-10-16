@@ -86,6 +86,8 @@ export function userResponse(overrides: Partial<GetUserResponseView> = {}): GetU
 export const loginResponse = (refresh_token = 'opaque-refresh-token'): LoginResponseView => ({ refresh_token });
 
 export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
+  // Core >= 2.1.0 (MAIR-564): a user holds one role, `role`; the deprecated `roles` holds at most that one.
+  const role = overrides.role !== undefined ? overrides.role : { id: 1, name: 'Admin' };
   return {
     id: 1,
     first_name: 'Admin',
@@ -94,7 +96,8 @@ export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRo
     phone_number: null,
     status: 'active',
     is_archived: false,
-    roles: [{ id: 1, name: 'Admin' }],
+    role,
+    roles: role ? [role] : [],
     ...overrides,
   };
 }
