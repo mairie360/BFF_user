@@ -1783,6 +1783,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server error",
             "content": {
@@ -1870,6 +1880,16 @@
           },
           "404": {
             "description": "Unknown user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2013,6 +2033,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -2126,6 +2156,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2268,6 +2308,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -2383,6 +2433,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2525,6 +2585,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -2651,6 +2721,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2792,6 +2872,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -2898,6 +2988,16 @@
           },
           "404": {
             "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3019,6 +3119,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3161,6 +3271,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -3293,6 +3413,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -3408,6 +3538,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3557,6 +3697,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -3670,6 +3820,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3792,6 +3952,16 @@
           },
           "404": {
             "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3932,6 +4102,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -4047,6 +4227,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4180,6 +4370,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -4304,6 +4504,16 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4445,6 +4655,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -4551,6 +4771,16 @@
           },
           "404": {
             "description": "Introuvable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4700,6 +4930,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -4824,6 +5064,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unexpected server error; the cause is only logged",
             "content": {
@@ -4880,6 +5130,16 @@
               }
             }
           },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "502": {
             "description": "Core API unavailable, failed or answered another error",
             "content": {
@@ -4918,6 +5178,16 @@
           },
           "401": {
             "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
             "content": {
               "application/json": {
                 "schema": {

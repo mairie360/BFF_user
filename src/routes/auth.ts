@@ -7,6 +7,7 @@ import {
     CoreApiNotConfigured,
     ErrorResponse,
     AuthSessionResponse,
+    CoreApiRateLimited,
     ForceChangePasswordViewSchema,
     ForgotPasswordViewSchema,
     KeycloakLoginViewSchema,
@@ -435,6 +436,7 @@ registry.registerPath({
             description: 'Server error',
             content: { 'application/json': { schema: ErrorResponse } },
         },
+        429: CoreApiRateLimited,
         502: {
             description: 'Core API or Keycloak unavailable, or invalid upstream response',
             content: { 'application/json': { schema: ErrorResponse } },
