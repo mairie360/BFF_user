@@ -49,7 +49,7 @@ x-service: &service-template
 
 services:
   postgres:
-    image: ghcr.io/mairie360/database:2.0.0
+    image: ghcr.io/mairie360/database:dev-90c22bb
     restart: always
     container_name: mairie360-db-bff-user
     environment:
@@ -69,7 +69,7 @@ services:
       retries: 5
 
   liquibase:
-    image: ghcr.io/mairie360/liquibase-migrations:2.0.0
+    image: ghcr.io/mairie360/liquibase-migrations:dev-90c22bb
     container_name: mairie360-liquibase-bff-user
     depends_on:
       postgres:
@@ -104,9 +104,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Fake Resend API (MAIR-552): records the e-mails Core sends (tests/fake-resend/README.md).
+  fake-resend:
+    image: wiremock/wiremock:3.13.2
+    container_name: fake-resend-bff-user-developpement
+    command: ["--port", "8080", "--global-response-templating"]
+    volumes:
+      - ./tests/fake-resend/mappings:/home/wiremock/mappings:ro
+    ports:
+      - "8025:8080"
+    networks:
+      - backend
+
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:2.0.0
+    image: ghcr.io/mairie360/core-api:dev-95531e2
     ports:
       - "3000:3000"
     networks:
@@ -130,13 +142,14 @@ services:
       # a deployment uses a random secret of at least 32 bytes (MAIR-428).
       JWT_ALLOW_WEAK_SECRET: "true"
       JWT_TIMEOUT: 3600
-      # Core API >= 2.0.0 sends the password e-mails itself: no SMTP server locally, nothing is delivered.
-      EMAIL_FROM: "noreply.mairie360@dev.local"
-      SMTP_HOST: "localhost"
-      SMTP_PORT: "1025"
-      SMTP_USERNAME: ""
-      SMTP_PASSWORD: ""
+      # Core sends the password e-mails through Resend (MAIR-522): the fake one by default, which records them.
+      # Real e-mails: RESEND_API_KEY=re_… RESEND_BASE_URL=https://api.resend.com EMAIL_DOMAIN=mairie360-eip.fr
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_fake_local}
+      RESEND_BASE_URL: ${RESEND_BASE_URL:-http://fake-resend:8080}
+      EMAIL_DOMAIN: ${EMAIL_DOMAIN:-mairie360.local}
     depends_on:
+      fake-resend:
+        condition: service_started
       liquibase:
         condition: service_completed_successfully
       redis:

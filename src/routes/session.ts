@@ -1,4 +1,4 @@
-import { asCaller, callUpstream, noStore, requireBearer } from '@mairie360/bffs-lib';
+import { asCaller, callUpstream, noStore, requireSession } from '@mairie360/bffs-lib';
 import { z } from 'zod';
 import { CoreApiNotConfigured, ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
@@ -17,7 +17,7 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
     user: z.object({
         id: z.union([z.string(), z.number()]).optional(),
         first_name: z.string(), last_name: z.string(), email: z.string(),
-        phone: z.string().nullable().optional(), status: z.string(), role: z.string().optional(),
+        phone: z.string().nullable().optional(), phone_country: z.string().nullable().optional(), status: z.string(), role: z.string().optional(),
     }),
     groups: z.array(z.object({ id: z.number(), name: z.string(), owner_id: z.number(), description: z.string().nullable().optional() })),
     roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() })])),
@@ -32,8 +32,9 @@ for (const path of ['/me', '/session/me']) {
 }
 
 // Per route, not router.use(): this router is also mounted at `/`, where a router-level guard would answer
-// 401 to every unknown path instead of 404.
-router.get('/me', noStore, requireBearer, async (req: Request, res: Response) => {
+// 401 to every unknown path instead of 404. `requireSession` verifies the token (HS256 with JWT_SECRET, expiry):
+// a forged or expired one gets its 401 here, before any Core call.
+router.get('/me', noStore, requireSession, async (req: Request, res: Response) => {
     const options = asCaller('CORE_API', req);
     // Idempotent reads: retried once on a transient failure; only Core's 401 is relayed, the rest is a 502.
     const [userResponse, groupsResponse] = await Promise.all([

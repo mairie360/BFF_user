@@ -1,4 +1,5 @@
 import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../src/config/keycloak';
+import { captureLogs } from './support/logs';
 
 const KEYCLOAK_ENV = ['KEYCLOAK_REALM_URL', 'KEYCLOAK_CLIENT_ID', 'KEYCLOAK_POST_LOGOUT_REDIRECT_URI'] as const;
 
@@ -19,12 +20,12 @@ describe('getKeycloakConfig', () => {
         ['an empty realm URL', { KEYCLOAK_REALM_URL: '  ', KEYCLOAK_CLIENT_ID: 'mairie360' }],
         ['no client id', { KEYCLOAK_REALM_URL: 'https://auth.mairie360.fr/realms/mairie360' }],
     ])('is disabled, with a warning, with %s', (_case, env) => {
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const logs = captureLogs();
         Object.assign(process.env, env);
 
         expect(getKeycloakConfig()).toBeNull();
-        expect(warn).toHaveBeenCalledTimes(1);
-        warn.mockRestore();
+        expect(logs).toEqual([expect.objectContaining({ level: 'WARN', target: 'bff-user' })]);
+        jest.restoreAllMocks();
     });
 
     it('reads the realm, the client and the default post-logout redirect, trimming a trailing slash', () => {

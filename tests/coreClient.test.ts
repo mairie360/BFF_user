@@ -1,6 +1,7 @@
 import { coreClient } from '../src/clients/coreClient';
 import { keycloakLoginUser } from '../src/routes/core_helpers';
 import { axiosResponse, loginResponse } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 // POST /api/v1/auth/keycloak is still called by hand (coreClient.ts), so the contract-driven mock of
 // user.upstream-mocks.test.ts does not serve it: the hand-written call is checked here instead.
@@ -11,7 +12,7 @@ describe('coreAuthClient.keycloakLogin', () => {
     });
 
     it('posts the authorization code anonymously to Core API /api/v1/auth/keycloak', async () => {
-        jest.spyOn(console, 'log').mockImplementation(() => undefined);
+        captureLogs();
         const post = jest.spyOn(coreClient, 'post').mockResolvedValue(axiosResponse(loginResponse()));
         const view = { code: 'code', redirect_uri: 'https://login.mairie360.fr/auth/callback', device_info: 'Firefox' };
 

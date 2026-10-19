@@ -12,9 +12,9 @@ Business domain: Identity and administration.
 
 ## Available capabilities
 
-- Sign-in, first-sign-in password change and logout (no public self-registration: administrators create accounts).
+- Sign-in, first-sign-in password change, forgotten password (reset e-mail, then reset with the e-mailed token, which signs the user in) and logout (no public self-registration: administrators create accounts).
 - Session lookup with identity, groups and roles through `/me` and `/session/me`.
-- User, role, group, membership and session operations under `/bff/admin`.
+- User, role, group, membership and session operations under `/admin`.
 
 ## Typical workflow
 

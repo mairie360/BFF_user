@@ -14,11 +14,13 @@ import {
   JWT_SECRET, adminUsersPage, coreApiUrls, expiredToken, group, groupResult, groupsResult, historyResult, loadCoreApiContract,
   loginResponse, meResponse, postGroupResult, role, rolesResult, session, sessionToken, sessionsResult, userResponse,
 } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract());
 // Gabarits du contrat Core API (clés des mocks) ; les chemins concrets attendus viennent de coreApiUrls.
 const CORE = {
   login: '/api/v1/auth/login', forceChangePassword: '/api/v1/auth/force_change_password',
+  forgotPassword: '/api/v1/auth/forgot_password', resetPassword: '/api/v1/auth/reset_password',
   me: '/api/v1/user/me/', user: '/api/v1/user/{id}/',
   adminUsers: '/api/v1/admin/users/', adminUser: '/api/v1/admin/users/{userId}/', adminUserRoles: '/api/v1/admin/users/{userId}/roles/',
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
@@ -31,6 +33,8 @@ const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts',
 const ADMIN_ID = 1;
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
+/** Reset token of the e-mail: ResetPasswordView.token is a UUID. */
+const RESET_TOKEN = '11111111-2222-4333-8444-555555555555';
 const SESSION = sessionToken(ADMIN_ID);
 
 let app: Express;
@@ -48,7 +52,7 @@ afterAll(async () => { await coreApi.stop(); });
 beforeEach(() => {
   jest.clearAllMocks();
   process.env.CORE_API_URL = coreApi.url;
-  jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  captureLogs();
   coreApi.reset();
   // Le rôle de l'appelant est lu dans Core API avant toute route d'administration.
   coreApi.on('get', CORE.me, { body: meResponse({ role: 'Admin' }) });
@@ -215,6 +219,122 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
+  describe('POST /auth/forgot_password', () => {
+    test('sends an anonymous contract-valid request and answers an empty 200', async () => {
+      coreApi.on('post', CORE.forgotPassword, { status: 200 });
+
+      const response = await request(app).post('/auth/forgot_password').set('Authorization', `Bearer ${SESSION}`).send({ email: 'alice@mairie.test' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/forgot_password', response);
+      expect(response.text).toBe('');
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getForgotPasswordUrl())]);
+      expect(coreApi.requests[0].body).toEqual({ email: 'alice@mairie.test' });
+      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
+    });
+
+    test('answers the same for a known and an unknown address', async () => {
+      // Core answers the same empty 200 in both cases: the BFF adds nothing that tells them apart.
+      coreApi.on('post', CORE.forgotPassword, { status: 200 });
+
+      const known = await request(app).post('/auth/forgot_password').send({ email: 'alice@mairie.test' });
+      const unknown = await request(app).post('/auth/forgot_password').send({ email: 'nobody@mairie.test' });
+
+      expect({ status: unknown.status, text: unknown.text, type: unknown.type }).toEqual({ status: known.status, text: known.text, type: known.type });
+    });
+
+    test.each([
+      [400, 'Invalid `email`', { error: { code: 'BAD_REQUEST', message: 'Invalid request', details: [] } }],
+      [429, 'Too many requests, please try again later.', { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests', details: [] } }],
+    ])('relays a Core %i with a generic message', async (status, message, body) => {
+      coreApi.on('post', CORE.forgotPassword, coreError(status, message));
+
+      const response = await request(app).post('/auth/forgot_password').send({ email: 'alice@mairie.test' });
+
+      expect(response.status).toBe(status);
+      expectBffContract('post', '/auth/forgot_password', response);
+      expect(response.body).toEqual(body);
+    });
+
+    test('rejects an invalid e-mail with 400 before calling Core API', async () => {
+      const response = await request(app).post('/auth/forgot_password').send({ email: 'alice' });
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/forgot_password', response);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+  });
+
+  describe('POST /auth/reset_password', () => {
+    const payload = { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' };
+
+    test('sends an anonymous contract-valid reset and opens the session in HttpOnly cookies', async () => {
+      coreApi.on('post', CORE.resetPassword, { body: loginResponse('reset-refresh-token'), headers: { Authorization: 'Bearer core.jwt.token' } });
+
+      const response = await request(app).post('/auth/reset_password').send({ ...payload, role: 'Admin' });
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(response.body).toEqual({ message: 'Logged in successfully' });
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly.*SameSite=Strict/);
+      expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=reset-refresh-token;.*Path=\/auth;.*HttpOnly.*SameSite=Strict/);
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getResetPasswordUrl())]);
+      expect(coreApi.requests[0].body).toEqual(payload);
+      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
+    });
+
+    test('answers 401 to a token already used, without any cookie', async () => {
+      coreApi.on('post', CORE.resetPassword, { body: loginResponse(), headers: { Authorization: 'Bearer core.jwt.token' } });
+      const first = await request(app).post('/auth/reset_password').send(payload);
+      // Core consumed the token: the replay is refused.
+      coreApi.reset();
+      coreApi.on('post', CORE.resetPassword, coreError(401, 'Unknown token'));
+
+      const replay = await request(app).post('/auth/reset_password').send(payload);
+
+      expect(first.status).toBe(200);
+      expect(replay.status).toBe(401);
+      expectBffContract('post', '/auth/reset_password', replay);
+      expect(replay.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
+      expect(replay.headers['set-cookie']).toBeUndefined();
+    });
+
+    test.each([
+      [400, 'Invalid `new_password`', 'BAD_REQUEST'],
+      [429, 'Too many requests, please try again later.', 'TOO_MANY_REQUESTS'],
+    ])('relays a Core %i', async (status, message, code) => {
+      coreApi.on('post', CORE.resetPassword, coreError(status, message));
+
+      const response = await request(app).post('/auth/reset_password').send(payload);
+
+      expect(response.status).toBe(status);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(response.body.error.code).toBe(code);
+    });
+
+    test('returns 502 when Core API answers 200 without the Authorization header', async () => {
+      coreApi.on('post', CORE.resetPassword, { body: loginResponse() });
+
+      const response = await request(app).post('/auth/reset_password').send(payload);
+
+      expect(response.status).toBe(502);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    test.each([
+      ['a token that is not a UUID', { ...payload, token: 'abc' }],
+      ['a 7-character password', { ...payload, new_password: 'Short-7' }],
+      ['a missing device_info', { token: RESET_TOKEN, new_password: 'Updated-456!' }],
+    ])('rejects %s before calling Core API', async (_label, body) => {
+      const response = await request(app).post('/auth/reset_password').send(body);
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/reset_password', response);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+  });
+
   describe('POST /auth/refresh', () => {
     const payload = { refresh_token: 'opaque-refresh-token' };
 
@@ -251,7 +371,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('maps %s to a documented 502 without upstream details', async (_label, reply) => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('post', CORE.sessionsRefresh, reply);
 
       const response = await request(app).post('/auth/refresh').send(payload);
@@ -317,7 +437,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('still clears the cookies after %s on the JWT-only logout', async (_label, reply) => {
-      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('post', CORE.sessionsLogout, reply);
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`);
@@ -359,7 +479,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('still clears the cookie on %s', async (_label, reply) => {
-      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('post', CORE.sessionsRevoke, reply);
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
@@ -503,7 +623,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
-  describe('/bff/admin routes proxied to Core API', () => {
+  describe('/admin routes proxied to Core API', () => {
     type ProxyCase = {
       route: string; body?: object;
       upstream: string; template: string; reply: MockReply;
@@ -511,28 +631,35 @@ describe('BFF User with a contract-driven Core API mock', () => {
     };
     const cases: ProxyCase[] = [
       {
-        route: 'POST /bff/admin/users', body: { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123' },
-        upstream: called('POST', coreApiUrls.getAdminPostUserUrl()), template: CORE.adminUsers, reply: { status: 201, raw: 'User created successfully!', contentType: 'text/plain' },
-        status: 201, responseBody: { message: 'User created successfully!' },
+        route: 'POST /admin/users', body: { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123' },
+        upstream: called('POST', coreApiUrls.getAdminPostUserUrl()), template: CORE.adminUsers, reply: { status: 201, body: { id: 12, message: 'User created successfully!' } },
+        status: 201, responseBody: { id: 12, message: 'User created successfully!' },
       },
-      { route: 'PATCH /bff/admin/users/7', body: { first_name: 'Alicia', phone_number: null }, upstream: called('PATCH', coreApiUrls.getAdminPatchUserUrl(7)), template: CORE.adminUser, reply: { status: 200 }, status: 200 },
-      { route: 'POST /bff/admin/users/7/roles', body: { user_id: 7, role_id: 3 }, upstream: called('POST', coreApiUrls.getAdminAddRoleToUserUrl(7)), template: CORE.adminUserRoles, reply: { status: 200 }, status: 200 },
-      { route: 'DELETE /bff/admin/users/7/roles/3', upstream: called('DELETE', coreApiUrls.getAdminDeleteUserRoleUrl(7, 3)), template: CORE.adminUserRole, reply: { status: 204 }, status: 204 },
-      { route: 'GET /bff/admin/roles', upstream: called('GET', coreApiUrls.getAdminGetRoleUrl()), template: CORE.adminRoles, reply: { body: rolesResult([role(1), role(3)]) }, status: 200, responseBody: rolesResult([role(1), role(3)]) },
-      { route: 'POST /bff/admin/roles', body: { name: 'Agent', description: 'Agent municipal' }, upstream: called('POST', coreApiUrls.getAdminPostRoleUrl()), template: CORE.adminRoles, reply: { status: 200 }, status: 200 },
-      { route: 'PUT /bff/admin/roles/3', body: { name: 'Agent', description: 'Agent municipal', can_be_deleted: true }, upstream: called('PUT', coreApiUrls.getAdminPutRoleUrl(3)), template: CORE.adminRole, reply: { status: 200 }, status: 200 },
-      { route: 'PATCH /bff/admin/roles/3', body: { description: 'Agent de mairie' }, upstream: called('PATCH', coreApiUrls.getAdminPatchRoleUrl(3)), template: CORE.adminRole, reply: { status: 200 }, status: 200 },
-      { route: 'DELETE /bff/admin/roles/3', upstream: called('DELETE', coreApiUrls.getAdminDeleteRoleUrl(3)), template: CORE.adminRole, reply: { status: 204 }, status: 204 },
-      { route: 'GET /bff/admin/groups', upstream: called('GET', coreApiUrls.getGetGroupsUrl()), template: CORE.groups, reply: { body: groupsResult([group(1)]) }, status: 200, responseBody: groupsResult([group(1)]) },
-      { route: 'POST /bff/admin/groups', body: { name: 'Culture', description: 'Service culture' }, upstream: called('POST', coreApiUrls.getPostGroupUrl()), template: CORE.groups, reply: { body: postGroupResult(5) }, status: 200, responseBody: postGroupResult(5) },
-      { route: 'GET /bff/admin/groups/5', upstream: called('GET', coreApiUrls.getGetGroupUrl(5)), template: CORE.group, reply: { body: groupResult(group(5)) }, status: 200, responseBody: groupResult(group(5)) },
-      { route: 'DELETE /bff/admin/groups/5', upstream: called('DELETE', coreApiUrls.getDeleteGroupUrl(5)), template: CORE.group, reply: { status: 204 }, status: 204 },
-      { route: 'GET /bff/admin/sessions', upstream: called('GET', coreApiUrls.getGetActiveSessionsUrl()), template: CORE.sessions, reply: { body: sessionsResult([session('s-1')]) }, status: 200, responseBody: sessionsResult([session('s-1')]) },
+      // Core API (MAIR-480): a national number with its country, as typed, or an E.164 one.
       {
-        route: 'GET /bff/admin/sessions/history', upstream: called('GET', coreApiUrls.getHistoryUrl()), template: CORE.sessionsHistory,
+        route: 'POST /admin/users', body: { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123', phone_number: '06 12 34 56 78', phone_country: 'FR' },
+        upstream: called('POST', coreApiUrls.getAdminPostUserUrl()), template: CORE.adminUsers, reply: { status: 201, body: { id: 12, message: 'User created successfully!' } },
+        status: 201, responseBody: { id: 12, message: 'User created successfully!' },
+      },
+      { route: 'PATCH /admin/users/7', body: { phone_number: '+262692123456' }, upstream: called('PATCH', coreApiUrls.getAdminPatchUserUrl(7)), template: CORE.adminUser, reply: { status: 200 }, status: 200 },
+      { route: 'PATCH /admin/users/7', body: { first_name: 'Alicia', phone_number: null }, upstream: called('PATCH', coreApiUrls.getAdminPatchUserUrl(7)), template: CORE.adminUser, reply: { status: 200 }, status: 200 },
+      { route: 'POST /admin/users/7/roles', body: { user_id: 7, role_id: 3 }, upstream: called('POST', coreApiUrls.getAdminAddRoleToUserUrl(7)), template: CORE.adminUserRoles, reply: { status: 200 }, status: 200 },
+      { route: 'DELETE /admin/users/7/roles/3', upstream: called('DELETE', coreApiUrls.getAdminDeleteUserRoleUrl(7, 3)), template: CORE.adminUserRole, reply: { status: 204 }, status: 204 },
+      { route: 'GET /admin/roles', upstream: called('GET', coreApiUrls.getAdminGetRoleUrl()), template: CORE.adminRoles, reply: { body: rolesResult([role(1), role(3)]) }, status: 200, responseBody: rolesResult([role(1), role(3)]) },
+      { route: 'POST /admin/roles', body: { name: 'Agent', description: 'Agent municipal' }, upstream: called('POST', coreApiUrls.getAdminPostRoleUrl()), template: CORE.adminRoles, reply: { status: 200 }, status: 200 },
+      { route: 'PUT /admin/roles/3', body: { name: 'Agent', description: 'Agent municipal', can_be_deleted: true }, upstream: called('PUT', coreApiUrls.getAdminPutRoleUrl(3)), template: CORE.adminRole, reply: { status: 200 }, status: 200 },
+      { route: 'PATCH /admin/roles/3', body: { description: 'Agent de mairie' }, upstream: called('PATCH', coreApiUrls.getAdminPatchRoleUrl(3)), template: CORE.adminRole, reply: { status: 200 }, status: 200 },
+      { route: 'DELETE /admin/roles/3', upstream: called('DELETE', coreApiUrls.getAdminDeleteRoleUrl(3)), template: CORE.adminRole, reply: { status: 204 }, status: 204 },
+      { route: 'GET /admin/groups', upstream: called('GET', coreApiUrls.getGetGroupsUrl()), template: CORE.groups, reply: { body: groupsResult([group(1)]) }, status: 200, responseBody: groupsResult([group(1)]) },
+      { route: 'POST /admin/groups', body: { name: 'Culture', description: 'Service culture' }, upstream: called('POST', coreApiUrls.getPostGroupUrl()), template: CORE.groups, reply: { body: postGroupResult(5) }, status: 200, responseBody: postGroupResult(5) },
+      { route: 'GET /admin/groups/5', upstream: called('GET', coreApiUrls.getGetGroupUrl(5)), template: CORE.group, reply: { body: groupResult(group(5)) }, status: 200, responseBody: groupResult(group(5)) },
+      { route: 'DELETE /admin/groups/5', upstream: called('DELETE', coreApiUrls.getDeleteGroupUrl(5)), template: CORE.group, reply: { status: 204 }, status: 204 },
+      { route: 'GET /admin/sessions', upstream: called('GET', coreApiUrls.getGetActiveSessionsUrl()), template: CORE.sessions, reply: { body: sessionsResult([session('s-1')]) }, status: 200, responseBody: sessionsResult([session('s-1')]) },
+      {
+        route: 'GET /admin/sessions/history', upstream: called('GET', coreApiUrls.getHistoryUrl()), template: CORE.sessionsHistory,
         reply: { body: historyResult([session('s-1', { revoked_at: '2026-09-16T08:00:00Z' })]) }, status: 200, responseBody: historyResult([session('s-1', { revoked_at: '2026-09-16T08:00:00Z' })]),
       },
-      { route: 'POST /bff/admin/sessions/revoke', body: { refresh_token: 'opaque-refresh-token' }, upstream: called('POST', coreApiUrls.getRevokeUrl()), template: CORE.sessionsRevoke, reply: { status: 200 }, status: 200 },
+      { route: 'POST /admin/sessions/revoke', body: { refresh_token: 'opaque-refresh-token' }, upstream: called('POST', coreApiUrls.getRevokeUrl()), template: CORE.sessionsRevoke, reply: { status: 200 }, status: 200 },
     ];
 
     test.each(cases)('$route checks the admin role then calls $upstream with the session', async ({ route, body, upstream, template, reply, status, responseBody }) => {
@@ -567,8 +694,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
 
-    test('POST /bff/admin/sessions/refresh is no longer served and never reaches Core API', async () => {
-      const response = await request(app).post('/bff/admin/sessions/refresh').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
+    test('POST /admin/sessions/refresh is no longer served and never reaches Core API', async () => {
+      const response = await request(app).post('/admin/sessions/refresh').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
 
       expect(response.status).toBe(404);
       expect(coreApi.calls(CORE.sessionsRefresh)).toHaveLength(0);
@@ -581,7 +708,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     ])('forwards the Authorization header (%s) to Core API as a normalised Bearer token', async (_label, header) => {
       coreApi.on('get', CORE.groups, { body: groupsResult([]) });
 
-      const response = await request(app).get('/bff/admin/groups').set('Authorization', header);
+      const response = await request(app).get('/admin/groups').set('Authorization', header);
 
       expect(response.status).toBe(200);
       expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
@@ -593,7 +720,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['the legacy session cookie', (call: request.Test) => call.set('Cookie', `session=${SESSION}`)],
       ['an Authorization header with another scheme', (call: request.Test) => call.set('Authorization', `Token ${SESSION}`)],
     ])('ignores %s: 401 without calling Core API', async (_source, authenticate) => {
-      const response = await authenticate(request(app).get('/bff/admin/groups'));
+      const response = await authenticate(request(app).get('/admin/groups'));
 
       expect(response.status).toBe(401);
       expect(coreApi.requests).toHaveLength(0);
@@ -602,16 +729,16 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test('drops the fields Core API adds beyond the contract on a read route', async () => {
       coreApi.on('get', CORE.groups, { body: groupsResult([{ ...group(1), internal_note: 'not for the fronts' } as ReturnType<typeof group>]) });
 
-      const response = await request(app).get('/bff/admin/groups').set('Authorization', `Bearer ${SESSION}`);
+      const response = await request(app).get('/admin/groups').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(200);
-      expectBffContract('get', '/bff/admin/groups', response);
+      expectBffContract('get', '/admin/groups', response);
       expect(Object.keys(response.body.groups[0]).sort()).toEqual(['description', 'id', 'name', 'owner_id']);
     });
 
     test.each([
-      ['/bff/admin/groups', 'getGetGroupsUrl', CORE.groups, () => groupsResult([group(1)])],
-      ['/bff/admin/sessions/history', 'getHistoryUrl', CORE.sessionsHistory, () => sessionsResult([])],
+      ['/admin/groups', 'getGetGroupsUrl', CORE.groups, () => groupsResult([group(1)])],
+      ['/admin/sessions/history', 'getHistoryUrl', CORE.sessionsHistory, () => sessionsResult([])],
     ] as const)('GET %s forwards the page the front asks for to Core API', async (route, urlOf, template, body) => {
       coreApi.on('get', template, { body: body() });
 
@@ -630,11 +757,11 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['an offset above the Core maximum', 'offset=1000001'],
       ['a decimal limit', 'limit=1.5'],
       ['an unknown parameter', 'page=2'],
-    ])('GET /bff/admin/groups refuses %s with 400 before calling Core API for the groups', async (_label, query) => {
-      const response = await request(app).get(`/bff/admin/groups?${query}`).set('Authorization', `Bearer ${SESSION}`);
+    ])('GET /admin/groups refuses %s with 400 before calling Core API for the groups', async (_label, query) => {
+      const response = await request(app).get(`/admin/groups?${query}`).set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(400);
-      expectBffContract('get', '/bff/admin/groups', response);
+      expectBffContract('get', '/admin/groups', response);
       expect(upstreamSequence()).not.toContain(called('GET', CORE.groups));
     });
 
@@ -644,20 +771,20 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['a malformed token', 'Bearer not-a-jwt'],
       ['an expired token', `Bearer ${expiredToken(ADMIN_ID)}`],
     ])('answers %s with a generic 401 and never calls Core API', async (_label, authorization) => {
-      const call = request(app).get('/bff/admin/groups');
+      const call = request(app).get('/admin/groups');
       const response = await (authorization ? call.set('Authorization', authorization) : call);
 
       expect(response.status).toBe(401);
-      expectBffContract('get', '/bff/admin/groups', response);
-      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (session\.|or expired session token)$/), details: [] } });
+      expectBffContract('get', '/admin/groups', response);
+      expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.stringMatching(/^Invalid (session\.|or expired session token\.)$/), details: [] } });
       expect(coreApi.requests).toHaveLength(0);
     });
 
     test.each([
-      ['PUT /bff/admin/roles/abc', 'roleId'],
-      ['DELETE /bff/admin/users/7/roles/0', 'roleId'],
-      ['GET /bff/admin/groups/-1', 'groupId'],
-      ['PATCH /bff/admin/users/1.5', 'userId'],
+      ['PUT /admin/roles/abc', 'roleId'],
+      ['DELETE /admin/users/7/roles/0', 'roleId'],
+      ['GET /admin/groups/-1', 'groupId'],
+      ['PATCH /admin/users/1.5', 'userId'],
     ])('%s is rejected with 400 before calling Core API', async (route, name) => {
       const [method, pathname] = route.split(' ');
 
@@ -671,14 +798,14 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
-  describe('DELETE /bff/admin/users/:userId', () => {
+  describe('DELETE /admin/users/:userId', () => {
     test('checks the admin role locally, then deletes the user in Core API', async () => {
       coreApi.on('delete', CORE.adminUser, { status: 204 });
 
-      const response = await request(app).delete('/bff/admin/users/7').set('Authorization', `Bearer ${SESSION}`);
+      const response = await request(app).delete('/admin/users/7').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(204);
-      expectBffContract('delete', '/bff/admin/users/7', response);
+      expectBffContract('delete', '/admin/users/7', response);
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl()), called('DELETE', coreApiUrls.getAdminDeleteUserUrl(7))]);
       expect(coreApi.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
     });
@@ -686,26 +813,26 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test('refuses a non-admin user after reading their role, without deleting anything', async () => {
       coreApi.on('get', CORE.me, { body: meResponse({ role: 'User' }) });
 
-      const response = await request(app).delete('/bff/admin/users/7').set('Authorization', `Bearer ${SESSION}`);
+      const response = await request(app).delete('/admin/users/7').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(403);
-      expectBffContract('delete', '/bff/admin/users/7', response);
+      expectBffContract('delete', '/admin/users/7', response);
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
 
     test('refuses a token signed with another secret without calling Core API', async () => {
-      const response = await request(app).delete('/bff/admin/users/7')
+      const response = await request(app).delete('/admin/users/7')
         .set('Authorization', `Bearer ${sessionToken(ADMIN_ID, 'other-secret')}`);
 
       expect(response.status).toBe(401);
-      expectBffContract('delete', '/bff/admin/users/7', response);
+      expectBffContract('delete', '/admin/users/7', response);
       expect(coreApi.requests).toHaveLength(0);
     });
   });
 
   test.each([
-    ['GET /bff/admin/users?page=2&page_size=5', { page: 2, page_size: 5 }],
-    ['GET /bff/admin/groups/5/users', { group_id: 5, page_size: 500 }],
+    ['GET /admin/users?page=2&page_size=5', { page: 2, page_size: 5 }],
+    ['GET /admin/groups/5/users', { group_id: 5, page_size: 500 }],
   ])('%s is served by the Core API administration listing', async (route, query) => {
     coreApi.on('get', CORE.adminUsers, { body: adminUsersPage([], { page: 2, page_size: 5, total: 5, total_pages: 1 }) });
     const [, url] = route.split(' ');
@@ -726,23 +853,25 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['500', coreError(500, 'An error occurred while accessing the database.'), 502, { error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } }],
       ['dropped connection', { dropConnection: true }, 502, { error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } }],
     ] as Array<[string, MockReply, number, object]>)('maps a Core API %s on an admin proxy route without leaking upstream details', async (_label, reply, status, body) => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      captureLogs();
       coreApi.on('get', CORE.group, reply);
 
-      const response = await request(app).get('/bff/admin/groups/5').set('Authorization', `Bearer ${SESSION}`);
+      const response = await request(app).get('/admin/groups/5').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(status);
-      expectBffContract('get', '/bff/admin/groups/5', response);
+      expectBffContract('get', '/admin/groups/5', response);
       expect(response.body).toEqual(body);
     });
 
     test.each([
       ['POST /auth/login', CORE.login, { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }],
       ['POST /auth/force_change_password', CORE.forceChangePassword, { token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' }],
+      ['POST /auth/forgot_password', CORE.forgotPassword, { email: 'alice@mairie.test' }],
+      ['POST /auth/reset_password', CORE.resetPassword, { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' }],
       ['GET /user/7/about', CORE.user, undefined],
       ['GET /me', CORE.me, undefined],
     ])('%s maps a Core API 500 to a documented 502', async (route, template, body) => {
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      captureLogs();
       const [method, pathname] = route.split(' ');
       coreApi.on(body ? 'post' : 'get', template, coreError(500, 'An error occurred while accessing the database.'));
       if (pathname === '/me') coreApi.on('get', CORE.groups, { body: groupsResult([]) });
@@ -757,14 +886,19 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('hides the details of a Core API failure on the administration listing', async () => {
-      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const logs = captureLogs();
       coreApi.on('get', CORE.adminUsers, coreError(500, 'An error occurred while accessing the database.'));
 
-      const response = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${SESSION}`);
+      const response = await request(app).get('/admin/users').set('Authorization', `Bearer ${SESSION}`);
 
       expect(response.status).toBe(502);
       expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
-      expect(consoleError).toHaveBeenCalled();
+      expect(logs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ level: 'ERROR', target: 'bff-user', message: 'request failed', status: 502, request_id: response.headers['x-request-id'] }),
+          expect.objectContaining({ message: 'request completed', method: 'GET', path: '/admin/users', status: 502 }),
+        ]),
+      );
     });
   });
 
@@ -798,7 +932,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       ['nothing listens on CORE_API_URL', async () => { process.env.CORE_API_URL = await unreachableUrl(); }],
       ['CORE_API_URL is not set', async () => { delete process.env.CORE_API_URL; }],
     ])('reports Core API unreachable without leaking network details when %s', async (_label, arrange) => {
-      const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const logs = captureLogs();
       await arrange();
 
       const response = await request(app).get('/check_apis');
@@ -807,7 +941,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expectBffContract('get', '/check_apis', response);
       expect(response.body).toEqual({ status: 'Error', core_api: 'Unreachable' });
       // The cause is only logged server side.
-      expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('[check_apis] core_api unreachable'));
+      expect(logs).toEqual(expect.arrayContaining([expect.objectContaining({ level: 'WARN', message: 'upstream unreachable', upstream: 'core_api' })]));
     });
   });
 
@@ -815,10 +949,12 @@ describe('BFF User with a contract-driven Core API mock', () => {
     test.each([
       ['POST /auth/login', { email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' }, undefined],
       ['POST /auth/force_change_password', { token: FIRST_CONNECTION_TOKEN, new_password: 'NouveauMotDePasse123' }, undefined],
+      ['POST /auth/forgot_password', { email: 'alice@mairie.test' }, undefined],
+      ['POST /auth/reset_password', { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' }, undefined],
       ['POST /auth/refresh', { refresh_token: 'opaque-refresh-token' }, undefined],
       ['GET /me', undefined, `Bearer ${SESSION}`],
       ['GET /user/7/about', undefined, `Bearer ${SESSION}`],
-      ['GET /bff/admin/groups', undefined, `Bearer ${SESSION}`],
+      ['GET /admin/groups', undefined, `Bearer ${SESSION}`],
     ])('%s answers a declared 503 without any call when CORE_API_URL is not set', async (route, body, authorization) => {
       delete process.env.CORE_API_URL;
       const [method, pathname] = route.split(' ');
