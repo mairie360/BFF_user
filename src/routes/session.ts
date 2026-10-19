@@ -1,6 +1,6 @@
 import { asCaller, callUpstream, noStore, requireSession } from '@mairie360/bffs-lib';
 import { z } from 'zod';
-import { CoreApiNotConfigured, ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiNotConfigured, CoreApiRateLimited, ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import { CORE_LARGEST_PAGE, coreGroupsClient, coreUsersClient } from '../clients/coreClient';
 import { whitelist } from './admin_helpers';
@@ -26,6 +26,7 @@ for (const path of ['/me', '/session/me']) {
     registry.registerPath({ method: 'get', path, responses: {
         200: { description: 'Identity, groups and roles of the session (contract fields only)', content: { 'application/json': { schema: SessionResponseSchema } } },
         401: { description: 'Missing `Authorization: Bearer` header, or invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
+        429: CoreApiRateLimited,
         502: { description: 'Core API unavailable, failed or answered another error', content: { 'application/json': { schema: ErrorResponse } } },
         503: CoreApiNotConfigured,
     } });

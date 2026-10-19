@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import type { Express } from 'express';
 import request from 'supertest';
 import type { GetUserResponseView } from '@mairie360/core-api-openapi/model';
@@ -899,6 +900,30 @@ describe('BFF User with a contract-driven Core API mock', () => {
           expect.objectContaining({ message: 'request completed', method: 'GET', path: '/admin/users', status: 502 }),
         ]),
       );
+    });
+
+    test('mair_562 a persistent Core 429 on the administration listing is answered 429 with Retry-After, not 502', async () => {
+      coreApi.on('get', CORE.adminUsers, { ...coreError(429, 'Too many requests'), headers: { 'Retry-After': '30' } });
+
+      const response = await request(app).get('/admin/users').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(429);
+      expect(response.headers['retry-after']).toBe('30');
+      expectBffContract('get', '/admin/users', response);
+      expect(response.body.error.code).toBe('TOO_MANY_REQUESTS');
+    });
+
+    test('mair_562 every route answering 502 also declares the upstream 429 relayed by bffs-lib', () => {
+      const document = JSON.parse(readFileSync(path.join(__dirname, '..', 'contracts', 'openapi.json'), 'utf8')) as {
+        paths: Record<string, Record<string, { responses?: Record<string, unknown> }>>;
+      };
+      const undeclared = Object.entries(document.paths)
+        .filter(([route]) => route !== '/check_apis')
+        .flatMap(([route, operations]) => Object.entries(operations).map(([method, operation]) => ({ route, method, responses: operation.responses ?? {} })))
+        .filter(({ responses }) => '502' in responses && !('429' in responses))
+        .map(({ method, route }) => `${method.toUpperCase()} ${route}`);
+
+      expect(undeclared).toEqual([]);
     });
   });
 

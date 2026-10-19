@@ -340,7 +340,7 @@ describe('Administration routes', () => {
 
         expect(response.status).toBe(200);
         expect(mockedListUsers).toHaveBeenCalledWith({ group_id: 4, page_size: 500 }, expect.anything());
-        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles')));
+        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles' && field !== 'role')));
     });
 
     it('does not add a member who already belongs to the group', async () => {

@@ -23,6 +23,12 @@ export const bearerAuth = registry.registerComponent('securitySchemes', 'bearerA
 // adds .openapi() to schemas created after the extension.
 export const ErrorResponse = registry.register('ErrorResponse', ErrorResponseSchema.clone());
 
+/** 429 of every route that calls Core API: bffs-lib >= 2.4.0 relays a Core 429 with its Retry-After (MAIR-562). */
+export const CoreApiRateLimited = {
+    description: 'Core API rate limit reached: retry after the Retry-After header (seconds)',
+    content: { 'application/json': { schema: ErrorResponse } },
+};
+
 /** 503 of every route that calls Core API: `CORE_API_URL` is missing or invalid on this instance (MAIR-431). */
 export const CoreApiNotConfigured = {
     description: 'Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid',

@@ -13,7 +13,7 @@ import {
 } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiRateLimited, ErrorResponse, registry } from '../openapi-registry';
 import {
     CORE_LARGEST_PAGE,
     CORE_MAX_LIMIT,
@@ -228,6 +228,7 @@ const coreResponses = {
             },
         },
     },
+    429: CoreApiRateLimited,
     500: {
         description: 'Unexpected server error; the cause is only logged',
         content: {
