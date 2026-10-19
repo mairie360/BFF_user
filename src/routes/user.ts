@@ -3,6 +3,7 @@ import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
     CoreApiNotConfigured,
+    CoreApiRateLimited,
     ErrorResponse,
     registry,
     UserIdParams,
@@ -65,6 +66,7 @@ registry.registerPath({
                 },
             },
         },
+        429: CoreApiRateLimited,
         502: {
             description: 'Core API unavailable or invalid upstream answer',
             content: {
