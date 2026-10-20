@@ -118,7 +118,7 @@ services:
 
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:dev-0ac33bd
+    image: ghcr.io/mairie360/core-api:dev-30d9bb5
     ports:
       - "3000:3000"
     networks:
