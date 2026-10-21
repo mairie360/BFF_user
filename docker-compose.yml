@@ -49,7 +49,7 @@ x-service: &service-template
 
 services:
   postgres:
-    image: ghcr.io/mairie360/database:dev-949384c
+    image: ghcr.io/mairie360/database:3.3.0
     restart: always
     container_name: mairie360-db-bff-user
     environment:
@@ -69,7 +69,7 @@ services:
       retries: 5
 
   liquibase:
-    image: ghcr.io/mairie360/liquibase-migrations:dev-949384c
+    image: ghcr.io/mairie360/liquibase-migrations:3.3.0
     container_name: mairie360-liquibase-bff-user
     depends_on:
       postgres:
@@ -118,7 +118,7 @@ services:
 
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:staging-b900797
+    image: ghcr.io/mairie360/core-api:2.2.0
     ports:
       - "3000:3000"
     networks:
