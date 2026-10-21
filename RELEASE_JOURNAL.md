@@ -1,51 +1,55 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod": "0a21926f6b54567fc8bdf6cb9c3530672f8ead6f", "prod_tag": "v1.0.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-10-21 09:32 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "a78ad89460fa342589ada266d0744af724de0143", "prod": "0a21926f6b54567fc8bdf6cb9c3530672f8ead6f", "prod_tag": "v1.0.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-10-21 09:48 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.0.0 | `0a21926` | — |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `b754a6c` | 2026-10-21 09:32 UTC |
+| dev | — | `a78ad89` | 2026-10-21 09:48 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.0.0)
 
 #### Nouveautés
+- Télémétrie OpenTelemetry : traces et métriques HTTP exportées en OTLP vers `OTEL_EXPORTER_OTLP_ENDPOINT`. Sans cette variable, rien n'est exporté. Nouvelles variables `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` et `OTEL_SDK_DISABLED`. Seuls la méthode, le statut, la route paramétrée et l'hôte amont sortent du BFF. (MAIR-504, [#220](https://github.com/mairie360/BFF_user/pull/220))
 
-- Le contrat OpenAPI (`contracts/openapi.json`, `contracts/bff.d.ts`) documente désormais une réponse `429` sur les routes d'authentification, utilisateur, administration, session et compte : limite de débit du Core API atteinte, avec l'en-tête `Retry-After` (en secondes) et l'enveloppe d'erreur habituelle. Le diff tronqué ne permet pas de vérifier les modifications de `src/routes/*.ts` ; ce changement de contrat ne couvre que la documentation vérifiée. (MAIR-568, [#252](https://github.com/mairie360/BFF_user/pull/252))
+#### Changements de comportement
+- Les routes d'authentification, utilisateur, administration, session et compte documentent désormais une réponse 429 quand Core API atteint sa limite de débit : en-tête `Retry-After` et code d'erreur dans l'enveloppe `ErrorResponse`. (MAIR-568, [#252](https://github.com/mairie360/BFF_user/pull/252))
 
 #### Technique
-
-- Pins de release : `@mairie360/core-api-openapi` passe de 2.1.0 à `0.0.0-dev-30d9bb5`, puis `0.0.0-staging.b900797`, puis `2.2.0` (MAIR-575, MAIR-600, MAIR-612, [#261](https://github.com/mairie360/BFF_user/pull/261), [#264](https://github.com/mairie360/BFF_user/pull/264), [#269](https://github.com/mairie360/BFF_user/pull/269)). Les images `core-api` des stacks de test suivent, et `database` / `liquibase-migrations` passent en 3.3.0. Les fixtures de test sont adaptées au rôle unique de `AdminUserRow` (core-api 2.1.0).
-- Télémétrie OpenTelemetry (MAIR-504, [#220](https://github.com/mairie360/BFF_user/pull/220)) : `src/telemetry.ts` est importé avant l'application, et les traces et métriques ne sont exportées en OTLP que si `OTEL_EXPORTER_OTLP_ENDPOINT` est défini. Aucun effet sur les réponses de l'API.
-- CI/CD : `mairie360/CICD` passe de v4.2.2 à v4.4.3 au fil des PR Renovate et de MAIR-612 ([#254](https://github.com/mairie360/BFF_user/pull/254), [#257](https://github.com/mairie360/BFF_user/pull/257), [#259](https://github.com/mairie360/BFF_user/pull/259), [#262](https://github.com/mairie360/BFF_user/pull/262), [#269](https://github.com/mairie360/BFF_user/pull/269)). MAIR-571 transmet `ANTHROPIC_API_KEY`, `RELEASE_APP_ID` et `RELEASE_APP_PK` au workflow réutilisable ([#256](https://github.com/mairie360/BFF_user/pull/256)). MAIR-494 sépare la promotion : un push sur `main` ne lance plus que `release-dev`, et staging comme prod passent par les workflows manuels `promote-staging.yml` et `promote-prod.yml` ([#266](https://github.com/mairie360/BFF_user/pull/266)). `cicd.yml` ne se déclenche plus que sur push vers `main` ([#269](https://github.com/mairie360/BFF_user/pull/269)).
-- Dépendances : `@typescript-eslint/*` et `typescript-eslint` passent de 8.71.2 à 8.72.0 ([#258](https://github.com/mairie360/BFF_user/pull/258)), `eslint` de 10.12.0 à 10.13.0 ([#253](https://github.com/mairie360/BFF_user/pull/253)), et `follow-redirects` 1.16.1 entre dans le lockfile pour débloquer `npm audit` ([#266](https://github.com/mairie360/BFF_user/pull/266)).
-- Documentation : `docs/fr/technical.md`, `docs/en/technical.md` et `CLAUDE.md` décrivent la promotion, la télémétrie et les variables `OTEL_*` ([#220](https://github.com/mairie360/BFF_user/pull/220), [#266](https://github.com/mairie360/BFF_user/pull/266)).
+- Dépendances : `@mairie360/core-api-openapi` passe à 2.2.0 (MAIR-612, [#269](https://github.com/mairie360/BFF_user/pull/269)). Les images de test (`docker-compose*.yml`) passent aux versions prod : database 3.3.0, core-api 2.2.0. Les fixtures de tests suivent core-api 2.1.0, où `role` est requis sur `AdminUserRow` (MAIR-568, [#252](https://github.com/mairie360/BFF_user/pull/252)).
+- CI/CD : mairie360/CICD passe de v4.2.1 à v4.4.3 au fil des PR Renovate (MAIR-571, [#256](https://github.com/mairie360/BFF_user/pull/256), [#262](https://github.com/mairie360/BFF_user/pull/262), [#257](https://github.com/mairie360/BFF_user/pull/257), [#259](https://github.com/mairie360/BFF_user/pull/259)). `cicd.yml` ne se déclenche sur push que pour `main`. Les secrets du journal de release sont transmis au workflow réutilisable.
+- Promotion : un push sur `main` ne livre que dev. Staging et prod passent par les workflows manuels `promote-staging.yml` et `promote-prod.yml` (MAIR-494, [#266](https://github.com/mairie360/BFF_user/pull/266)).
+- Dépendances de dev : `typescript-eslint` et `@typescript-eslint/*` en 8.72.0, `eslint` en 10.13.0 (MAIR-600 et renovate, [#258](https://github.com/mairie360/BFF_user/pull/258), [#253](https://github.com/mairie360/BFF_user/pull/253)). `follow-redirects` en 1.16.1 dans le lockfile pour corriger `npm audit` (MAIR-494, [#266](https://github.com/mairie360/BFF_user/pull/266)).
+- Documentation : `docs/en/technical.md`, `docs/fr/technical.md` et `CLAUDE.md` décrivent la télémétrie et la promotion (MAIR-504, MAIR-494, [#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
-_Rien._
+#### Technique
+- Documentation : `docs/en/technical.md` et `docs/fr/technical.md` citent désormais mairie360/CICD v4.4.3 au lieu de v4.4.0 (MAIR-612, [#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Différence staging → prod (en staging, pas encore en prod)
 
 #### Nouveautés
+- Télémétrie OpenTelemetry : traces et métriques HTTP exportées en OTLP vers `OTEL_EXPORTER_OTLP_ENDPOINT`. Sans cette variable, rien n'est exporté. Nouvelles variables `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` et `OTEL_SDK_DISABLED`. Seuls la méthode, le statut, la route paramétrée et l'hôte amont sortent du BFF. (MAIR-504, [#220](https://github.com/mairie360/BFF_user/pull/220))
 
-- Le contrat OpenAPI (`contracts/openapi.json`, `contracts/bff.d.ts`) documente désormais une réponse `429` sur les routes d'authentification, utilisateur, administration, session et compte : limite de débit du Core API atteinte, avec l'en-tête `Retry-After` (en secondes) et l'enveloppe d'erreur habituelle. Le diff tronqué ne permet pas de vérifier les modifications de `src/routes/*.ts` ; ce changement de contrat ne couvre que la documentation vérifiée. (MAIR-568, [#252](https://github.com/mairie360/BFF_user/pull/252))
+#### Changements de comportement
+- Les routes d'authentification, utilisateur, administration, session et compte documentent désormais une réponse 429 quand Core API atteint sa limite de débit : en-tête `Retry-After` et code d'erreur dans l'enveloppe `ErrorResponse`. (MAIR-568, [#252](https://github.com/mairie360/BFF_user/pull/252))
 
 #### Technique
-
-- Pins de release : `@mairie360/core-api-openapi` passe de 2.1.0 à `0.0.0-dev-30d9bb5`, puis `0.0.0-staging.b900797`, puis `2.2.0` (MAIR-575, MAIR-600, MAIR-612, [#261](https://github.com/mairie360/BFF_user/pull/261), [#264](https://github.com/mairie360/BFF_user/pull/264), [#269](https://github.com/mairie360/BFF_user/pull/269)). Les images `core-api` des stacks de test suivent, et `database` / `liquibase-migrations` passent en 3.3.0. Les fixtures de test sont adaptées au rôle unique de `AdminUserRow` (core-api 2.1.0).
-- Télémétrie OpenTelemetry (MAIR-504, [#220](https://github.com/mairie360/BFF_user/pull/220)) : `src/telemetry.ts` est importé avant l'application, et les traces et métriques ne sont exportées en OTLP que si `OTEL_EXPORTER_OTLP_ENDPOINT` est défini. Aucun effet sur les réponses de l'API.
-- CI/CD : `mairie360/CICD` passe de v4.2.2 à v4.4.3 au fil des PR Renovate et de MAIR-612 ([#254](https://github.com/mairie360/BFF_user/pull/254), [#257](https://github.com/mairie360/BFF_user/pull/257), [#259](https://github.com/mairie360/BFF_user/pull/259), [#262](https://github.com/mairie360/BFF_user/pull/262), [#269](https://github.com/mairie360/BFF_user/pull/269)). MAIR-571 transmet `ANTHROPIC_API_KEY`, `RELEASE_APP_ID` et `RELEASE_APP_PK` au workflow réutilisable ([#256](https://github.com/mairie360/BFF_user/pull/256)). MAIR-494 sépare la promotion : un push sur `main` ne lance plus que `release-dev`, et staging comme prod passent par les workflows manuels `promote-staging.yml` et `promote-prod.yml` ([#266](https://github.com/mairie360/BFF_user/pull/266)). `cicd.yml` ne se déclenche plus que sur push vers `main` ([#269](https://github.com/mairie360/BFF_user/pull/269)).
-- Dépendances : `@typescript-eslint/*` et `typescript-eslint` passent de 8.71.2 à 8.72.0 ([#258](https://github.com/mairie360/BFF_user/pull/258)), `eslint` de 10.12.0 à 10.13.0 ([#253](https://github.com/mairie360/BFF_user/pull/253)), et `follow-redirects` 1.16.1 entre dans le lockfile pour débloquer `npm audit` ([#266](https://github.com/mairie360/BFF_user/pull/266)).
-- Documentation : `docs/fr/technical.md`, `docs/en/technical.md` et `CLAUDE.md` décrivent la promotion, la télémétrie et les variables `OTEL_*` ([#220](https://github.com/mairie360/BFF_user/pull/220), [#266](https://github.com/mairie360/BFF_user/pull/266)).
+- Dépendances : `@mairie360/core-api-openapi` passe à 2.2.0 et les images de test (`docker-compose*.yml`) passent aux versions prod : database 3.3.0, core-api 2.2.0 (MAIR-612, [#269](https://github.com/mairie360/BFF_user/pull/269)). Les fixtures de tests suivent core-api 2.1.0, où `role` est requis sur `AdminUserRow` (MAIR-568, [#252](https://github.com/mairie360/BFF_user/pull/252)).
+- CI/CD : mairie360/CICD passe de v4.2.1 à v4.4.3 au fil des PR Renovate (MAIR-571, [#256](https://github.com/mairie360/BFF_user/pull/256), [#262](https://github.com/mairie360/BFF_user/pull/262), [#257](https://github.com/mairie360/BFF_user/pull/257), [#259](https://github.com/mairie360/BFF_user/pull/259)). `cicd.yml` ne se déclenche sur push que pour `main`. Les secrets du journal de release sont transmis au workflow réutilisable (MAIR-571, [#256](https://github.com/mairie360/BFF_user/pull/256)).
+- Promotion : un push sur `main` ne livre que dev. Staging et prod passent par les workflows manuels `promote-staging.yml` et `promote-prod.yml` (MAIR-494, [#266](https://github.com/mairie360/BFF_user/pull/266)).
+- Dépendances de dev : `typescript-eslint` et `@typescript-eslint/*` en 8.72.0, `eslint` en 10.13.0 (MAIR-600 et renovate, [#258](https://github.com/mairie360/BFF_user/pull/258), [#253](https://github.com/mairie360/BFF_user/pull/253)). `follow-redirects` en 1.16.1 dans le lockfile pour corriger `npm audit` (MAIR-494, [#266](https://github.com/mairie360/BFF_user/pull/266)).
+- Documentation : `docs/en/technical.md`, `docs/fr/technical.md` et `CLAUDE.md` décrivent la télémétrie et la promotion (MAIR-504, MAIR-494, [#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Historique des passages
 
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-10-21 09:48 UTC | dev | — | `a78ad89` | [run](https://github.com/mairie360/BFF_user/actions/runs/39579059907) |
 | 2026-10-21 09:41 UTC | staging | — | `b754a6c` | [run](https://github.com/mairie360/BFF_user/actions/runs/39577921804) |
 | 2026-10-21 09:32 UTC | dev | — | `b754a6c` | [run](https://github.com/mairie360/BFF_user/actions/runs/39577314349) |
 | 2026-10-21 01:39 UTC | dev | — | `b134edd` | [run](https://github.com/mairie360/BFF_user/actions/runs/39528066253) |
