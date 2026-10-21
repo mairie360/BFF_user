@@ -140,11 +140,11 @@ The type generator is pinned to `openapi-typescript@7.10.1` in `scripts/contract
 
 The `contracts.yml` job uses Node.js 24, `actions/checkout@v7` and `actions/setup-node@v7`. It runs on pushes, pull requests and manual dispatch; it installs with `npm ci`, checks contracts and runs the associated tests.
 
-`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v3.2.0`, with `cicd_version: v3.2.0` and `node_version: "24"`. Reusable steps and GitHub environments determine actual checks, publications and deployments.
+`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v4.4.0`, with `cicd_version: v4.4.0` and `node_version: "24"`. Reusable steps and GitHub environments determine actual checks, publications and deployments. A push to `main` stops after `release-dev`; staging and prod go through the manual `promote-staging.yml` / `promote-prod.yml` workflows (MAIR-494).
 
 The `Dockerfile` (build and runtime) and `development.Dockerfile` use `node:24-alpine` pinned by digest, the same Node.js as the CI jobs; the production image command is `["node", "dist/index.js"]` (the `@mairie360/*-openapi` packages are bundled by esbuild, nothing is compiled at runtime) and the development image runs `npm run start` (`tsx watch`).
 
-`security_test.sh` and `performance_test.sh` test the image named by `IMAGE_REF`: in CI, the `dev-<sha>` image `release-dev` published, run by `promote-staging.yml` before that same artifact is promoted to staging and prod (MAIR-494). When `IMAGE_REF` is empty (local use), they first build `bff-user:local` from `development.Dockerfile`, which needs `NODE_AUTH_TOKEN` and `./.npmrc`.
+`security_test.sh` and `performance_test.sh` test the image named by `IMAGE_REF`: in CI, `release-dev` publishes the `dev-<sha>` image, and `promote-staging.yml` runs both tests against it before that same artifact is promoted to staging and prod (MAIR-494). When `IMAGE_REF` is empty (local use), they first build `bff-user:local` from `development.Dockerfile`, which needs `NODE_AUTH_TOKEN` and `./.npmrc`.
 
 `security_test.sh` runs the OWASP ZAP stack of `docker-compose-security.yml`: ZAP replays every operation of `/openapi.json` with a static admin JWT (`sub=1`, HS256, `JWT_SECRET=b"secret"`) and fills bodies and path parameters from the contract examples. `init-test.sql` seeds the resources those examples name (users 1, 2, 10, 11, 42, roles and groups 10 and 11, two sessions); keep examples and seed in sync when adding a route.
 
