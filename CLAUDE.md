@@ -30,7 +30,7 @@ npm run contracts:check     # fail if either is stale (CI gate)
 ```
 
 CI (`.github/workflows/contracts.yml`) runs `npm run contracts:check` then
-`npm test -- --runInBand` on Node 24 (`cicd.yml` uses `node_version: "24"` too). `cicd.yml` delegates to the reusable
+`npm test -- --runInBand` on Node 24.22.1 (`cicd.yml` uses `node_version: "24.22.1"` too). `cicd.yml` delegates to the reusable
 `mairie360/CICD` workflow.
 
 ### Private dependencies
@@ -215,7 +215,7 @@ fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
 `docker compose up` uses `development.Dockerfile` (`npm run start`, i.e. `tsx watch`; `develop.watch`
 sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, a fake Resend
 (WireMock, `tests/fake-resend/`, journal on `localhost:8025/__admin/requests`: Core ≥ MAIR-522 sends the password
-e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:24-alpine` (pinned by digest, like `development.Dockerfile`)
+e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:24.22.1-alpine` (pinned by digest, like `development.Dockerfile`)
 multi-stage build running `node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
 
 ## Tests with a contract-driven Core API mock
