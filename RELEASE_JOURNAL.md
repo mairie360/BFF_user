@@ -1,27 +1,35 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "7a4bbf9bc8c938de7e23d84482d5f504674186bb", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-10-23 02:58 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "64482b760cb613d55ef1fd448fe6b653e19e9881", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-10-23 12:22 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.1.0 | `b754a6c` | 2026-10-21 10:09 UTC |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `7a4bbf9` | 2026-10-23 02:58 UTC |
+| dev | — | `64482b7` | 2026-10-23 12:22 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.1.0)
 
+#### Changements de comportement
+- Le conteneur de développement (`development.Dockerfile`) tourne désormais sous l'utilisateur `node` (`chown -R node:node /app` puis `USER node`) au lieu de root. ([#275](https://github.com/mairie360/BFF_user/pull/275))
+
 #### Technique
-- Tests d'intégration de la BFF (MAIR-262) : ajout de `docker-compose-integration.yml` et `integration_test.sh`, qui rejouent `tests/postman/collection.json` contre l'API Core publiée. Aucun changement de comportement de la BFF dans ce lot. (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273))
-- Mise à jour de `dotenv` vers 18.0.9 (renovate). Le changement amont ne touche que la CLI (`DOTENV_PATH` vide), sans effet visible sur l'API. ([#274](https://github.com/mairie360/BFF_user/pull/274))
-- `cicd.yml`, `promote-staging.yml` et `promote-prod.yml` pinnés sur mairie360/CICD v4.5.0 (au lieu de v4.4.3). Documentation alignée sur v4.4.3 (MAIR-612, [#271](https://github.com/mairie360/BFF_user/pull/271)).
+- Les images `Dockerfile` (build et runtime) et `development.Dockerfile` passent de `node:24-alpine` à `node:24.22.1-alpine`, épinglées par digest, et les workflows CI utilisent Node.js 24.22.1 ([#275](https://github.com/mairie360/BFF_user/pull/275)).
+- Mise à jour de la dépendance `dotenv` de 18.0.8 à 18.0.9 : la PR ne contient pas de diff, seule la description renvoie au changelog (accepte une valeur vide pour `DOTENV_PATH` avec la CLI) ([#274](https://github.com/mairie360/BFF_user/pull/274)).
+- Ajout de la stack de tests d'intégration newman (MAIR-262) : `docker-compose-integration.yml`, `integration_test.sh`, collection Postman `tests/postman/`, test jest de couverture. Elle devient la porte `integration_tests` de la promotion staging, et les workflows passent à mairie360/CICD v4.5.0 ([#273](https://github.com/mairie360/BFF_user/pull/273)).
+- Documentation alignée sur mairie360/CICD v4.4.3 (MAIR-612) dans `docs/en/technical.md` et `docs/fr/technical.md` ([#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+#### Changements de comportement
+- Le conteneur de développement (`development.Dockerfile`) tourne désormais sous l'utilisateur `node` (`chown -R node:node /app` puis `USER node`) au lieu de root. ([#275](https://github.com/mairie360/BFF_user/pull/275))
+
 #### Technique
-- Le job `integration_tests` de la promotion vers staging (`promote-staging.yml`, `integration/bffs` de mairie360/CICD v4.5.0) rejoue désormais la collection newman contre l'image `dev-<sha>` ; un échec bloque la promotion. Ce lot n'ajoute pas de changement fonctionnel dans l'API ou le BFF. (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273))
-- Mise à jour de `dotenv` vers 18.0.9, qui ne touche que la CLI. ([#274](https://github.com/mairie360/BFF_user/pull/274))
-- Pin de mairie360/CICD passé à v4.5.0 dans les trois workflows, documentation alignée sur v4.4.3. ([#271](https://github.com/mairie360/BFF_user/pull/271))
+- Les images `Dockerfile` (build et runtime) et `development.Dockerfile` passent de `node:24-alpine` à `node:24.22.1-alpine`, épinglées par digest, et les workflows CI utilisent Node.js 24.22.1 ([#275](https://github.com/mairie360/BFF_user/pull/275)).
+- Mise à jour de la dépendance `dotenv` de 18.0.8 à 18.0.9 : la PR ne contient pas de diff, seule la description renvoie au changelog (accepte une valeur vide pour `DOTENV_PATH` avec la CLI) ([#274](https://github.com/mairie360/BFF_user/pull/274)).
+- Ajout de la stack de tests d'intégration newman (MAIR-262) : `docker-compose-integration.yml`, `integration_test.sh`, collection Postman `tests/postman/`, test jest de couverture. Elle devient la porte `integration_tests` de la promotion staging, et les workflows passent à mairie360/CICD v4.5.0 ([#273](https://github.com/mairie360/BFF_user/pull/273)).
+- Documentation alignée sur mairie360/CICD v4.4.3 (MAIR-612) dans `docs/en/technical.md` et `docs/fr/technical.md` ([#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Différence staging → prod (en staging, pas encore en prod)
 
@@ -32,6 +40,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-10-23 12:22 UTC | dev | — | `64482b7` | [run](https://github.com/mairie360/BFF_user/actions/runs/39952425565) |
 | 2026-10-23 02:58 UTC | dev | — | `7a4bbf9` | [run](https://github.com/mairie360/BFF_user/actions/runs/39892169488) |
 | 2026-10-22 09:08 UTC | dev | — | `48b4a65` | [run](https://github.com/mairie360/BFF_user/actions/runs/39752659489) |
 | 2026-10-21 10:09 UTC | prod | v1.1.0 | `b754a6c` | [run](https://github.com/mairie360/BFF_user/actions/runs/39579231890) |
