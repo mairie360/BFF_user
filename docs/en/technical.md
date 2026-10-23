@@ -16,7 +16,7 @@ Monitoring, backups, application logs and system policy described in administrat
 
 ## Installation and local startup
 
-Use Node.js 24 (as the CI jobs and the images) to reproduce the contract job and npm with the committed lockfile. Other job and Docker versions are detailed below.
+Use Node.js 24.22.1 (as the CI jobs and the images) to reproduce the contract job and npm with the committed lockfile. Other job and Docker versions are detailed below.
 
 Private `@mairie360/*` dependencies require GitHub Packages access. Set `NODE_AUTH_TOKEN` in the environment to a token allowed to read these packages, as configured in `.npmrc`. Do not commit its value.
 
@@ -138,11 +138,11 @@ The type generator is pinned to `openapi-typescript@7.10.1` in `scripts/contract
 
 ## CI/CD and Docker execution
 
-The `contracts.yml` job uses Node.js 24, `actions/checkout@v7` and `actions/setup-node@v7`. It runs on pushes, pull requests and manual dispatch; it installs with `npm ci`, checks contracts and runs the associated tests.
+The `contracts.yml` job uses Node.js 24.22.1, `actions/checkout@v7` and `actions/setup-node@v7`. It runs on pushes, pull requests and manual dispatch; it installs with `npm ci`, checks contracts and runs the associated tests.
 
-`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v4.5.0`, with `cicd_version: v4.5.0` and `node_version: "24"`. Reusable steps and GitHub environments determine actual checks, publications and deployments. A push to `main` stops after `release-dev`; staging and prod go through the manual `promote-staging.yml` / `promote-prod.yml` workflows (MAIR-494).
+`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v4.5.0`, with `cicd_version: v4.5.0` and `node_version: "24.22.1"`. Reusable steps and GitHub environments determine actual checks, publications and deployments. A push to `main` stops after `release-dev`; staging and prod go through the manual `promote-staging.yml` / `promote-prod.yml` workflows (MAIR-494).
 
-The `Dockerfile` (build and runtime) and `development.Dockerfile` use `node:24-alpine` pinned by digest, the same Node.js as the CI jobs; the production image command is `["node", "dist/index.js"]` (the `@mairie360/*-openapi` packages are bundled by esbuild, nothing is compiled at runtime) and the development image runs `npm run start` (`tsx watch`).
+The `Dockerfile` (build and runtime) and `development.Dockerfile` use `node:24.22.1-alpine` pinned by digest, the same Node.js as the CI jobs; the production image command is `["node", "dist/index.js"]` (the `@mairie360/*-openapi` packages are bundled by esbuild, nothing is compiled at runtime) and the development image runs `npm run start` (`tsx watch`).
 
 `integration_test.sh` (MAIR-262) runs the stack of `docker-compose-integration.yml`: the published Core API image, the database with its migrations and `init-test.sql`, Redis, the fake Resend, the BFF image under test and a `newman` service that replays `tests/postman/collection.json` (environment `tests/postman/environment.json`) against the BFF with `--bail`. Its exit code is the exit code of newman. The collection holds working checks (the BFF starts, `/health`, `/check_apis`, `/openapi.json`, the session resolved against Core API for the seeded Admin and agent) and the business journeys of the account lifecycle (creation by an administrator, first sign-in with a password change, sign-in with cookies only, refresh with rotation, roles, groups, sessions, password reset by the administrator and by e-mail through the fake Resend journal, logout, deletion). The seeded accounts are impersonated with JWTs forged from the `JWT_SECRET` of the run (random, `stack_secrets.sh`); the committed environment holds no secret. In CI this stack is the `integration_tests` gate of the staging promotion: it blocks the promotion on failure and publishes the junit report (`newman-reports/newman.xml`) as job summary and artifact. The jest test `tests/integration-collection.test.ts` checks that every operation of `contracts/openapi.json` has a request in the collection and that every request asserts something.
 
