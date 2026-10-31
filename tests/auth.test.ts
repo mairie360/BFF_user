@@ -5,13 +5,16 @@ import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
-import { forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, refreshSession, revokeSession } from '../src/routes/core_helpers';
+import {
+    forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, refreshSession, requestPasswordReset, resetUserPassword, revokeSession,
+} from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
     createAuthRateLimiters,
     RATE_LIMIT_MESSAGE,
 } from '../src/middleware/rateLimit';
 import { axiosResponse, loginResponse } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 jest.mock('../src/routes/core_helpers', () => ({
     forceChangeUserPassword: jest.fn(),
@@ -24,6 +27,8 @@ jest.mock('../src/routes/core_helpers', () => ({
     loginUser: jest.fn(),
     logoutSession: jest.fn(),
     refreshSession: jest.fn(),
+    requestPasswordReset: jest.fn(),
+    resetUserPassword: jest.fn(),
     revokeSession: jest.fn(),
 }));
 
@@ -33,6 +38,8 @@ const mockedRevokeSession = jest.mocked(revokeSession);
 const mockedLogoutSession = jest.mocked(logoutSession);
 const mockedRefreshSession = jest.mocked(refreshSession);
 const mockedKeycloakLogin = jest.mocked(keycloakLoginUser);
+const mockedRequestPasswordReset = jest.mocked(requestPasswordReset);
+const mockedResetUserPassword = jest.mocked(resetUserPassword);
 
 /** Jeton de première connexion : ForceChangePasswordView.token doit être un UUID. */
 const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
@@ -186,6 +193,125 @@ describe('POST /auth/force_change_password', () => {
     });
 });
 
+describe('POST /auth/forgot_password', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockedRequestPasswordReset.mockResolvedValue();
+    });
+
+    it('forwards the e-mail to Core API and answers an empty 200', async () => {
+        const response = await request(app).post('/auth/forgot_password').send({ email: 'user@example.com', role: 'Admin' });
+
+        expect(response.status).toBe(200);
+        expect(response.text).toBe('');
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(response.headers['cache-control']).toBe('no-store');
+        // Undeclared fields are stripped.
+        expect(mockedRequestPasswordReset).toHaveBeenCalledWith({ email: 'user@example.com' });
+    });
+
+    it.each([
+        ['a missing e-mail', {}],
+        ['an invalid e-mail', { email: 'user' }],
+        ['an e-mail longer than 320 characters', { email: `${'a'.repeat(310)}@example.com` }],
+    ])('rejects %s without calling Core API', async (_label, body) => {
+        const response = await request(app).post('/auth/forgot_password').send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
+        expect(mockedRequestPasswordReset).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [400, 'BAD_REQUEST'],
+        [429, 'TOO_MANY_REQUESTS'],
+    ])('keeps a declared Core %i', async (status, code) => {
+        mockedRequestPasswordReset.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/forgot_password').send({ email: 'user@example.com' });
+
+        expect(response.status).toBe(status);
+        expect(response.body.error.code).toBe(code);
+    });
+
+    it('turns a Core 500 (e-mail not sent) into a 502 without relaying the Core body', async () => {
+        mockedRequestPasswordReset.mockRejectedValue(coreError(500, 'An error occurred while sending the email.'));
+
+        const response = await request(app).post('/auth/forgot_password').send({ email: 'user@example.com' });
+
+        expect(response.status).toBe(502);
+        expect(JSON.stringify(response.body)).not.toContain('email');
+    });
+});
+
+describe('POST /auth/reset_password', () => {
+    const RESET_TOKEN = '11111111-2222-4333-8444-555555555555';
+    const reset = { token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'Firefox' };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('opens the session like login: HttpOnly cookies only', async () => {
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers.authorization).toBeUndefined();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*Path=\/;.*HttpOnly;.*SameSite=Strict/);
+        expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly;.*SameSite=Strict`));
+        expect(mockedResetUserPassword).toHaveBeenCalledWith(reset);
+    });
+
+    it('returns 502 when Core omits the Authorization Bearer header', async () => {
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(loginResponse()));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([
+        ['a token that is not a UUID', { ...reset, token: 'not-a-token' }],
+        ['a 7-character password', { ...reset, new_password: 'Short-7' }],
+        ['a password longer than 255 characters', { ...reset, new_password: 'x'.repeat(256) }],
+        ['a missing device_info', { token: RESET_TOKEN, new_password: 'Updated-456!' }],
+        ['a device_info longer than 512 characters', { ...reset, device_info: 'x'.repeat(513) }],
+    ])('rejects %s without calling Core API', async (_label, body) => {
+        const response = await request(app).post('/auth/reset_password').send(body);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual(invalidPayload('Validation failed'));
+        expect(mockedResetUserPassword).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        [400, 'BAD_REQUEST'],
+        [401, 'UNAUTHORIZED'],
+        [429, 'TOO_MANY_REQUESTS'],
+    ])('keeps a declared Core %i and sets no cookie', async (status, code) => {
+        mockedResetUserPassword.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(status);
+        expect(response.body.error.code).toBe(code);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('turns a Core 404 into a 502', async () => {
+        mockedResetUserPassword.mockRejectedValue(coreError(404));
+
+        const response = await request(app).post('/auth/reset_password').send(reset);
+
+        expect(response.status).toBe(502);
+    });
+});
+
 describe('POST /auth/refresh', () => {
     const REFRESH_TOKEN = 'opaque-refresh-token';
     const ROTATED_REFRESH_TOKEN = 'rotated-refresh-token';
@@ -276,10 +402,11 @@ describe('POST /auth/refresh', () => {
 
 describe('POST /auth/logout', () => {
     const REFRESH_TOKEN = 'opaque-refresh-token';
+    let logs: Record<string, unknown>[];
 
     beforeEach(() => {
         jest.clearAllMocks();
-        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        logs = captureLogs();
         mockedRevokeSession.mockResolvedValue();
         mockedLogoutSession.mockResolvedValue();
         process.env.CORE_API_URL = 'http://core.test';
@@ -347,7 +474,10 @@ describe('POST /auth/logout', () => {
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-        const logged = JSON.stringify(jest.mocked(console.warn).mock.calls);
+        expect(logs).toEqual([
+            expect.objectContaining({ level: 'WARN', target: 'bff-user', message: 'session revocation failed on logout', status: 'network error' }),
+        ]);
+        const logged = JSON.stringify(logs);
         expect(logged).not.toContain(REFRESH_TOKEN);
         expect(logged).not.toContain('header.payload.signature');
     });
@@ -401,7 +531,8 @@ describe('POST /auth/logout', () => {
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-        expect(JSON.stringify(jest.mocked(console.warn).mock.calls)).not.toContain('header.payload.signature');
+        expect(logs).toHaveLength(1);
+        expect(JSON.stringify(logs)).not.toContain('header.payload.signature');
     });
 });
 
@@ -436,11 +567,47 @@ describe('authentication rate limiting', () => {
 
         expect(blocked.status).toBe(429);
         expect(blocked.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: RATE_LIMIT_MESSAGE, details: [] } });
-        expect(blocked.headers['retry-after']).toBeDefined();
+        expect(blocked.headers['retry-after']).toMatch(/^\d+$/);
+        expect(Number(blocked.headers['retry-after'])).toBeGreaterThanOrEqual(1);
         expect(blocked.headers.ratelimit).toBeDefined();
         expect(mockedLoginUser).not.toHaveBeenCalled();
         // Another account from the same client is still allowed.
         expect((await failedLogin(target, 'bob@example.com')).status).toBe(400);
+    });
+
+    // The production budget (MAIR-474): the limiters built from the default environment, behind a trusted proxy.
+    it('enforces the production budget: 10 failed logins per account, 100 failed attempts per client IP', async () => {
+        const production = express();
+        production.use(express.json());
+        production.set('trust proxy', true);
+        production.use('/auth', createAuthRouter(createAuthRateLimiters(authRateLimitOptionsFromEnv({ TRUST_PROXY: 'true' }))));
+        production.use(errorHandler({ onError: () => undefined }));
+        const retryAfter = (response: request.Response) => {
+            // A usable wait: whole seconds, at least 1, at most the 15-minute window.
+            expect(response.headers['retry-after']).toMatch(/^\d+$/);
+            const seconds = Number(response.headers['retry-after']);
+            expect(seconds).toBeGreaterThanOrEqual(1);
+            expect(seconds).toBeLessThanOrEqual(900);
+        };
+
+        for (let attempt = 1; attempt <= 10; attempt += 1) {
+            expect((await failedLogin(production, 'budget@example.com')).status).toBe(400);
+        }
+        const accountBlocked = await failedLogin(production, 'budget@example.com', '198.51.100.20');
+        expect(accountBlocked.status).toBe(429);
+        retryAfter(accountBlocked);
+
+        // 89 more failures from the first client on other accounts: 99 in all for that IP, the 100th passes, the 101st is refused.
+        for (let attempt = 1; attempt <= 89; attempt += 1) {
+            expect((await failedLogin(production, `ip-${attempt}@example.com`)).status).toBe(400);
+        }
+        expect((await failedLogin(production, 'ip-last@example.com')).status).toBe(400);
+        const ipBlocked = await failedLogin(production, 'fresh@example.com');
+        expect(ipBlocked.status).toBe(429);
+        retryAfter(ipBlocked);
+        // Another client is not affected.
+        expect((await failedLogin(production, 'fresh@example.com', '198.51.100.21')).status).toBe(400);
+        expect(mockedLoginUser).not.toHaveBeenCalled();
     });
 
     it('limits failed attempts per client IP across accounts and routes', async () => {
@@ -459,6 +626,28 @@ describe('authentication rate limiting', () => {
         expect(login.status).toBe(429);
         expect(forceChange.status).toBe(429);
         expect(mockedForceChangePassword).not.toHaveBeenCalled();
+    });
+
+    it('limits the failed password resets per client IP', async () => {
+        const target = limitedApp({ ipMax: 2 });
+        const badReset = () => request(target).post('/auth/reset_password').set('X-Forwarded-For', '203.0.113.9')
+            .send({ token: 'guess', new_password: 'Updated-456!', device_info: 'test' });
+        const badForgot = () => request(target).post('/auth/forgot_password').set('X-Forwarded-For', '203.0.113.9').send({ email: 'x' });
+
+        expect((await badReset()).status).toBe(400);
+        expect((await badForgot()).status).toBe(400);
+        expect((await badReset()).status).toBe(429);
+        expect((await badForgot()).status).toBe(429);
+        expect(mockedResetUserPassword).not.toHaveBeenCalled();
+    });
+
+    it('does not count the accepted reset e-mail requests', async () => {
+        mockedRequestPasswordReset.mockResolvedValue();
+        const target = limitedApp({ ipMax: 1 });
+        const forgot = () => request(target).post('/auth/forgot_password').set('X-Forwarded-For', '203.0.113.10').send({ email: 'user@example.com' });
+
+        expect((await forgot()).status).toBe(200);
+        expect((await forgot()).status).toBe(200);
     });
 
     it('does not count successful sign-ins', async () => {
@@ -666,18 +855,18 @@ describe('authentication rate limiting', () => {
             jest.isolateModules(() => {
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 const isolated = require('../src/middleware/rateLimit') as typeof import('../src/middleware/rateLimit');
-                const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+                const logs = captureLogs();
                 const base = { windowMs: 60_000, accountMax: 10, ipMax: 100 };
 
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: true });
                 isolated.createAuthRateLimiters({ ...base, enabled: false, perClientIp: false });
-                expect(warn).not.toHaveBeenCalled();
+                expect(logs).toEqual([]);
 
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
-                expect(warn).toHaveBeenCalledTimes(1);
-                expect(warn.mock.calls[0][0]).toContain('TRUST_PROXY is not set');
-                warn.mockRestore();
+                expect(logs).toEqual([expect.objectContaining({ level: 'WARN', target: 'bff-user' })]);
+                expect(logs[0].message).toContain('TRUST_PROXY is not set');
+                jest.restoreAllMocks();
             });
         });
     });
@@ -856,14 +1045,16 @@ describe('POST /auth/logout', () => {
     });
 
     it('keeps the plain logout when only one of the two Keycloak variables is set', async () => {
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const logs = captureLogs();
         process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
 
         const response = await request(app).post('/auth/logout');
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
-        expect(warn).toHaveBeenCalledWith(expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID'));
-        warn.mockRestore();
+        expect(logs).toEqual(
+            expect.arrayContaining([expect.objectContaining({ level: 'WARN', message: expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID') })]),
+        );
+        jest.restoreAllMocks();
     });
 });

@@ -23,15 +23,39 @@ import { createCoverage } from '/coverage.js';
 //   the iteration.
 // - `reads` (up to 20 VUs): replays only the GET handlers, which read seeded fixtures and never
 //   depend on `state`.
+// - `me_rush`: `GET /me` as seeded agents at a fixed arrival rate (MAIR-474), failing if k6 has to
+//   drop iterations because the BFF (and Core behind it) no longer keeps up.
 // Every operation gets a p(95) threshold, whose budget depends on its family (`budgetOf`).
+//
+// MAIR-474: the stack also runs init-perf.sql (10 000 agents in 2 000 groups, their sessions), the
+// session reads run as a random seeded agent, the admin listings read random pages, every read
+// checks that it got the seeded rows, and the thresholds are strict (every check passes, no failed
+// request, no dropped iteration). K6_PROFILE sizes the load: `ci` (default) is what the 4 vCPU CI
+// runner holds, `stress` is the high load, run by hand to find the breaking point.
 // ---------------------------------------------------------------------------
 
-// Must match the JWT_SECRET of the core-api / bff-user services of the test stack.
-const JWT_SECRET = __ENV.JWT_SECRET || 'b"secret"';
+// The JWT_SECRET of the core-api / bff-user services of the test stack: random per run, generated
+// by stack_secrets.sh (MAIR-474). No default: nothing is signed with a committed secret.
+const JWT_SECRET = __ENV.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET is not set: run ./performance_test.sh, which generates it');
 // User role only, seeded by init-test.sql: session reads.
 const USER_ID = __ENV.PERF_USER_ID || '2';
-// Admin role (seeded by the liquibase migrations): /bff/admin/* and the login flow.
+// Admin role (seeded by the liquibase migrations): /admin/* and the login flow.
 const ADMIN_ID = __ENV.PERF_ADMIN_ID || '1';
+// Rows of init-perf.sql: agents 500001..510000, groups 50000..51999 of 20 members each.
+const AGENTS = { first: 500001, count: 10000 };
+const PERF_GROUPS = { first: 50000, count: 2000, members: 20 };
+const ADMIN_PAGE_SIZE = 20;
+// The Admin is a member of the first 300 perf groups (plus the scan groups): its group listing.
+const ADMIN_GROUPS = 300;
+
+const PROFILES = {
+  ci: { readVus: 30, crudVus: 2, rushRate: 30 },
+  stress: { readVus: 100, crudVus: 4, rushRate: 100 },
+};
+const PROFILE = PROFILES[__ENV.K6_PROFILE || 'ci'];
+if (!PROFILE) throw new Error(`Unknown K6_PROFILE ${__ENV.K6_PROFILE}: ${Object.keys(PROFILES).join(', ')}`);
+
 // Role and group seeded by init-test.sql, used by the role and group membership operations.
 const FIXTURE_ROLE_ID = 10;
 const FIXTURE_GROUP_ID = 10;
@@ -57,6 +81,16 @@ function mintJwt(sub, role) {
 
 function bearer(token) {
   return { Authorization: `Bearer ${token}` };
+}
+
+const randomInt = (max) => Math.floor(Math.random() * max);
+const agentTokens = {};
+
+/** A random seeded agent: its id and `Authorization` header (one token per agent and VU). */
+function randomAgent() {
+  const id = AGENTS.first + randomInt(AGENTS.count);
+  if (!agentTokens[id]) agentTokens[id] = bearer(mintJwt(String(id), 'user'));
+  return { id, headers: agentTokens[id] };
 }
 
 function unique(prefix) {
@@ -87,7 +121,7 @@ const handlers = {
 
   // --- Authentication (public) ---
   // Logs the admin in: the refresh token (HttpOnly refreshToken cookie, never in the body) feeds
-  // /bff/admin/sessions/revoke.
+  // /admin/sessions/revoke.
   'POST /auth/login': ({ request, data }) => {
     const res = request({ body: { email: data.adminEmail, password: ADMIN_PASSWORD, device_info: 'k6' } });
     check(res, { 'login 200': (r) => r.status === 200 });
@@ -95,13 +129,13 @@ const handlers = {
   },
   // Accounts created by an admin start with first_connect = true: their first sign-in answers 412
   // with the one-time token. The account is created here (outside the coverage of
-  // POST /bff/admin/users, which runs later) and deleted by DELETE /bff/admin/users/{userId}.
+  // POST /admin/users, which runs later) and deleted by DELETE /admin/users/{userId}.
   'POST /auth/force_change_password': ({ request, data }) => {
     state.firstConnectEmail = `${unique('perf-first-connect')}@perf.mairie360.fr`;
     const created = http.post(
-      coverage.url('POST /bff/admin/users'),
+      coverage.url('POST /admin/users'),
       JSON.stringify({ email: state.firstConnectEmail, first_name: 'Perf', last_name: 'FirstConnect', password: USER_PASSWORD }),
-      { headers: Object.assign({ 'Content-Type': 'application/json' }, data.admin), tags: { op: 'POST /bff/admin/users' } },
+      { headers: Object.assign({ 'Content-Type': 'application/json' }, data.admin), tags: { op: 'POST /admin/users' } },
     );
     check(created, { 'first-connect user 201': (r) => r.status === 201 });
     const firstLogin = http.post(
@@ -118,7 +152,7 @@ const handlers = {
     check(res, { 'force_change_password 204': (r) => r.status === 204 });
   },
   // Refreshes a session of its own: Core rotates the refresh token, and the one of POST /auth/login
-  // must stay valid for /bff/admin/sessions/revoke.
+  // must stay valid for /admin/sessions/revoke.
   'POST /auth/refresh': ({ request, data }) => {
     const login = http.post(
       coverage.url('POST /auth/login'),
@@ -131,6 +165,21 @@ const handlers = {
   },
   'POST /auth/logout': ({ request }) =>
     check(request(), { 'logout 200': (r) => r.status === 200 }),
+  // An address matching no account: Core answers the same empty 200 as for a known one, without
+  // sending any e-mail (the stack has no mail delivery to read the reset token back from).
+  'POST /auth/forgot_password': ({ request }) =>
+    check(request({ body: { email: `${unique('perf-forgot')}@perf.mairie360.fr` } }), {
+      'forgot_password 200': (r) => r.status === 200,
+    }),
+  // A well-formed token Core never issued: the reset reaches Core, which refuses it with the declared 401.
+  'POST /auth/reset_password': ({ request }) =>
+    check(
+      request({
+        body: { token: '00000000-0000-4000-8000-000000000000', new_password: `${USER_PASSWORD}-reset`, device_info: 'k6' },
+        params: { responseCallback: http.expectedStatuses(401) },
+      }),
+      { 'reset_password 401 (unknown token)': (r) => r.status === 401 },
+    ),
   // The test stack has no Keycloak: the BFF answers its declared 503 without calling Core.
   'POST /auth/keycloak': ({ request }) =>
     check(
@@ -143,63 +192,83 @@ const handlers = {
     ),
 
   // --- User ---
-  'GET /user/{userId}/about': ({ request }) =>
-    check(request({ path: { userId: USER_ID } }), { 'about 200': (r) => r.status === 200 }),
+  'GET /user/{userId}/about': ({ request }) => {
+    const agent = randomAgent();
+    check(request({ path: { userId: agent.id }, headers: agent.headers }), {
+      'about 200': (r) => r.status === 200,
+      'about reads the seeded agent': (r) => r.status === 200 && r.json('email') === `perf.agent.${agent.id}@mairie360.fr`,
+    });
+  },
 
   // --- Admin: users ---
-  'GET /bff/admin/users': ({ request, data }) =>
-    check(request({ query: { page: 1, page_size: 20 }, headers: data.admin }), {
-      'admin users 200': (r) => r.status === 200,
-    }),
-  // Core answers without the id: it is read back from the admin listing.
-  'POST /bff/admin/users': ({ request, data }) => {
+  // Any page of the 10 000 seeded agents, deep ones included (Core >= MAIR-477 reads them through the name
+  // index), or a search by e-mail that matches a handful of them (the trigram index of the search text).
+  'GET /admin/users': ({ request, data }) => {
+    if (Math.random() < 0.5) {
+      const pages = Math.floor(AGENTS.count / ADMIN_PAGE_SIZE);
+      check(request({ query: { page: 1 + randomInt(pages), page_size: ADMIN_PAGE_SIZE }, headers: data.admin }), {
+        'admin users 200': (r) => r.status === 200,
+        'admin users reads the seed': (r) =>
+          r.status === 200 && r.json('total') >= AGENTS.count && r.json('users').length === ADMIN_PAGE_SIZE,
+      });
+      return;
+    }
+    const agent = randomAgent();
+    check(request({ query: { page: 1, page_size: ADMIN_PAGE_SIZE, search: `perf.agent.${agent.id}@` }, headers: data.admin }), {
+      'admin users search 200': (r) => r.status === 200,
+      'admin users search finds the agent': (r) =>
+        r.status === 200 && r.json('total') === 1 && r.json('users.0.email') === `perf.agent.${agent.id}@mairie360.fr`,
+    });
+  },
+  // Core (MAIR-474) answers the id of the created account.
+  'POST /admin/users': ({ request, data }) => {
     const email = `${unique('perf-admin-user')}@perf.mairie360.fr`;
     const res = request({
       body: { email, first_name: 'Perf', last_name: 'Managed', password: USER_PASSWORD },
       headers: data.admin,
     });
-    check(res, { 'create user 201': (r) => r.status === 201 });
-    state.userId = findUserId(email, data);
+    check(res, { 'create user 201 with its id': (r) => r.status === 201 && Number.isInteger(r.json('id')) });
+    state.userId = res.status === 201 ? res.json('id') : undefined;
   },
-  'PATCH /bff/admin/users/{userId}': ({ request, data }) =>
+  'PATCH /admin/users/{userId}': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { first_name: 'Patched' }, headers: data.admin }), {
       'patch user 200': (r) => r.status === 200,
     }),
   // Deletes the first-connect user of POST /auth/force_change_password, the created one is still needed below.
-  'DELETE /bff/admin/users/{userId}': ({ request, data }) => {
+  'DELETE /admin/users/{userId}': ({ request, data }) => {
     const userId = findUserId(need(state.firstConnectEmail, 'first-connect user'), data);
     check(request({ path: { userId: need(userId, 'first-connect user id') }, headers: data.admin }), {
       'delete user 2xx': (r) => r.status === 200 || r.status === 204,
     });
   },
-  'PATCH /bff/admin/users/{userId}/password': ({ request, data }) =>
+  'PATCH /admin/users/{userId}/password': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { new_password: `${USER_PASSWORD}-3` }, headers: data.admin }), {
       'reset password 204': (r) => r.status === 204,
     }),
-  'POST /bff/admin/users/{userId}/roles': ({ request, data }) =>
+  'POST /admin/users/{userId}/roles': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { role_id: FIXTURE_ROLE_ID }, headers: data.admin }), {
       'add role 200': (r) => r.status === 200,
     }),
-  'DELETE /bff/admin/users/{userId}/roles/{roleId}': ({ request, data }) =>
+  'DELETE /admin/users/{userId}/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user'), roleId: FIXTURE_ROLE_ID }, headers: data.admin }), {
       'remove role 204': (r) => r.status === 204,
     }),
 
   // --- Admin: roles ---
-  'GET /bff/admin/roles': ({ request, data }) =>
+  'GET /admin/roles': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'roles 200': (r) => r.status === 200 }),
   // Two roles: one kept for PUT/PATCH, one for DELETE (which runs before PATCH). Core answers
   // without the id: both are read back from the role listing.
-  'POST /bff/admin/roles': ({ request, data }) => {
+  'POST /admin/roles': ({ request, data }) => {
     const names = [unique('perf-role'), unique('perf-role-deleted')];
     for (const name of names) {
       check(request({ body: { name, description: 'k6 role' }, headers: data.admin }), {
         'create role 200': (r) => r.status === 200,
       });
     }
-    const listing = http.get(coverage.url('GET /bff/admin/roles'), {
+    const listing = http.get(coverage.url('GET /admin/roles'), {
       headers: data.admin,
-      tags: { op: 'GET /bff/admin/roles' },
+      tags: { op: 'GET /admin/roles' },
     });
     const roles = (json(listing) || {}).roles || [];
     [state.roleId, state.disposableRoleId] = names.map((name) => {
@@ -207,72 +276,86 @@ const handlers = {
       return role ? role.id : undefined;
     });
   },
-  'PUT /bff/admin/roles/{roleId}': ({ request, data }) =>
+  'PUT /admin/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { roleId: need(state.roleId, 'created role') }, body: { name: unique('perf-role-put'), description: 'k6 role, replaced' }, headers: data.admin }), {
       'put role 200': (r) => r.status === 200,
     }),
-  'PATCH /bff/admin/roles/{roleId}': ({ request, data }) =>
+  'PATCH /admin/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { roleId: need(state.roleId, 'created role') }, body: { description: 'k6 role, patched' }, headers: data.admin }), {
       'patch role 200': (r) => r.status === 200,
     }),
-  'DELETE /bff/admin/roles/{roleId}': ({ request, data }) =>
+  'DELETE /admin/roles/{roleId}': ({ request, data }) =>
     check(request({ path: { roleId: need(state.disposableRoleId, 'disposable role') }, headers: data.admin }), {
       'delete role 204': (r) => r.status === 204,
     }),
 
   // --- Admin: groups ---
-  'GET /bff/admin/groups': ({ request, data }) =>
-    check(request({ headers: data.admin }), { 'groups 200': (r) => r.status === 200 }),
+  'GET /admin/groups': ({ request, data }) =>
+    check(request({ query: { limit: 100, offset: randomInt(ADMIN_GROUPS - 100) }, headers: data.admin }), {
+      'groups 200': (r) => r.status === 200,
+      'groups reads the seed': (r) => r.status === 200 && r.json('groups').length === 100,
+    }),
   // Two groups: one kept for GET/PATCH, one for DELETE (which runs before PATCH).
-  'POST /bff/admin/groups': ({ request, data }) => {
+  'POST /admin/groups': ({ request, data }) => {
     [state.groupId, state.disposableGroupId] = [unique('perf-group'), unique('perf-group-deleted')].map((name) => {
       const res = request({ body: { name, description: 'k6 group' }, headers: data.admin });
       check(res, { 'create group 200': (r) => r.status === 200 });
       return (json(res) || {}).id;
     });
   },
-  'GET /bff/admin/groups/{groupId}': ({ request, data }) =>
+  'GET /admin/groups/{groupId}': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID }, headers: data.admin }), {
       'group 200': (r) => r.status === 200,
     }),
-  'PATCH /bff/admin/groups/{groupId}': ({ request, data }) =>
+  'PATCH /admin/groups/{groupId}': ({ request, data }) =>
     check(request({ path: { groupId: need(state.groupId, 'created group') }, body: { description: 'k6 group, patched' }, headers: data.admin }), {
       'patch group 200': (r) => r.status === 200,
     }),
-  'DELETE /bff/admin/groups/{groupId}': ({ request, data }) =>
+  'DELETE /admin/groups/{groupId}': ({ request, data }) =>
     check(request({ path: { groupId: need(state.disposableGroupId, 'disposable group') }, headers: data.admin }), {
       'delete group 204': (r) => r.status === 204,
     }),
-  'GET /bff/admin/groups/{groupId}/users': ({ request, data }) =>
-    check(request({ path: { groupId: FIXTURE_GROUP_ID }, headers: data.admin }), {
+  'GET /admin/groups/{groupId}/users': ({ request, data }) =>
+    check(request({ path: { groupId: PERF_GROUPS.first + randomInt(PERF_GROUPS.count) }, headers: data.admin }), {
       'group members 200': (r) => r.status === 200,
+      'group members reads the seed': (r) => r.status === 200 && r.json('users').length >= PERF_GROUPS.members,
     }),
-  'POST /bff/admin/groups/{groupId}/users': ({ request, data }) =>
+  'POST /admin/groups/{groupId}/users': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID }, body: { user_id: need(state.userId, 'created user') }, headers: data.admin }), {
       'add member 201': (r) => r.status === 201,
     }),
-  'DELETE /bff/admin/groups/{groupId}/users/{userId}': ({ request, data }) =>
+  'DELETE /admin/groups/{groupId}/users/{userId}': ({ request, data }) =>
     check(request({ path: { groupId: FIXTURE_GROUP_ID, userId: need(state.userId, 'created user') }, headers: data.admin }), {
       'remove member 204': (r) => r.status === 204,
     }),
 
   // --- Admin: sessions ---
-  'GET /bff/admin/sessions': ({ request, data }) =>
+  'GET /admin/sessions': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'sessions 200': (r) => r.status === 200 }),
-  'GET /bff/admin/sessions/history': ({ request, data }) =>
-    check(request({ headers: data.admin }), { 'sessions history 200': (r) => r.status === 200 }),
+  'GET /admin/sessions/history': ({ request, data }) =>
+    check(request({ query: { limit: 100, offset: randomInt(900) }, headers: data.admin }), {
+      'sessions history 200': (r) => r.status === 200,
+      'sessions history reads the seed': (r) => r.status === 200 && r.json('sessions').length === 100,
+    }),
   // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
   // sessions, hence the admin login).
-  'POST /bff/admin/sessions/revoke': ({ request, data }) =>
+  'POST /admin/sessions/revoke': ({ request, data }) =>
     check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
       'revoke 200': (r) => r.status === 200,
     }),
 
   // --- Session reads ---
+  // A random seeded agent, member of 4 perf groups.
   'GET /me': ({ request }) =>
-    check(request(), { 'me 200': (r) => r.status === 200 }),
+    check(request({ headers: randomAgent().headers }), {
+      'me 200': (r) => r.status === 200,
+      'me reads the seeded groups': (r) => r.status === 200 && r.json('groups').length >= 1,
+    }),
   'GET /session/me': ({ request }) =>
-    check(request(), { 'session/me 200': (r) => r.status === 200 }),
+    check(request({ headers: randomAgent().headers }), {
+      'session/me 200': (r) => r.status === 200,
+      'session/me reads the seeded groups': (r) => r.status === 200 && r.json('groups').length >= 1,
+    }),
 };
 
 const coverage = createCoverage(handlers);
@@ -281,9 +364,9 @@ const readOperations = coverage.operations.filter((o) => o.method === 'GET');
 // Deletes the resources kept by the handlers, so that the listings do not grow during the test.
 function cleanup(data) {
   const kept = [
-    ['DELETE /bff/admin/users/{userId}', { userId: state.userId }],
-    ['DELETE /bff/admin/roles/{roleId}', { roleId: state.roleId }],
-    ['DELETE /bff/admin/groups/{groupId}', { groupId: state.groupId }],
+    ['DELETE /admin/users/{userId}', { userId: state.userId }],
+    ['DELETE /admin/roles/{roleId}', { roleId: state.roleId }],
+    ['DELETE /admin/groups/{groupId}', { groupId: state.groupId }],
   ];
   for (const [op, pathParams] of kept) {
     if (Object.values(pathParams).some((id) => id === undefined || id === null)) continue;
@@ -292,9 +375,9 @@ function cleanup(data) {
 }
 
 function findUserId(email, data) {
-  const listing = http.get(coverage.url('GET /bff/admin/users', {}, { search: email }), {
+  const listing = http.get(coverage.url('GET /admin/users', {}, { search: email }), {
     headers: data.admin,
-    tags: { op: 'GET /bff/admin/users' },
+    tags: { op: 'GET /admin/users' },
   });
   const user = ((json(listing) || {}).users || []).find((u) => u.email === email);
   return user ? user.id : undefined;
@@ -320,23 +403,37 @@ export const options = {
       executor: 'ramping-vus',
       exec: 'reads',
       stages: [
-        { duration: '30s', target: 20 }, // ramp-up
-        { duration: '1m', target: 20 }, // steady load
-        { duration: '10s', target: 0 }, // ramp-down
+        { duration: '30s', target: Math.ceil(PROFILE.readVus / 2) }, // ramp-up
+        { duration: '30s', target: PROFILE.readVus },
+        { duration: '2m', target: PROFILE.readVus }, // steady load
+        { duration: '20s', target: 0 }, // ramp-down
       ],
     },
     crud: {
       executor: 'constant-vus',
       exec: 'crud',
-      vus: 2,
-      duration: '1m40s',
+      vus: PROFILE.crudVus,
+      duration: '3m20s',
+    },
+    me_rush: {
+      executor: 'constant-arrival-rate',
+      exec: 'meRush',
+      startTime: '1m', // once the reads are at their peak
+      rate: PROFILE.rushRate,
+      timeUnit: '1s',
+      duration: '1m',
+      preAllocatedVUs: 30,
+      maxVUs: 200,
     },
   },
   thresholds: {
     ...coverage.thresholds,
     ...perOperationThresholds,
-    http_req_failed: ['rate<0.01'], // < 1% errors
-    checks: ['rate>0.99'],
+    'http_req_duration{op:me_rush}': ['p(95)<500'],
+    dropped_iterations: ['count==0'], // the rush kept its rate
+    // Strict (MAIR-474): one wrong status, one missing seeded row or one failed request fails the run.
+    http_req_failed: ['rate==0'],
+    checks: ['rate==1'],
   },
 };
 
@@ -346,7 +443,7 @@ export function setup() {
   const about = http.get(coverage.url('GET /user/{userId}/about', { userId: ADMIN_ID }), { headers: admin });
   const adminEmail = (json(about) || {}).email;
   const reset = http.patch(
-    coverage.url('PATCH /bff/admin/users/{userId}/password', { userId: ADMIN_ID }),
+    coverage.url('PATCH /admin/users/{userId}/password', { userId: ADMIN_ID }),
     JSON.stringify({ new_password: ADMIN_PASSWORD }),
     { headers: Object.assign({ 'Content-Type': 'application/json' }, admin) },
   );
@@ -369,9 +466,18 @@ export function reads(data) {
   sleep(1);
 }
 
+export function meRush() {
+  const agent = randomAgent();
+  const res = http.get(coverage.url('GET /me'), { headers: agent.headers, tags: { op: 'me_rush' } });
+  check(res, {
+    'me rush 200': (r) => r.status === 200,
+    'me rush reads the seeded groups': (r) => r.status === 200 && r.json('groups').length >= 1,
+  });
+}
+
 export function crud(data) {
   state = {};
-  // User token by default; the /bff/admin/* handlers pass the admin one.
+  // User token by default; the /admin/* handlers pass the admin one.
   coverage.run({ headers: data.user, data });
   cleanup(data);
   sleep(1);

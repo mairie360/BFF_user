@@ -25,10 +25,12 @@ npm test -- --runInBand                 # how CI runs it
 
 npm run contracts:generate  # regenerate contracts/openapi.json + contracts/bff.d.ts from code
 npm run contracts:check     # fail if either is stale (CI gate)
+
+./integration_test.sh       # docker-compose-integration.yml: real Core API + newman replaying tests/postman/ (MAIR-262)
 ```
 
 CI (`.github/workflows/contracts.yml`) runs `npm run contracts:check` then
-`npm test -- --runInBand` on Node 24 (`cicd.yml` uses `node_version: "24"` too). `cicd.yml` delegates to the reusable
+`npm test -- --runInBand` on Node 24.22.1 (`cicd.yml` uses `node_version: "24.22.1"` too). `cicd.yml` delegates to the reusable
 `mairie360/CICD` workflow.
 
 ### Private dependencies
@@ -63,7 +65,7 @@ instance without base URL: every call passes `baseURL: baseUrl('CORE_API')` (`@m
 `coreAdminUsersClient`, `coreGroupsClient`, `coreSessionsClient`, `coreUsersClient`, ...) that the routes
 consume. There is **no fallback bearer**: routes forward only the caller's session (Core's `/api/v1/auth/*`
 is exempt from its JWT middleware, so login/force_change_password go anonymous; `/api/v1/sessions/refresh` is also served outside it). There is no public
-self-registration: accounts are created by administrators through `/bff/admin/users`.
+self-registration: accounts are created by administrators through `/admin/users`.
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
@@ -71,9 +73,9 @@ The BFF has **no database or Redis access**: the admin user list/search + pagina
 group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing filtered by `group_id` for
 the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
 which validates the one-time token, saves the password and consumes the token. The admin role of the
-caller is read from `GET /api/v1/user/me/` before every `/bff/admin` route.
+caller is read from `GET /api/v1/user/me/` before every `/admin` route.
 Core ≥ 2.0.0 paginates the groups, group members and session history (`limit` 1-500, 100 by default;
-`offset`). `GET /bff/admin/groups` and `/bff/admin/sessions/history` forward the `limit` / `offset` the front
+`offset`). `GET /admin/groups` and `/admin/sessions/history` forward the `limit` / `offset` the front
 sends (`CorePageQuery`, Core's bounds, 400 outside them); the BFF's own reads (`/me` groups, membership checks)
 use `CORE_LARGEST_PAGE` (500) of `coreClient.ts`.
 
@@ -94,7 +96,7 @@ and listens on `PORT` (default 4000) only under `require.main === module`. Tests
 
 ### Routing (`src/app.ts`)
 
-Routers: `/health`, `/check_apis`, `/auth`, `/user`, `/session`, `/bff/admin`. `/check_apis` is the lib
+Routers: `/health`, `/check_apis`, `/auth`, `/user`, `/session`, `/admin`. `/check_apis` is the lib
 `checkApis({ core_api })` probing Core's generated `health` operation (`withoutSession('CORE_API', 5_000)`),
 answer `CheckApisResponse` (`{ status: 'OK' | 'Error', core_api: 'Connected' | 'Unreachable' }`, 200 / 502). The
 `session` router is **mounted twice** — at `/session` and at `/` — so both `/session/me`
@@ -108,11 +110,15 @@ and the legacy `/me` resolve.
   No token goes to the response body or a response header (MAIR-397); the body is
   `{ message }`. Login bodies are validated with Zod (unknown fields stripped) before reaching Core.
   `/auth/force_change_password` requires an 8-255 character password, like the admin routes.
+- **`/auth/forgot_password`** / **`/auth/reset_password`** (MAIR-527, public): forgot forwards `{ email }` to Core
+  and answers the same empty 200 for a known or unknown address (Core 400 / 429 kept); reset forwards
+  `{ token (UUID), new_password, device_info }` and opens the session with `sendSession` like login (Core 400 / 401
+  / 429 kept, 401 = token unknown, expired or already used). Both behind the `perIp` limiter.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
   `refreshToken` cookie; the JWT is delivered like login (cookie only). Core ≥ 2.0.0 rotates the refresh token
-  (the one sent stops working): its replacement, from the JSON body, overwrites the `refreshToken` cookie. `/bff/admin/sessions/refresh`
+  (the one sent stops working): its replacement, from the JSON body, overwrites the `refreshToken` cookie. `/admin/sessions/refresh`
   was removed (it replaced the admin's own cookie with the refreshed JWT; Core has no revoke-by-session-id).
 - **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
   caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
@@ -143,19 +149,29 @@ and the legacy `/me` resolve.
   shows a confirmation page). The redirect comes from the optional body
   `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
-- **`/bff/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
-  *locally* — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
+- **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
+  *locally* with the lib's `verifySessionToken` — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
   `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
-  header, read with `authorization()` / `requireBearer` / `bearerToken()` of `@mairie360/bffs-lib`
-  (the fronts' proxy builds it from the `accessToken` cookie). The `accessToken` cookie, `x-session-token`
+  header, read with `authorization()` / `requireSession` / `bearerToken()` of `@mairie360/bffs-lib`
+  (the fronts' proxy builds it from the `accessToken` cookie). `/me`, `/session/me` and `/user/*` go through
+  `requireSession` (bffs-lib >= 1.2.0, MAIR-474): the token is verified like the admin one (HS256 with
+  `JWT_SECRET`, `exp`, positive `sub`), so a forged or expired token gets its 401 without any Core call; Core
+  still checks revocation and archived accounts. The `accessToken` cookie, `x-session-token`
   and other schemes are ignored, also by `/auth/logout` and `requireAdmin`; the `refreshToken` cookie of
   `/auth/refresh` and `/auth/logout` is a different credential and is kept. `/me`, `/session/me` and
   `/user/*` answer 401 before any validation or Core call without one, and every `/auth`, `/me`,
-  `/session`, `/user` and `/bff/admin` answer carries `Cache-Control: no-store` (lib `noStore`).
+  `/session`, `/user` and `/admin` answer carries `Cache-Control: no-store` (lib `noStore`).
+  `tests/token-refusals.test.ts` walks `contracts/openapi.json`: every operation that inherits `bearerAuth`
+  must answer 401 to a missing or forged token (other scheme, garbage, other secret, expired, `alg: none`,
+  swapped payload, RS256, non-numeric `sub`) without calling Core, and get past the check with a genuine
+  one; the public operations are pinned there, so a route added without `security: []` is covered by default.
   `/user/{userId}/about` only returns the public fields of its contract (no role/groups).
+  Admin user writes take `phone_number` (Core's characters, 32 at most, forwarded as typed) and an optional
+  `phone_country` (upper-case ISO 3166-1 alpha-2): Core API (MAIR-480) needs it for a national number, not for
+  a `+` E.164 one, and clears the phone on `null`; the admin list and `/me` relay `phone_country`.
   Read routes (`/me`, admin GET lists) pass Core's answer through `whitelist(schema, data)`: only
   contract fields are returned, a non-matching answer is a 502. Never log tokens or Core URLs.
 
@@ -173,9 +189,16 @@ error, declared)`: only the Core 4xx the route declares are kept (generic messag
 failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
 relayed. `retry: true` (one retry on no answer / 502 / 503 / 504) is only set on Core GETs. Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
 `{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
-`[400, 401, 403]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
+`[400, 401, 403]`, forgot_password `[400, 429]`, reset_password `[400, 401, 429]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
 `READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
 must add `errorHandler()` after it. The rate limiters answer 429 in the same envelope.
+
+### Telemetry (MAIR-504)
+
+`src/telemetry.ts` calls the lib's `startTelemetry` and is imported by `src/index.ts` right after `dotenv/config`,
+before the app: the Express instrumentation only hooks Express if it is not loaded yet (Express stays external in
+the esbuild bundle). Off without `OTEL_EXPORTER_OTLP_ENDPOINT`; the lib exports only an attribute allowlist, so
+never add span attributes holding request values (ids, URLs, bodies, headers). Tests export nothing.
 
 ## Environment variables
 
@@ -190,8 +213,9 @@ fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
 ## Docker
 
 `docker compose up` uses `development.Dockerfile` (`npm run start`, i.e. `tsx watch`; `develop.watch`
-sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, and
-nginx. The production `Dockerfile` is a `node:24-alpine` (pinned by digest, like `development.Dockerfile`)
+sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, a fake Resend
+(WireMock, `tests/fake-resend/`, journal on `localhost:8025/__admin/requests`: Core ≥ MAIR-522 sends the password
+e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:24.22.1-alpine` (pinned by digest, like `development.Dockerfile`)
 multi-stage build running `node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
 
 ## Tests with a contract-driven Core API mock
@@ -212,6 +236,53 @@ BFF response is checked against `contracts/openapi.json`.
 - `openapi-contract.ts`, `contract-mock-server.ts` and `orval-contract.ts` are shared verbatim with
   `BFF_Calendar` and `BFF_Dashboard`; keep the copies identical.
 
+## Integration tests on the real stack (MAIR-262)
+
+Jest tests mock Core API; `integration_test.sh` is the only test of the BFF on a real stack. It brings up
+`docker-compose-integration.yml` (the upstream services of the ZAP / k6 stacks: published Core API image,
+database + liquibase + `init-test.sql`, Redis, fake Resend) and a `newman` service that replays
+`tests/postman/collection.json` with `tests/postman/environment.json` against the BFF, `--bail` on the first
+failing request; the exit code of newman is the exit code of the script. Like the other stacks it tests the
+image named by `IMAGE_REF` (`bff-user:local` built from `development.Dockerfile` when empty), sources
+`stack_secrets.sh` (random `JWT_SECRET` per run) and drops the volumes before and after. In CI it is the
+`integration_tests` staging gate of `promote-staging.yml` (mairie360/CICD `integration/bffs`) on the
+published `dev-<sha>` image: a failure blocks the promotion; the junit report (`newman-reports/newman.xml`,
+gitignored) is published as job summary and artifact.
+
+The collection is split in two kinds of checks, both on the BFF's own routes:
+
+- **working checks** (folders `Service`, `Session resolution`): the BFF starts, `/health`, `/check_apis`,
+  `/openapi.json`, a JSON 404, the session is resolved against Core API (401 without a Bearer, the seeded
+  Admin `sub=1` and agent `sub=2` through `/me` and `/session/me`), Keycloak answers its documented 503;
+- **business journeys** the fronts rely on (the account lifecycle): creation through `POST /admin/users`
+  (MAIR-225, 403 for a plain user, 409 on a duplicate), first sign-in (412 + one-time token,
+  `force_change_password`, token single use), sign-in with cookies only (MAIR-397) and the `accessToken`
+  cookie ignored as a credential (MAIR-429), public card, refresh from the cookie with rotation, admin
+  update / listing, roles and groups round trips, the account as administrator listing and revoking its own
+  session, password reset by the administrator (sessions revoked) and by e-mail (the reset link is read
+  from the fake Resend journal `/__admin/requests`), logout, deletion (404 afterwards, sign-in refused).
+
+The seeded accounts have no known password: the collection-level pre-request script forges their JWTs
+(HS256 `{ sub, role, exp }`, like `mairie360_api_lib`) with the `jwt_secret` the compose file injects
+(`jwt_admin`, `jwt_agent`); the committed `environment.json` holds no secret or token. One fresh e-mail per
+run (`run_id`) keeps the collection replayable. Isolated endpoint checks (validation errors, token refusals)
+stay in jest: the collection only holds journeys and the checks that need a real Core.
+
+`tests/integration-collection.test.ts` guards the collection with the unit tests: every operation of
+`contracts/openapi.json` has at least one request (a new route needs its request), every request has a
+`pm.test`, every request targets a declared route (or `/openapi.json` / the 404 check), and the environment
+commits no secret. The collection is generated for now from a session script; edit the JSON directly
+(Postman v2.1), keeping one folder per journey and English names.
+
+### Non-regression tests of a bug fix
+
+Every bug fix ships three tests that fail on the old code and pass on the fix, named after the ticket or the bug:
+a **technical unit test** (jest: the upstream-mock suite or the unit test of the route / helper), a **technical
+integration test** (a request of `tests/postman/collection.json` that reproduces the bug on the real stack and pins
+the status and the answer's fields, plus the error envelope when the answer is an error) and a **business integration test** (the journey of the
+collection that the bug broke, extended so that it replays the user flow end to end). Run `./integration_test.sh`
+before opening the PR; skip one of the three only when that layer cannot observe the bug, and say why in the PR.
+
 ## ZAP / k6 OpenAPI coverage gate
 
 `security_test.sh` / `performance_test.sh` clone `mairie360/CICD` into `cicd-repo/` (gitignored) at
@@ -220,10 +291,26 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Two scenarios: `crud`
-(2 VUs) runs every handler through `coverage.run()` and carries the gate; `reads` (ramp to 20 VUs)
-replays the GET handlers only, so GET handlers must read seeded fixtures, never `state`. Every
-operation gets a `p(95)` threshold from its family (`budgetOf`). In `crud`, handlers run path by
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
+runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
+so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
+rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
+seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
+members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
+signed in k6), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.
+Thresholds are strict: `checks == 100%`, `http_req_failed == 0`, `dropped_iterations == 0`. `K6_PROFILE`
+(passed by the compose file) sizes the load: `ci` (default, 30 readers, rush at 30/s) is what the 4 vCPU
+CI runner holds, `stress` (100 readers, 100/s) is run by hand. Keep `init-perf.sql` and the id ranges at
+the top of `load-test.js` in step.
+
+The ZAP and k6 stacks run the same fake Resend (`fake-resend`, MAIR-552), so `POST /auth/forgot_password` reaches a
+working Core. Both scripts source `stack_secrets.sh` (MAIR-474): a random `JWT_SECRET` per run, shared by core-api,
+bff-user and k6, and `ADMIN_JWT` (`sub=1`, 4 h) signed with it for the ZAP replacer; the compose files
+refuse to start without them, and nothing signed with a committed secret is left in the repository. They
+drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
+the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
+ignores `100000`: a 500 / 502 answered during the scan fails it. Its only scope-out is `/auth/keycloak`, whose
+documented 503 (Keycloak not configured, the stack has no realm) is the expected answer there. In `crud`, handlers run path by
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens
@@ -231,13 +318,31 @@ are rotated by `/auth/refresh` (each refresh needs its own login).
 
 ## Conventions
 
-- ESLint: `@typescript-eslint/no-explicit-any` is an **error**. Unused args must be
+- ESLint: `@typescript-eslint/no-explicit-any` and `no-await-in-loop` (MAIR-525: independent upstream calls start
+  together; a loop that must stay sequential says why in a comment) are **errors**. Unused args must be
   `_`-prefixed.
 - Tests use `supertest`. Unit tests (`auth`, `session`, `admin`, ...) mount one router on a bare
   Express app and `jest.mock` `coreClient` (upstream-mock tests: see the section above).
 - Prefer adding schemas to `openapi-registry.ts` / `admin_schemas.ts` and letting types
   flow from Zod (`z.infer`) rather than hand-writing interfaces.
 
+## Logs (MAIR-531)
+
+Logs are JSON lines on stdout, through `logger` (`src/logger.ts`, `createLogger({ target: 'bff-user' })` of
+`@mairie360/bffs-lib` >= 2.1.0); **no `console.*` in `src/`**. `src/app.ts` mounts `requestLogger({ logger })` first
+(one `request completed` line per request: `request_id`, `method`, matched route, `status`, `duration_ms`; `X-Request-Id`
+answered) and passes the same `logger` to `errorHandler` and `checkApis`. Another line takes `request_id: requestId(req)`
+and scalar fields only; an error goes through `describeError(error)`, never as is (MAIR-290). Tests read the lines with
+`captureLogs()` (`tests/support/logs.ts`), which also silences them.
+
 ## Pull request reviewers
 
 Every PR requests a review from the whole team, minus its author: `CarolinHugo`, `LAURETbenjamin`, `MathTek` and `Quentintnrl` (`gh pr create … --reviewer CarolinHugo,LAURETbenjamin,MathTek`). `.github/CODEOWNERS` makes GitHub request them automatically as well.
+
+## Promotion to staging and prod (MAIR-494)
+
+A push to `main` only releases dev (`cicd.yml` stops at `release-dev`). Staging and prod are manual:
+`gh workflow run promote-staging.yml -R mairie360/BFF_user` (main's newest commit) or `gh workflow run promote-staging.yml -R mairie360/BFF_user -f sha=SHA` (a given commit), then the same with `promote-prod.yml`
+(environments `Staging` / `Prod`). Staging refuses a commit without `dev-<sha>` and a green main run, and runs
+the integration (newman, MAIR-262), ZAP and k6 stacks on that image; prod refuses one without `staging-<sha>` and tags the version semantic-release computes
+for that commit. `cicd.yml`, `promote-staging.yml` and `promote-prod.yml` pin the same mairie360/CICD release.

@@ -1,6 +1,7 @@
 import { checkApis, checkApisResponseSchema, withoutSession } from '@mairie360/bffs-lib';
 import { Router } from 'express';
 import { coreApi } from '../clients/coreClient';
+import { logger } from '../logger';
 import { registry } from '../openapi-registry';
 
 const router = Router();
@@ -22,6 +23,6 @@ registry.registerPath({
 });
 
 // The network detail (host, port, error code) is only logged, never sent to the client.
-router.get('/', checkApis({ core_api: () => coreApi.health(withoutSession('CORE_API', 5_000)) }));
+router.get('/', checkApis({ core_api: () => coreApi.health(withoutSession('CORE_API', 5_000)) }, { logger }));
 
 export default router;

@@ -1,8 +1,9 @@
-import { asCaller, noStore, parseRequest, requireBearer } from '@mairie360/bffs-lib';
+import { asCaller, noStore, parseRequest, requireSession } from '@mairie360/bffs-lib';
 import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
     CoreApiNotConfigured,
+    CoreApiRateLimited,
     ErrorResponse,
     registry,
     UserIdParams,
@@ -11,8 +12,9 @@ import { fetchUserAbout } from './core_helpers';
 
 const router = Router();
 
-// Session-bound: never cached, and 401 before anything else (validation, upstream call) without a Bearer token.
-router.use(noStore, requireBearer);
+// Session-bound: never cached, and 401 before anything else (validation, upstream call) without a valid
+// session token (verified locally: HS256 with JWT_SECRET, expiry).
+router.use(noStore, requireSession);
 
 registry.registerPath({
     method: 'get',
@@ -64,6 +66,7 @@ registry.registerPath({
                 },
             },
         },
+        429: CoreApiRateLimited,
         502: {
             description: 'Core API unavailable or invalid upstream answer',
             content: {

@@ -1,9 +1,10 @@
 import 'dotenv/config';
-import { apiOnlyHeaders, errorHandler, notFoundHandler, parseTrustProxy, securityHeaders } from '@mairie360/bffs-lib';
+import { apiOnlyHeaders, errorHandler, notFoundHandler, parseTrustProxy, requestLogger, securityHeaders } from '@mairie360/bffs-lib';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
 import { openApiDocument } from './openapi';
+import { logger } from './logger';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 import checkApis from './routes/check_apis';
@@ -16,6 +17,8 @@ app.disable('x-powered-by');
 // Client IP (req.ip) used by the auth rate limiters: behind the ingress/fronts, set TRUST_PROXY (hop count or
 // trusted subnets) so that req.ip comes from X-Forwarded-For; unset = the TCP peer is the client.
 app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
+// First: every request gets an id and one JSON log line when it ends (method, route, status, duration; MAIR-531).
+app.use(requestLogger({ logger }));
 // Security headers shared by every BFF, then the stricter API-only ones (default-src 'none') everywhere but
 // /docs. Both run before body parsing, so they also cover body-parse error responses.
 app.use(securityHeaders);
@@ -38,12 +41,12 @@ app.use('/user', userRouter);
 app.use('/session', sessionRouter);
 // Alias kept for the fronts and the BFFs that call GET /me.
 app.use('/', sessionRouter);
-app.use('/bff/admin', adminRouter);
+app.use('/admin', adminRouter);
 
 // Unknown routes and every error end in the shared envelope `{ error: { code, message, details } }`:
 // the status of the error is kept (400 for an unparsable body, 401, 404, 409, 502, 503...) and anything
 // unexpected becomes a 500 without leaking its message.
 app.use(notFoundHandler);
-app.use(errorHandler());
+app.use(errorHandler({ logger }));
 
 export default app;
