@@ -1,37 +1,39 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "2ac110014004f23d5da15458698a4053bbcb2334", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-01 12:38 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "d356c97c75757b84f011c7dad5fb8eef7cc6842f", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-01 12:40 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.1.0 | `b754a6c` | 2026-10-21 10:09 UTC |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `2ac1100` | 2026-11-01 12:38 UTC |
+| dev | — | `d356c97` | 2026-11-01 12:40 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.1.0)
 
 #### Corrections
-- Les journaux d'erreur du BFF ne contiennent plus la valeur reçue. Avant, l'erreur brute était journalisée, et sa cause axios portait le Bearer token de l'appelant ainsi que les corps de requête et de réponse. Maintenant, `describeError(error)` journalise le type, le statut, le code et le message (`@mairie360/bffs-lib` 1.1.0 → 1.2.1). La description de la PR décrit ce changement, mais le `package.json` n'apparaît pas dans le diff visible, donc la bascule de la bibliothèque n'est pas vérifiée. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+- Les journaux d'erreur du BFF ne reprennent plus l'erreur brute : avant, l'erreur axios (son `cause`) pouvait écrire dans les journaux le Bearer token de l'appelant ainsi que les corps de requête et de réponse ; maintenant, `errorHandler` et `checkApis` journalisent `describeError(error)` (type, statut, code, message). `@mairie360/bffs-lib` passe de 1.1.0 à 1.2.1. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
 
 #### Technique
-- Test de marqueur RGPD : un compte marqueur traverse le BFF (erreurs volontaires comprises), puis `gdpr_marker_test.sh` cherche ses valeurs dans les journaux de tous les conteneurs. Le job `gdpr_marker` de CICD le lance sur l'image promue. Ajout de règles `.dockerignore` et `.gitignore` pour le rapport. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
-- Node.js passe à 24.22.1 dans la CI, dans les Dockerfiles (images épinglées par digest) et dans la documentation. L'image de développement tourne désormais sous l'utilisateur `node`. Le commentaire du Dockerfile de production annonce le retrait des gestionnaires de paquets de l'image runtime, mais la commande correspondante n'est pas visible dans le diff. (MAIR-... sans clé, [#275](https://github.com/mairie360/BFF_user/pull/275))
-- Mise à jour de `dotenv` 18.0.8 → 18.0.9 : la CLI accepte un `DOTENV_PATH` vide. ([#274](https://github.com/mairie360/BFF_user/pull/274))
-- Tests d'intégration sur stack réelle (MAIR-262) : `docker-compose-integration.yml`, collection newman de 73 requêtes rejouée contre le BFF, et porte `integration_tests` qui bloque la promotion staging en cas d'échec. Les workflows de promotion et `cicd.yml` sont épinglés sur mairie360/CICD v4.5.0. (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273))
-- Documentation : la version de CICD citée passe de v4.4.0 à v4.4.3 (MAIR-612, [#271](https://github.com/mairie360/BFF_user/pull/271))
+- Ajout d'une checklist RGPD sur les pull requests : le workflow `gdpr-pr.yml` appelle le workflow réutilisable de mairie360/CICD, et la section « Données personnelles » de la description doit être renseignée. (MAIR-295, [#218](https://github.com/mairie360/BFF_user/pull/218))
+- Ajout d'un test du marqueur RGPD (`gdpr-marker.yaml`, `docker-compose-gdpr-marker.yml`, `gdpr_marker_test.sh`) qui parcourt le BFF avec un utilisateur marqué puis cherche ses valeurs dans les journaux de chaque conteneur. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+- Node.js passe à 24.22.1 dans les images `Dockerfile` et `development.Dockerfile` (épinglées par digest) et dans les jobs CI ; l'image de développement tourne désormais sous l'utilisateur `node`. ([#275](https://github.com/mairie360/BFF_user/pull/275))
+- Mise à jour de la dépendance `dotenv` de 18.0.8 à 18.0.9, sans changement de code applicatif. ([#274](https://github.com/mairie360/BFF_user/pull/274))
+- Ajout de la stack d'intégration (`docker-compose-integration.yml`, `integration_test.sh`) qui rejoue une collection Postman/newman contre la vraie Core API, et d'un test jest qui vérifie la couverture de la collection. Cette stack devient la porte `integration_tests` de la promotion staging ; CICD passe en v4.5.0. (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273))
+- Mise à jour de la documentation technique (versions de mairie360/CICD v4.4.3 en FR et EN). (MAIR-612, [#271](https://github.com/mairie360/BFF_user/pull/271))
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
 #### Corrections
-- Les journaux d'erreur du BFF ne contiennent plus la valeur reçue. Avant, l'erreur brute était journalisée, et sa cause axios portait le Bearer token de l'appelant ainsi que les corps de requête et de réponse. Maintenant, `describeError(error)` journalise le type, le statut, le code et le message (`@mairie360/bffs-lib` 1.1.0 → 1.2.1). La description de la PR décrit ce changement, mais le `package.json` n'apparaît pas dans le diff visible, donc la bascule de la bibliothèque n'est pas vérifiée. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+- Les journaux d'erreur du BFF ne reprennent plus l'erreur brute : avant, l'erreur axios (son `cause`) pouvait écrire dans les journaux le Bearer token de l'appelant ainsi que les corps de requête et de réponse ; maintenant, `errorHandler` et `checkApis` journalisent `describeError(error)` (type, statut, code, message). `@mairie360/bffs-lib` passe de 1.1.0 à 1.2.1. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
 
 #### Technique
-- Test de marqueur RGPD : un compte marqueur traverse le BFF (erreurs volontaires comprises), puis `gdpr_marker_test.sh` cherche ses valeurs dans les journaux de tous les conteneurs. Le job `gdpr_marker` de CICD le lance sur l'image promue. Ajout de règles `.dockerignore` et `.gitignore` pour le rapport. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
-- Node.js passe à 24.22.1 dans la CI, dans les Dockerfiles (images épinglées par digest) et dans la documentation. L'image de développement tourne désormais sous l'utilisateur `node`. Le commentaire du Dockerfile de production annonce le retrait des gestionnaires de paquets de l'image runtime, mais la commande correspondante n'est pas visible dans le diff. (MAIR-... sans clé, [#275](https://github.com/mairie360/BFF_user/pull/275))
-- Mise à jour de `dotenv` 18.0.8 → 18.0.9 : la CLI accepte un `DOTENV_PATH` vide. ([#274](https://github.com/mairie360/BFF_user/pull/274))
-- Tests d'intégration sur stack réelle (MAIR-262) : `docker-compose-integration.yml`, collection newman de 73 requêtes rejouée contre le BFF, et porte `integration_tests` qui bloque la promotion staging en cas d'échec. Les workflows de promotion et `cicd.yml` sont épinglés sur mairie360/CICD v4.5.0. (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273))
-- Documentation : la version de CICD citée passe de v4.4.0 à v4.4.3 (MAIR-612, [#271](https://github.com/mairie360/BFF_user/pull/271))
+- Ajout d'une checklist RGPD sur les pull requests : le workflow `gdpr-pr.yml` appelle le workflow réutilisable de mairie360/CICD, et la section « Données personnelles » de la description doit être renseignée. (MAIR-295, [#218](https://github.com/mairie360/BFF_user/pull/218))
+- Ajout d'un test du marqueur RGPD (`gdpr-marker.yaml`, `docker-compose-gdpr-marker.yml`, `gdpr_marker_test.sh`) qui parcourt le BFF avec un utilisateur marqué puis cherche ses valeurs dans les journaux de chaque conteneur. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+- Node.js passe à 24.22.1 dans les images `Dockerfile` et `development.Dockerfile` (épinglées par digest) et dans les jobs CI ; l'image de développement tourne désormais sous l'utilisateur `node`. ([#275](https://github.com/mairie360/BFF_user/pull/275))
+- Mise à jour de la dépendance `dotenv` de 18.0.8 à 18.0.9, sans changement de code applicatif. ([#274](https://github.com/mairie360/BFF_user/pull/274))
+- Ajout de la stack d'intégration (`docker-compose-integration.yml`, `integration_test.sh`) qui rejoue une collection Postman/newman contre la vraie Core API, et d'un test jest qui vérifie la couverture de la collection. Cette stack devient la porte `integration_tests` de la promotion staging ; CICD passe en v4.5.0. (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273))
+- Mise à jour de la documentation technique (versions de mairie360/CICD v4.4.3 en FR et EN). (MAIR-612, [#271](https://github.com/mairie360/BFF_user/pull/271))
 
 ## Différence staging → prod (en staging, pas encore en prod)
 
@@ -42,6 +44,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-01 12:40 UTC | dev | — | `d356c97` | [run](https://github.com/mairie360/BFF_user/actions/runs/41307417610) |
 | 2026-11-01 12:38 UTC | dev | — | `2ac1100` | [run](https://github.com/mairie360/BFF_user/actions/runs/41306977104) |
 | 2026-10-23 12:22 UTC | dev | — | `64482b7` | [run](https://github.com/mairie360/BFF_user/actions/runs/39952425565) |
 | 2026-10-23 02:58 UTC | dev | — | `7a4bbf9` | [run](https://github.com/mairie360/BFF_user/actions/runs/39892169488) |
