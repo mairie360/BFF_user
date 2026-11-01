@@ -198,8 +198,10 @@ registry.registerPath({
     description: 'Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link '
         + '(`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the '
         + 'same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. '
-        + 'Malformed requests are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For; '
-        + 'Core API limits the requests per client and per e-mail address.',
+        + 'Every request counts against two budgets (AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX, 10 per 15 minutes by default): one '
+        + 'per e-mail address, and one per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For. Malformed '
+        + 'requests also count as failed attempts per client IP. The client IP is relayed to Core API, which limits the '
+        + 'requests per client and per e-mail address too.',
     request: {
         body: {
             required: true,
@@ -491,7 +493,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         const body = parseRequest(LoginViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await loginUser(body));
+            return sendSession(res, await loginUser(body, req));
         } catch (error) {
             // First sign-in: Core answers 412 with the one-time token of the password change. It is a regular
             // answer the front needs, not an error: only the token is relayed.
@@ -508,7 +510,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         const body = parseRequest(KeycloakLoginViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await keycloakLoginUser(body));
+            return sendSession(res, await keycloakLoginUser(body, req));
         } catch (error) {
             // Core answers 503 when Keycloak is not configured: keep it so the front can fall back to the password login.
             if (axios.isAxiosError(error) && error.response?.status === 503) {
@@ -523,19 +525,19 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
         try {
             // Core validates the one-time token, saves the password and consumes the token.
-            await forceChangeUserPassword(body);
+            await forceChangeUserPassword(body, req);
             return res.status(204).send();
         } catch (error) {
             throw upstreamError('CORE_API', error, [400, 401, 403, 429]);
         }
     });
 
-    router.post('/forgot_password', limiters.perIp, async (req: Request, res: Response) => {
+    router.post('/forgot_password', limiters.perIp, limiters.forgotPasswordPerIp, limiters.forgotPasswordPerAccount, async (req: Request, res: Response) => {
         const body = parseRequest(ForgotPasswordViewSchema, req.body, 'body');
 
         try {
             // Core answers the same empty 200 for a known or an unknown address (no account enumeration).
-            await requestPasswordReset(body);
+            await requestPasswordReset(body, req);
             return res.status(200).send();
         } catch (error) {
             throw upstreamError('CORE_API', error, [400, 429]);
@@ -547,7 +549,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
         try {
             // Core consumes the token, saves the password and opens a session answered like a login.
-            return sendSession(res, await resetUserPassword(body));
+            return sendSession(res, await resetUserPassword(body, req));
         } catch (error) {
             throw upstreamError('CORE_API', error, [400, 401, 429]);
         }
@@ -562,7 +564,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         }
 
         try {
-            const coreResponse = await refreshSession(refreshToken);
+            const coreResponse = await refreshSession(refreshToken, req);
             const authorizationHeader = coreResponse.headers?.authorization ?? coreResponse.headers?.Authorization;
 
             // Same delivery as /auth/login: the HttpOnly cookies only. Core rotates the refresh token (>= 2.0.0):

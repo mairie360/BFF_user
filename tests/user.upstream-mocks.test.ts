@@ -234,6 +234,38 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(coreApi.requests[0].headers.authorization).toBeUndefined();
     });
 
+    // MAIR-679: Core rate-limits forgot password per client address; without the relayed address every request was
+    // counted on this BFF's pod, and 10 requests locked password recovery for the whole instance.
+    test('MAIR-679 relays the client address to Core, never the one the client forged', async () => {
+      coreApi.on('post', CORE.forgotPassword, { status: 200 });
+
+      // No TRUST_PROXY in the tests: the client is the socket peer and its X-Forwarded-For is not trusted.
+      const response = await request(app).post('/auth/forgot_password').set('X-Forwarded-For', '1.2.3.4').send({ email: 'alice@mairie.test' });
+
+      expect(response.status).toBe(200);
+      expect(coreApi.requests).toHaveLength(1);
+      expect(coreApi.requests[0].headers['x-forwarded-for']).toMatch(/^(127\.0\.0\.1|::1)$/);
+    });
+
+    test('MAIR-679 relays the client address on every anonymous Core call', async () => {
+      coreApi.on('post', CORE.login, coreError(401, 'Invalid credentials'));
+      coreApi.on('post', CORE.resetPassword, coreError(401, 'Invalid token'));
+      coreApi.on('post', CORE.forceChangePassword, coreError(401, 'Invalid token'));
+      coreApi.on('post', CORE.sessionsRefresh, coreError(401, 'Invalid token'));
+
+      await request(app).post('/auth/login').send({ email: 'alice@mairie.test', password: 'Wrong-pass-1', device_info: 'test' });
+      await request(app).post('/auth/reset_password').send({ token: RESET_TOKEN, new_password: 'Updated-456!', device_info: 'test' });
+      await request(app).post('/auth/force_change_password').send({ token: FIRST_CONNECTION_TOKEN, new_password: 'Updated-456!' });
+      await request(app).post('/auth/refresh').send({ refresh_token: 'opaque' });
+
+      expect(coreApi.requests.map((call) => call.url.pathname)).toEqual([
+        CORE.login, CORE.resetPassword, CORE.forceChangePassword, CORE.sessionsRefresh,
+      ]);
+      for (const call of coreApi.requests) {
+        expect(call.headers['x-forwarded-for']).toMatch(/^(127\.0\.0\.1|::1)$/);
+      }
+    });
+
     test('answers the same for a known and an unknown address', async () => {
       // Core answers the same empty 200 in both cases: the BFF adds nothing that tells them apart.
       coreApi.on('post', CORE.forgotPassword, { status: 200 });
