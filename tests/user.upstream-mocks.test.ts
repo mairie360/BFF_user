@@ -902,6 +902,39 @@ describe('BFF User with a contract-driven Core API mock', () => {
       );
     });
 
+    // MAIR-290: the cause of an upstream 502 is the axios error, which holds the caller's Bearer token and the
+    // request and response bodies. Whatever the BFF writes about the failure (JSON log lines on stdout, stderr,
+    // console) describes it by its type and status, never by these values.
+    test.each([
+      ['POST /admin/users', 'post', CORE.adminUsers, '/admin/users', {
+        first_name: 'Jeanne', last_name: 'Marker-290', email: 'jeanne.marker290@example.org', password: 'Marker-290-Secret!', phone_number: '06 12 34 56 78',
+      }],
+      ['POST /auth/login', 'post', CORE.login, '/auth/login', { email: 'jeanne.marker290@example.org', password: 'Marker-290-Secret!', device_info: 'Firefox' }],
+    ] as const)('MAIR-290 logs a Core API failure on %s without the token, the body sent or the upstream body', async (_route, method, template, pathname, body) => {
+      const written: string[] = [];
+      const keep = (chunk: string | Uint8Array) => {
+        written.push(String(chunk));
+        return true;
+      };
+      jest.spyOn(process.stdout, 'write').mockImplementation(keep as typeof process.stdout.write);
+      jest.spyOn(process.stderr, 'write').mockImplementation(keep as typeof process.stderr.write);
+      for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+        jest.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+          written.push(args.map((arg) => (arg instanceof Error ? `${arg.stack} ${JSON.stringify(arg)}` : typeof arg === 'string' ? arg : JSON.stringify(arg))).join(' '));
+        });
+      }
+      coreApi.on(method, template, coreError(500, 'Insert failed for jeanne.marker290@example.org (06 12 34 56 78)'));
+
+      const response = await request(app)[method](pathname).set('Authorization', `Bearer ${SESSION}`).send(body);
+
+      expect(response.status).toBe(502);
+      const logs = written.join('\n');
+      expect(logs).toContain('502');
+      for (const value of [SESSION, 'Marker-290', 'jeanne.marker290@example.org', '06 12 34 56 78']) {
+        expect(logs).not.toContain(value);
+      }
+    });
+
     test('mair_562 a persistent Core 429 on the administration listing is answered 429 with Retry-After, not 502', async () => {
       coreApi.on('get', CORE.adminUsers, { ...coreError(429, 'Too many requests'), headers: { 'Retry-After': '30' } });
 
