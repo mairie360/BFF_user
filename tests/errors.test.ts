@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { app } from '../src/app';
 import { fetchUserAbout } from '../src/routes/core_helpers';
+import { JWT_SECRET, sessionToken } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
 
 // Final middlewares of the app (@mairie360/bffs-lib): every error ends in { error: { code, message, details } }.
 jest.mock('../src/routes/core_helpers', () => ({
@@ -10,8 +12,9 @@ jest.mock('../src/routes/core_helpers', () => ({
 
 describe('error envelope of the app', () => {
     beforeEach(() => {
-        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        captureLogs();
         process.env.CORE_API_URL = 'http://core.test';
+        process.env.JWT_SECRET = JWT_SECRET;
     });
 
     afterEach(() => {
@@ -39,7 +42,7 @@ describe('error envelope of the app', () => {
     it('answers an unexpected error with a generic 500 that hides its message', async () => {
         jest.mocked(fetchUserAbout).mockRejectedValue(new TypeError('Cannot read properties of undefined (reading secret)'));
 
-        const response = await request(app).get('/user/42/about').set('Authorization', 'Bearer header.payload.signature');
+        const response = await request(app).get('/user/42/about').set('Authorization', `Bearer ${sessionToken(42)}`);
 
         expect(response.status).toBe(500);
         expect(response.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error', details: [] } });

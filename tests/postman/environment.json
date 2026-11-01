@@ -1,0 +1,138 @@
+{
+  "name": "BFF User integration",
+  "_postman_variable_scope": "environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "fakeResendUrl",
+      "value": "http://localhost:8025",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "jwt_secret",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "admin_user_id",
+      "value": "1",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "agent_user_id",
+      "value": "2",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "run_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "test_user_email",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "test_user_password",
+      "value": "Newman!Temporary123",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "test_user_new_password",
+      "value": "Newman!Password456",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "test_user_admin_password",
+      "value": "Newman!ByAdmin789",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "test_user_reset_password",
+      "value": "Newman!Reset012",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "test_user_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "first_connection_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "jwt",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "old_refresh_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "jwt_admin",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "jwt_agent",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "admin_role_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "role_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "group_id",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "reset_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ]
+}

@@ -22,6 +22,8 @@ const pathname = (url: string) => new URL(url, 'http://upstream').pathname;
 const CONSUMED = [
   { operationId: 'login', method: 'post', url: coreApiUrls.getLoginUrl() },
   { operationId: 'forceChangePassword', method: 'post', url: coreApiUrls.getForceChangePasswordUrl() },
+  { operationId: 'forgotPassword', method: 'post', url: coreApiUrls.getForgotPasswordUrl() },
+  { operationId: 'resetPassword', method: 'post', url: coreApiUrls.getResetPasswordUrl() },
   { operationId: 'adminListUsers', method: 'get', url: coreApiUrls.getAdminListUsersUrl({ page: 2, page_size: 5 }) },
   { operationId: 'adminPostUser', method: 'post', url: coreApiUrls.getAdminPostUserUrl() },
   { operationId: 'adminDeleteUser', method: 'delete', url: coreApiUrls.getAdminDeleteUserUrl(7) },
@@ -92,6 +94,7 @@ describe('Core API contract from the installed @mairie360/core-api-openapi packa
 describe('Core API fixtures conform to the Core API contract', () => {
   test.each([
     ['login 200', 'post', coreApiUrls.getLoginUrl(), loginResponse()],
+    ['resetPassword 200', 'post', coreApiUrls.getResetPasswordUrl(), loginResponse()],
     ['getMe 200', 'get', coreApiUrls.getGetMeUrl(), meResponse({ phone: null })],
     ['getUser 200', 'get', coreApiUrls.getGetUserUrl(7), userResponse()],
     ['getGroups 200', 'get', coreApiUrls.getGetGroupsUrl(), groupsResult([group(1), group(2, { description: null })])],
