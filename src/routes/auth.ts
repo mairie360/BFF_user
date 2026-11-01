@@ -1,4 +1,4 @@
-import { asCaller, bearerToken, HttpError, noStore, parseRequest, requestId, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
+import { asAnonymousClient, asCaller, bearerToken, HttpError, noStore, parseRequest, requestId, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { z } from 'zod';
@@ -40,7 +40,7 @@ import {
     logoutSession,
     requestPasswordReset,
     resetUserPassword,
-    revokeSession,
+    logoutWithRefreshToken,
 } from './core_helpers';
 
 const tooManyAttempts = {
@@ -351,7 +351,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session when the session (`Authorization: Bearer` header) is sent: with the refresh token (body field or refreshToken cookie) through POST /api/v1/sessions/revoke, else from the JWT alone through POST /api/v1/sessions/logout. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
+    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692); else, when the session (`Authorization: Bearer` header) is sent, from the JWT alone through POST /api/v1/sessions/logout. Without either, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
         + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
         + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
         + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
@@ -587,18 +587,18 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
         const refreshToken = refreshTokenOf(req, body.refresh_token);
         // The session is the `Authorization: Bearer` header only (the fronts' proxy builds it from the
-        // accessToken cookie); without one, logout only clears the cookies.
+        // accessToken cookie); the accessToken cookie itself is never a credential.
         const hasSession = bearerToken(req) !== undefined;
 
         let sessionRevoked = false;
-        if (hasSession) {
+        if (refreshToken || hasSession) {
             try {
-                // Core only revokes the caller's own session (JWT user + refresh token, or the JWT alone through
-                // POST /api/v1/sessions/logout when no refresh token is available); once revoked, the access JWT
-                // is refused by Core's session check even before it expires. Inside the try: a missing
-                // CORE_API_URL (503) must not prevent clearing the cookies.
+                // MAIR-692: the refresh token alone ends its session (POST /api/v1/auth/logout, no JWT), so an
+                // agent whose access JWT expired is still signed out for good. Without it, the JWT alone
+                // (POST /api/v1/sessions/logout). Once revoked, Core and the other APIs refuse the session's
+                // JWTs. Inside the try: a missing CORE_API_URL (503) must not prevent clearing the cookies.
                 if (refreshToken) {
-                    await revokeSession(refreshToken, asCaller('CORE_API', req));
+                    await logoutWithRefreshToken(refreshToken, asAnonymousClient('CORE_API', req));
                 } else {
                     await logoutSession(asCaller('CORE_API', req));
                 }

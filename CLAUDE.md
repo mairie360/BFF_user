@@ -120,11 +120,13 @@ and the legacy `/me` resolve.
   `refreshToken` cookie; the JWT is delivered like login (cookie only). Core ≥ 2.0.0 rotates the refresh token
   (the one sent stops working): its replacement, from the JSON body, overwrites the `refreshToken` cookie. `/admin/sessions/refresh`
   was removed (it replaced the admin's own cookie with the refreshed JWT; Core has no revoke-by-session-id).
-- **`/auth/logout`** revokes the Core session (`POST /api/v1/sessions/revoke`, which needs the
-  caller's JWT **and** the login `refresh_token` in the body) and always clears the cookie.
-  Without a `refresh_token` (body or cookie) it revokes the session from the JWT alone through Core ≥ 2.0.0's
-  `POST /api/v1/sessions/logout`. Any Core failure is only logged (status only): the cookies are still
-  cleared and `session_revoked` is `false`. Without a Bearer session nothing is called.
+- **`/auth/logout`** revokes the Core session and always clears the cookies. With a `refresh_token` (body or
+  cookie) it calls Core's public `POST /api/v1/auth/logout` (MAIR-692, `logoutWithRefreshToken`, anonymous through
+  `asAnonymousClient`, no JWT needed), so a user whose access JWT expired is still signed out for good; the former
+  `POST /api/v1/sessions/revoke` needed a valid JWT and silently failed then. Without a refresh token it revokes the
+  session from the JWT alone through `POST /api/v1/sessions/logout`. Any Core failure is only logged (status only):
+  the cookies are still cleared and `session_revoked` is `false`. Without a refresh token nor a Bearer session
+  nothing is called.
 - **Rate limiting** (`src/middleware/rateLimit.ts`, three lib `createRateLimiter` instances with
   `envPrefix: 'AUTH_RATE_LIMIT'`, 412 counted as a success): failed attempts on
   `/auth/login` (per IP and per e-mail), `/auth/force_change_password` (per IP) and
