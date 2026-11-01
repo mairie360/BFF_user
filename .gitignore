@@ -29,3 +29,6 @@ newman-reports/
 
 # GDPR log marker report (gdpr_marker_test.sh, MAIR-290): raw container logs, never committed.
 /gdpr-report/
+
+# GDPR usage simulation run (gdpr_simulation_test.sh, MAIR-497): personas, raw logs, never committed.
+/gdpr-simulation/
