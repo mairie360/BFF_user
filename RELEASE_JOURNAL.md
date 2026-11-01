@@ -1,37 +1,45 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "49a36116e3637b3a7e633d56b0b4d0713200bed2", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-01 17:21 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "7ce44d2217e901127f690fdbca9162e4b0e5b170", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-01 20:09 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.1.0 | `b754a6c` | 2026-10-21 10:09 UTC |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `49a3611` | 2026-11-01 17:21 UTC |
+| dev | — | `7ce44d2` | 2026-11-01 20:09 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.1.0)
 
+#### Nouveautés
+- `POST /auth/forgot_password` : chaque requête compte désormais dans deux plafonds sur 15 minutes, l'un par IP cliente et l'autre par adresse e-mail (`AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, 10 par défaut) ; au-delà, la requête est refusée. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+
+#### Changements de comportement
+- `POST /auth/forgot_password` : une même adresse e-mail ou une même IP cliente ne peut plus déclencher plus de 10 demandes par fenêtre de 15 minutes ; les demandes suivantes sont refusées, même si la réponse habituelle serait un 200 vide. Les requêtes malformées comptent aussi comme tentatives échouées par IP quand `TRUST_PROXY` est défini. Un front qui relance la demande trop souvent doit en tenir compte. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+
 #### Corrections
-- Les journaux d'erreur ne contiennent plus les valeurs reçues. Avant : l'`errorHandler` par défaut et `checkApis` journalisaient l'erreur brute, dont la `cause` axios contenait le Bearer de l'appelant et les corps de requête et de réponse. Maintenant : ils journalisent `describeError(error)` (type, statut, code, message). (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+- Le « mot de passe oublié » ne peut plus être bloqué pour toute l'instance (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281)). Avant : 10 requêtes anonymes suffisaient à verrouiller la récupération pour tous les utilisateurs pendant 15 minutes, car les appels anonymes vers Core partaient sans adresse du client et le budget par IP de Core était consommé par le pod du BFF. Maintenant : les appels anonymes (connexion, Keycloak, mot de passe oublié et réinitialisation, changement imposé, refresh) transmettent l'IP du client dans `X-Forwarded-For`, et Core compte par client.
+- Les journaux d'erreur ne contiennent plus de secrets ni de contenu HTTP (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213)). Avant : l'erreur brute était journalisée, y compris le Bearer token de l'appelant et les corps de requête et de réponse. Maintenant : seuls le type, le statut, le code et le message sont journalisés (`describeError` de `@mairie360/bffs-lib` 1.2.1).
 
 #### Technique
-- Outils RGPD de CI sans effet sur le service : test du marqueur (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213)), simulation d'usage RGPD (MAIR-497, [#217](https://github.com/mairie360/BFF_user/pull/217)) et checklist RGPD des PR (MAIR-295, [#218](https://github.com/mairie360/BFF_user/pull/218)).
-- Gate d'intégration newman (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273)) : collection Postman rejouée contre l'image du BFF, bloquante pour la promotion staging ; CICD passe en v4.5.0.
-- Node.js 24.22.1 épinglé par digest pour les images et la CI, image de développement exécutée en utilisateur `node` ([#275](https://github.com/mairie360/BFF_user/pull/275)).
-- Dépendances : `@typescript-eslint/eslint-plugin`, `@typescript-eslint/parser` et `typescript-eslint` en 8.72.1, `eslint` en 10.14.0, `globals` en 17.14.0 ([#276](https://github.com/mairie360/BFF_user/pull/276)) ; `dotenv` en 18.0.9 ([#274](https://github.com/mairie360/BFF_user/pull/274)), diff absent, mention d'après la description de la PR.
-- Documentation des versions CICD et Node.js alignée ([#271](https://github.com/mairie360/BFF_user/pull/271)).
+- Dépendances : `@mairie360/bffs-lib` passe à 2.6.0 (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281)) ; mises à jour des outils TypeScript et ESLint ([#276](https://github.com/mairie360/BFF_user/pull/276)) et de `dotenv` en 18.0.9 ([#274](https://github.com/mairie360/BFF_user/pull/274)) ; Node.js 24.22.1 épinglé par digest dans les Dockerfile et la CI, l'image de développement tourne sous l'utilisateur `node` ([#275](https://github.com/mairie360/BFF_user/pull/275)).
+- Tests et CI : stack d'intégration newman sur la vraie Core API (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273)), simulation RGPD et test du marqueur de journaux (MAIR-290 et MAIR-497, [#213](https://github.com/mairie360/BFF_user/pull/213), [#217](https://github.com/mairie360/BFF_user/pull/217)), checklist RGPD obligatoire sur les pull requests (MAIR-295, [#218](https://github.com/mairie360/BFF_user/pull/218)) ; description OpenAPI de `/auth/forgot_password` mise à jour ([#281](https://github.com/mairie360/BFF_user/pull/281)) et documentation alignée sur mairie360/CICD v4.4.3 ([#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+#### Nouveautés
+- `POST /auth/forgot_password` : chaque requête compte désormais dans deux plafonds sur 15 minutes, l'un par IP cliente et l'autre par adresse e-mail (`AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, 10 par défaut) ; au-delà, la requête est refusée. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+
+#### Changements de comportement
+- `POST /auth/forgot_password` : une même adresse e-mail ou une même IP cliente ne peut plus déclencher plus de 10 demandes par fenêtre de 15 minutes ; les demandes suivantes sont refusées, même si la réponse habituelle serait un 200 vide. Les requêtes malformées comptent aussi comme tentatives échouées par IP quand `TRUST_PROXY` est défini. Un front qui relance la demande trop souvent doit en tenir compte. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+
 #### Corrections
-- Les journaux d'erreur ne contiennent plus les valeurs reçues. Avant : l'`errorHandler` par défaut et `checkApis` journalisaient l'erreur brute, dont la `cause` axios contenait le Bearer de l'appelant et les corps de requête et de réponse. Maintenant : ils journalisent `describeError(error)` (type, statut, code, message). (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+- Le « mot de passe oublié » ne peut plus être bloqué pour toute l'instance (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281)). Avant : 10 requêtes anonymes suffisaient à verrouiller la récupération pour tous les utilisateurs pendant 15 minutes, car les appels anonymes vers Core partaient sans adresse du client et le budget par IP de Core était consommé par le pod du BFF. Maintenant : les appels anonymes (connexion, Keycloak, mot de passe oublié et réinitialisation, changement imposé, refresh) transmettent l'IP du client dans `X-Forwarded-For`, et Core compte par client.
+- Les journaux d'erreur ne contiennent plus de secrets ni de contenu HTTP (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213)). Avant : l'erreur brute était journalisée, y compris le Bearer token de l'appelant et les corps de requête et de réponse. Maintenant : seuls le type, le statut, le code et le message sont journalisés (`describeError` de `@mairie360/bffs-lib` 1.2.1).
 
 #### Technique
-- Outils RGPD de CI sans effet sur le service : test du marqueur (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213)), simulation d'usage RGPD (MAIR-497, [#217](https://github.com/mairie360/BFF_user/pull/217)) et checklist RGPD des PR (MAIR-295, [#218](https://github.com/mairie360/BFF_user/pull/218)).
-- Gate d'intégration newman (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273)) : collection Postman rejouée contre l'image du BFF, bloquante pour la promotion staging ; CICD passe en v4.5.0.
-- Node.js 24.22.1 épinglé par digest pour les images et la CI, image de développement exécutée en utilisateur `node` ([#275](https://github.com/mairie360/BFF_user/pull/275)).
-- Dépendances : `@typescript-eslint/eslint-plugin`, `@typescript-eslint/parser` et `typescript-eslint` en 8.72.1, `eslint` en 10.14.0, `globals` en 17.14.0 ([#276](https://github.com/mairie360/BFF_user/pull/276)) ; `dotenv` en 18.0.9 ([#274](https://github.com/mairie360/BFF_user/pull/274)), diff absent, mention d'après la description de la PR.
-- Documentation des versions CICD et Node.js alignée ([#271](https://github.com/mairie360/BFF_user/pull/271)).
+- Dépendances : `@mairie360/bffs-lib` passe à 2.6.0 (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281)) ; mises à jour des outils TypeScript et ESLint ([#276](https://github.com/mairie360/BFF_user/pull/276)) et de `dotenv` en 18.0.9 ([#274](https://github.com/mairie360/BFF_user/pull/274)) ; Node.js 24.22.1 épinglé par digest dans les Dockerfile et la CI, l'image de développement tourne sous l'utilisateur `node` ([#275](https://github.com/mairie360/BFF_user/pull/275)).
+- Tests et CI : stack d'intégration newman sur la vraie Core API (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273)), simulation RGPD et test du marqueur de journaux (MAIR-290 et MAIR-497, [#213](https://github.com/mairie360/BFF_user/pull/213), [#217](https://github.com/mairie360/BFF_user/pull/217)), checklist RGPD obligatoire sur les pull requests (MAIR-295, [#218](https://github.com/mairie360/BFF_user/pull/218)) ; description OpenAPI de `/auth/forgot_password` mise à jour ([#281](https://github.com/mairie360/BFF_user/pull/281)) et documentation alignée sur mairie360/CICD v4.4.3 ([#271](https://github.com/mairie360/BFF_user/pull/271)).
 
 ## Différence staging → prod (en staging, pas encore en prod)
 
@@ -42,6 +50,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-01 20:09 UTC | dev | — | `7ce44d2` | [run](https://github.com/mairie360/BFF_user/actions/runs/41344951999) |
 | 2026-11-01 17:21 UTC | dev | — | `49a3611` | [run](https://github.com/mairie360/BFF_user/actions/runs/41330698243) |
 | 2026-11-01 12:45 UTC | dev | — | `86a82ae` | [run](https://github.com/mairie360/BFF_user/actions/runs/41307645663) |
 | 2026-11-01 12:40 UTC | dev | — | `d356c97` | [run](https://github.com/mairie360/BFF_user/actions/runs/41307417610) |
