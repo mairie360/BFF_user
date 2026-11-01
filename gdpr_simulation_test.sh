@@ -41,9 +41,23 @@ fi
 export IMAGE_REF
 echo "==> BFF image under test: $IMAGE_REF"
 
+# Random JWT_SECRET for this run and the admin JWT signed with it (MAIR-428, MAIR-474).
+# shellcheck source=stack_secrets.sh
+source ./stack_secrets.sh || exit 1
+
+# Engine. CI checks mairie360/CICD out as cicd-repo/; locally it is cloned once at the cicd_version
+# pinned in .github/workflows/cicd.yml, or at the first release that ships the engine
+# (GDPR_ENGINE_MIN_CICD) while that pin is older (override with CICD_VERSION, e.g. a branch).
+GDPR_ENGINE_MIN_CICD="v4.12.0"
 CICD_DIR="cicd-repo"
 if [ ! -f "$CICD_DIR/tests/gdpr/simulation/simulate.mjs" ]; then
-    CICD_VERSION="${CICD_VERSION:-$(sed -n 's/^[[:space:]]*cicd_version:[[:space:]]*\([^[:space:]#]*\).*/\1/p' .github/workflows/cicd.yml | head -n 1)}"
+    if [ -z "${CICD_VERSION:-}" ]; then
+        CICD_VERSION="$(sed -n 's/^[[:space:]]*cicd_version:[[:space:]]*\([^[:space:]#]*\).*/\1/p' .github/workflows/cicd.yml | head -n 1)"
+        case "$CICD_VERSION" in
+            v[0-9]*) CICD_VERSION="$(printf '%s\n%s\n' "$CICD_VERSION" "$GDPR_ENGINE_MIN_CICD" | sort -V | tail -n 1)" ;;
+            *) CICD_VERSION="$GDPR_ENGINE_MIN_CICD" ;;
+        esac
+    fi
     echo "==> Fetching mairie360/CICD $CICD_VERSION into $CICD_DIR/..."
     rm -rf "$CICD_DIR"
     git clone --quiet --depth 1 --branch "$CICD_VERSION" https://github.com/mairie360/CICD "$CICD_DIR" || exit 1
@@ -60,7 +74,15 @@ psql_stack() {
 }
 
 echo "==> [1/5] Starting the stack and the personas' journeys..."
-docker compose -f "$COMPOSE_FILE" up -d
+# Fresh volumes on every run: a volume left by a previous run would hand the stack its rows.
+docker compose -f "$COMPOSE_FILE" down -v --remove-orphans > /dev/null 2>&1
+# A failed dependency (seeder, migration, upstream readiness) leaves the runner created but never
+# started, and `docker compose wait` would then report 0: fail here instead.
+if ! docker compose -f "$COMPOSE_FILE" up -d; then
+    echo "==> The stack did not start: a dependency failed. Logs:"
+    docker compose -f "$COMPOSE_FILE" logs --tail 80
+    exit 1
+fi
 docker compose -f "$COMPOSE_FILE" wait gdpr-simulation
 RUNNER_EXIT=$?
 docker compose -f "$COMPOSE_FILE" logs --no-color --tail 60 gdpr-simulation
@@ -84,7 +106,12 @@ for query in erasure retention content; do
 done
 
 echo "==> [4/5] Saving the logs of every container..."
-docker compose -f "$COMPOSE_FILE" logs --no-color > "$RUN_DIR/containers.log"
+# Missing or truncated logs would let the analysis pass as clean: stop instead.
+if ! docker compose -f "$COMPOSE_FILE" logs --no-color > "$RUN_DIR/containers.log" \
+    || [ ! -s "$RUN_DIR/containers.log" ]; then
+    echo "Could not save the container logs: the analysis would not be reliable."
+    exit 1
+fi
 
 echo "==> [5/5] Removing the stack..."
 docker compose -f "$COMPOSE_FILE" down -v

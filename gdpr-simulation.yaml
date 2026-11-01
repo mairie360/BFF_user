@@ -17,6 +17,6 @@ erase:
   - name: erase the persona (archive, until the anonymization of MAIR-289)
     request:
       method: DELETE
-      path: "/bff/admin/users/{{user_id}}"
+      path: "/admin/users/{{user_id}}"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
     expect: [204, 404]
