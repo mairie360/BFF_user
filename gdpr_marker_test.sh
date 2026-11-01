@@ -79,6 +79,15 @@ docker run --rm -v "$PWD/$REPORT_DIR:/report" -v "$PWD/$CICD_DIR/tests/gdpr:/eng
   node:24-bookworm-slim node /engine/marker/scan.mjs /report
 EXIT_CODE=$?
 
+# The scanner searches the marker's values and the captures marked sensitive, not the env values the
+# journey sends: the admin JWT of the run is searched here, whole and by its signature (what survives a
+# truncated line), and never printed.
+if grep -qF -e "$ADMIN_JWT" -e "${ADMIN_JWT##*.}" "$REPORT_DIR/containers.log"; then
+  echo "The admin JWT of the run appears in the container logs."
+  printf '\n**❌ The admin JWT of the run appears in the container logs.**\n' >> "$REPORT_DIR/summary.md"
+  EXIT_CODE=1
+fi
+
 echo "----------------------------------------"
 echo "Final exit code: $EXIT_CODE"
 echo "----------------------------------------"
