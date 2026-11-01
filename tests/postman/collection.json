@@ -2773,6 +2773,232 @@
       "description": "The account becomes an administrator, sees and revokes its own session, then loses the role."
     },
     {
+      "name": "Password recovery under flood (MAIR-679)",
+      "description": "MAIR-679: one client flooding the forgot password form must not lock password recovery for the other users. The BFF trusts the stack network (TRUST_PROXY), so X-Forwarded-For names the client, and relays that address to Core API, whose own per-client limit (10 / 15 min) used to count every request on the BFF's address.",
+      "item": [
+        {
+          "name": "MAIR-679 One client floods the forgot password form",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Forwarded-For",
+                "value": "{{flood_client_ip}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"flood-{{flood_n}}.{{run_id}}@mairie360.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Sent 10 times (setNextRequest loop) from one client, each time for another address: all accepted."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const runId = Number(pm.environment.get('run_id')) || Date.now();",
+                  "// Documentation ranges, one per run: the flooder and the other client never share an address.",
+                  "pm.environment.set('flood_client_ip', `203.0.113.${(runId % 250) + 1}`);",
+                  "pm.environment.set('other_client_ip', `198.51.100.${(runId % 250) + 1}`);",
+                  "pm.environment.set('flood_n', String((Number(pm.environment.get('flood_n')) || 0) + 1));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const n = Number(pm.environment.get('flood_n'));",
+                  "pm.test(`Request ${n} of 10 is accepted`, function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "if (n < 10) {",
+                  "    postman.setNextRequest(pm.info.requestName);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-679 The 11th request of that client is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Forwarded-For",
+                "value": "{{flood_client_ip}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"flood-11.{{run_id}}@mairie360.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('flood_n');",
+                  "pm.test(\"Status is 429\", function () {",
+                  "    pm.response.to.have.status(429);",
+                  "});",
+                  "pm.test(\"Error envelope TOO_MANY_REQUESTS\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error.code).to.eql('TOO_MANY_REQUESTS');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "    pm.expect(body.error.details).to.eql([]);",
+                  "});",
+                  "pm.test(\"Retry-After tells how long to wait\", function () {",
+                  "    pm.expect(Number(pm.response.headers.get('Retry-After'))).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-679 Another client still gets its reset e-mail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Forwarded-For",
+                "value": "{{other_client_ip}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/forgot_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "forgot_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"perf-tester@mairie360.fr\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200 despite the flood of another client\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Nothing leaks in the body\", function () {",
+                  "    pm.expect(pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-679 The reset e-mail reached the account",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{fakeResendUrl}}/__admin/requests",
+              "host": [
+                "{{fakeResendUrl}}"
+              ],
+              "path": [
+                "__admin",
+                "requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"An e-mail with a reset link was sent to the account\", function () {",
+                  "    const sent = pm.response.json().requests.filter((r) => r.request.url === '/emails' && r.request.body.includes('perf-tester@mairie360.fr'));",
+                  "    pm.expect(sent, 'e-mails to the account').to.not.be.empty;",
+                  "    pm.expect(sent[0].request.body).to.match(/reset-password\\?token=[0-9a-fA-F-]{36}/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Password reset",
       "item": [
         {

@@ -6,6 +6,8 @@ import { captureLogs } from './support/logs';
 // POST /api/v1/auth/keycloak is still called by hand (coreClient.ts), so the contract-driven mock of
 // user.upstream-mocks.test.ts does not serve it: the hand-written call is checked here instead.
 describe('coreAuthClient.keycloakLogin', () => {
+    const client = { ip: '203.0.113.7', socket: {} } as never;
+
     afterEach(() => {
         jest.restoreAllMocks();
         delete process.env.CORE_API_URL;
@@ -18,17 +20,20 @@ describe('coreAuthClient.keycloakLogin', () => {
 
         process.env.CORE_API_URL = 'http://core.test';
 
-        const response = await keycloakLoginUser(view);
+        const response = await keycloakLoginUser(view, client);
 
         expect(response.data).toEqual(loginResponse());
-        expect(post).toHaveBeenCalledWith('/api/v1/auth/keycloak', view, { baseURL: 'http://core.test', timeout: 10_000 });
+        // MAIR-679: the browser's address is relayed, so Core rate-limits that client and not the BFF pod.
+        expect(post).toHaveBeenCalledWith('/api/v1/auth/keycloak', view, {
+            baseURL: 'http://core.test', timeout: 10_000, headers: { 'X-Forwarded-For': '203.0.113.7' },
+        });
     });
 
     it('never falls back to a localhost URL: 503 without any call when CORE_API_URL is missing', async () => {
         const post = jest.spyOn(coreClient, 'post');
         delete process.env.CORE_API_URL;
 
-        await expect(keycloakLoginUser({ code: 'code', redirect_uri: 'https://login.mairie360.fr/auth/callback', device_info: 'Firefox' }))
+        await expect(keycloakLoginUser({ code: 'code', redirect_uri: 'https://login.mairie360.fr/auth/callback', device_info: 'Firefox' }, client))
             .rejects.toMatchObject({ status: 503, message: 'The CORE_API service is not configured.' });
         expect(post).not.toHaveBeenCalled();
         expect(coreClient.defaults.baseURL).toBeUndefined();

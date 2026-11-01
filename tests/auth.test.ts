@@ -78,7 +78,7 @@ describe('POST /auth/login', () => {
         expect(response.headers['access-control-expose-headers']).toBeUndefined();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*Path=\/;.*HttpOnly;.*SameSite=Strict/);
         expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly;.*SameSite=Strict`));
-        expect(mockedLoginUser).toHaveBeenCalledWith(credentials);
+        expect(mockedLoginUser).toHaveBeenCalledWith(credentials, expect.anything());
     });
 
     it('returns 502 when the Core omits the Authorization Bearer header', async () => {
@@ -155,7 +155,7 @@ describe('POST /auth/force_change_password', () => {
         expect(mockedForceChangePassword).toHaveBeenCalledWith({
             token: FIRST_CONNECTION_TOKEN,
             new_password: 'Updated-456!',
-        });
+        }, expect.anything());
     });
 
     it('rejects an invalid payload without calling Core API', async () => {
@@ -207,7 +207,7 @@ describe('POST /auth/forgot_password', () => {
         expect(response.headers['set-cookie']).toBeUndefined();
         expect(response.headers['cache-control']).toBe('no-store');
         // Undeclared fields are stripped.
-        expect(mockedRequestPasswordReset).toHaveBeenCalledWith({ email: 'user@example.com' });
+        expect(mockedRequestPasswordReset).toHaveBeenCalledWith({ email: 'user@example.com' }, expect.anything());
     });
 
     it.each([
@@ -263,7 +263,7 @@ describe('POST /auth/reset_password', () => {
         expect(response.headers.authorization).toBeUndefined();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*Path=\/;.*HttpOnly;.*SameSite=Strict/);
         expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly;.*SameSite=Strict`));
-        expect(mockedResetUserPassword).toHaveBeenCalledWith(reset);
+        expect(mockedResetUserPassword).toHaveBeenCalledWith(reset, expect.anything());
     });
 
     it('returns 502 when Core omits the Authorization Bearer header', async () => {
@@ -331,7 +331,7 @@ describe('POST /auth/refresh', () => {
         expect(response.headers.authorization).toBeUndefined();
         expect(response.headers['access-control-expose-headers']).toBeUndefined();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=renewed\.payload\.signature;.*HttpOnly/);
-        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
     });
 
     it('replaces the refreshToken cookie with the token rotated by Core', async () => {
@@ -369,7 +369,7 @@ describe('POST /auth/refresh', () => {
         const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
 
         expect(response.status).toBe(200);
-        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
     });
 
     it('prefers the body refresh token over the cookie', async () => {
@@ -377,7 +377,7 @@ describe('POST /auth/refresh', () => {
 
         await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=cookie-token').send({ refresh_token: REFRESH_TOKEN });
 
-        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN);
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
     });
 
     it('rejects a request without refresh token in the body nor the cookie with 400', async () => {
@@ -641,13 +641,98 @@ describe('authentication rate limiting', () => {
         expect(mockedResetUserPassword).not.toHaveBeenCalled();
     });
 
-    it('does not count the accepted reset e-mail requests', async () => {
-        mockedRequestPasswordReset.mockResolvedValue();
-        const target = limitedApp({ ipMax: 1 });
-        const forgot = () => request(target).post('/auth/forgot_password').set('X-Forwarded-For', '203.0.113.10').send({ email: 'user@example.com' });
+    // MAIR-679: /auth/forgot_password always answers 200, so the failed-only limiter never counted it, and Core counted
+    // every request on the BFF pod's address: 10 anonymous requests locked password recovery for the whole instance.
+    describe('MAIR-679 forgot password flood', () => {
+        /** The production limiters (default environment), behind a trusted proxy. */
+        const productionApp = () => {
+            const production = express();
+            production.use(express.json());
+            production.set('trust proxy', true);
+            production.use('/auth', createAuthRouter(createAuthRateLimiters(authRateLimitOptionsFromEnv({ TRUST_PROXY: 'true' }))));
+            production.use(errorHandler({ onError: () => undefined }));
+            return production;
+        };
+        const forgot = (target: express.Express, email: string, clientIp?: string) => {
+            const call = request(target).post('/auth/forgot_password');
+            return (clientIp ? call.set('X-Forwarded-For', clientIp) : call).send({ email });
+        };
 
-        expect((await forgot()).status).toBe(200);
-        expect((await forgot()).status).toBe(200);
+        beforeEach(() => {
+            mockedRequestPasswordReset.mockResolvedValue();
+        });
+
+        it('refuses the 11th request of one client and still serves another client', async () => {
+            const target = productionApp();
+
+            for (let attempt = 1; attempt <= 10; attempt += 1) {
+                expect((await forgot(target, `victim-${attempt}@example.com`, '203.0.113.50')).status).toBe(200);
+            }
+            const flooder = await forgot(target, 'victim-11@example.com', '203.0.113.50');
+            expect(flooder.status).toBe(429);
+            expect(flooder.body).toEqual({ error: { code: 'TOO_MANY_REQUESTS', message: RATE_LIMIT_MESSAGE, details: [] } });
+            expect(Number(flooder.headers['retry-after'])).toBeGreaterThanOrEqual(1);
+
+            expect((await forgot(target, 'agent@example.com', '198.51.100.50')).status).toBe(200);
+            expect(mockedRequestPasswordReset).toHaveBeenCalledTimes(11);
+        });
+
+        it('refuses the 11th request for one e-mail from any client', async () => {
+            const target = productionApp();
+
+            for (let attempt = 1; attempt <= 10; attempt += 1) {
+                expect((await forgot(target, 'same@example.com', `192.0.2.${attempt}`)).status).toBe(200);
+            }
+            // Case and spaces do not give a fresh counter.
+            expect((await forgot(target, ' SAME@example.com', '192.0.2.99')).status).toBe(429);
+            expect((await forgot(target, 'other@example.com', '192.0.2.99')).status).toBe(200);
+        });
+
+        it('ignores a forged X-Forwarded-For entry in front of the trusted chain', async () => {
+            const target = express();
+            target.use(express.json());
+            // Only the loopback front is trusted: the leftmost entry was written by the client.
+            target.set('trust proxy', 'loopback');
+            target.use('/auth', createAuthRouter(createAuthRateLimiters({
+                enabled: true, windowMs: 60_000, accountMax: 100, ipMax: 100, forgotPasswordMax: 2, perClientIp: true,
+            })));
+            target.use(errorHandler({ onError: () => undefined }));
+
+            // The front appends the real address; the client forges a fresh address on the left each time.
+            expect((await forgot(target, 'a@example.com', '1.2.3.1, 198.51.100.70')).status).toBe(200);
+            expect((await forgot(target, 'b@example.com', '1.2.3.2, 198.51.100.70')).status).toBe(200);
+            expect((await forgot(target, 'c@example.com', '1.2.3.3, 198.51.100.70')).status).toBe(429);
+            expect(mockedRequestPasswordReset).toHaveBeenLastCalledWith(
+                { email: 'b@example.com' }, expect.objectContaining({ ip: '198.51.100.70' }),
+            );
+        });
+
+        it('relays the client address to Core', async () => {
+            const target = productionApp();
+
+            await forgot(target, 'relay@example.com', '203.0.113.60');
+
+            expect(mockedRequestPasswordReset).toHaveBeenCalledWith(
+                { email: 'relay@example.com' }, expect.objectContaining({ ip: '203.0.113.60' }),
+            );
+        });
+
+        it('keeps the per-e-mail limit without TRUST_PROXY, and no per-IP limit that would lock everyone', async () => {
+            const direct = express();
+            direct.use(express.json());
+            direct.use('/auth', createAuthRouter(createAuthRateLimiters({
+                enabled: true, windowMs: 60_000, accountMax: 100, ipMax: 100, forgotPasswordMax: 2, perClientIp: false,
+            })));
+            direct.use(errorHandler({ onError: () => undefined }));
+
+            // Every client is the front pod here: two e-mails each twice, no shared lockout.
+            for (const email of ['a@example.com', 'b@example.com']) {
+                expect((await forgot(direct, email)).status).toBe(200);
+                expect((await forgot(direct, email)).status).toBe(200);
+            }
+            expect((await forgot(direct, 'a@example.com')).status).toBe(429);
+            expect((await forgot(direct, 'c@example.com')).status).toBe(200);
+        });
     });
 
     it('does not count successful sign-ins', async () => {
@@ -866,18 +951,23 @@ describe('authentication rate limiting', () => {
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
                 expect(logs).toEqual([expect.objectContaining({ level: 'WARN', target: 'bff-user' })]);
                 expect(logs[0].message).toContain('TRUST_PROXY is not set');
+                expect(logs[0].message).toContain('Core API sees every client as the front pod');
                 jest.restoreAllMocks();
             });
         });
     });
 
     it('reads its settings from the environment with safe defaults', () => {
-        expect(authRateLimitOptionsFromEnv({})).toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, perClientIp: false });
+        expect(authRateLimitOptionsFromEnv({})).toEqual({
+            enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, forgotPasswordMax: 10, perClientIp: false,
+        });
         expect(authRateLimitOptionsFromEnv({
-            AUTH_RATE_LIMIT_ENABLED: 'false', AUTH_RATE_LIMIT_WINDOW_MS: '60000', AUTH_RATE_LIMIT_MAX: '5', AUTH_RATE_LIMIT_IP_MAX: '50', TRUST_PROXY: '1',
-        })).toEqual({ enabled: false, windowMs: 60_000, accountMax: 5, ipMax: 50, perClientIp: true });
-        expect(authRateLimitOptionsFromEnv({ AUTH_RATE_LIMIT_MAX: '0', AUTH_RATE_LIMIT_IP_MAX: 'abc', TRUST_PROXY: 'false' }))
-            .toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, perClientIp: false });
+            AUTH_RATE_LIMIT_ENABLED: 'false', AUTH_RATE_LIMIT_WINDOW_MS: '60000', AUTH_RATE_LIMIT_MAX: '5', AUTH_RATE_LIMIT_IP_MAX: '50',
+            AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX: '3', TRUST_PROXY: '1',
+        })).toEqual({ enabled: false, windowMs: 60_000, accountMax: 5, ipMax: 50, forgotPasswordMax: 3, perClientIp: true });
+        expect(authRateLimitOptionsFromEnv({
+            AUTH_RATE_LIMIT_MAX: '0', AUTH_RATE_LIMIT_IP_MAX: 'abc', AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX: '-1', TRUST_PROXY: 'false',
+        })).toEqual({ enabled: true, windowMs: 900_000, accountMax: 10, ipMax: 100, forgotPasswordMax: 10, perClientIp: false });
     });
 });
 
@@ -905,7 +995,7 @@ describe('POST /auth/keycloak', () => {
         expect(response.headers['set-cookie'][0]).toContain('accessToken=header.payload.signature');
         expect(response.headers['set-cookie'][0]).toContain('HttpOnly');
         expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=.*Path=\/auth;.*HttpOnly/);
-        expect(mockedKeycloakLogin).toHaveBeenCalledWith(keycloakLogin);
+        expect(mockedKeycloakLogin).toHaveBeenCalledWith(keycloakLogin, expect.anything());
     });
 
     it('accepts a request without PKCE verifier nor nonce and strips undeclared fields', async () => {
@@ -915,7 +1005,7 @@ describe('POST /auth/keycloak', () => {
         const response = await request(app).post('/auth/keycloak').send({ code, redirect_uri, device_info, user_id: 1 });
 
         expect(response.status).toBe(200);
-        expect(mockedKeycloakLogin).toHaveBeenCalledWith({ code, redirect_uri, device_info });
+        expect(mockedKeycloakLogin).toHaveBeenCalledWith({ code, redirect_uri, device_info }, expect.anything());
     });
 
     it.each([

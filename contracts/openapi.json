@@ -1372,7 +1372,7 @@
           "Authentication"
         ],
         "summary": "Requests a password reset e-mail",
-        "description": "Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link (`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. Malformed requests are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For; Core API limits the requests per client and per e-mail address.",
+        "description": "Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link (`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. Every request counts against two budgets (AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX, 10 per 15 minutes by default): one per e-mail address, and one per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For. Malformed requests also count as failed attempts per client IP. The client IP is relayed to Core API, which limits the requests per client and per e-mail address too.",
         "requestBody": {
           "required": true,
           "content": {

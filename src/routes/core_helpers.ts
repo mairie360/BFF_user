@@ -1,4 +1,5 @@
-import { callUpstream, withoutSession, type UpstreamRequestOptions } from '@mairie360/bffs-lib';
+import { asAnonymousClient, callUpstream, type UpstreamRequestOptions } from '@mairie360/bffs-lib';
+import type { Request } from 'express';
 import type { AxiosResponse } from 'axios';
 import type {
     ForceChangePasswordView,
@@ -13,6 +14,13 @@ import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/
 import type { KeycloakLoginView } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
+/**
+ * The anonymous client a public auth route acts for. Its address (`req.ip`, resolved behind `TRUST_PROXY`) is relayed
+ * to Core as `X-Forwarded-For` (`asAnonymousClient`), so Core's per-IP budgets count that client, not this BFF's pod
+ * shared by every user (MAIR-679).
+ */
+export type AnonymousClient = Pick<Request, 'ip' | 'socket' | 'app'>;
+
 export function isLoginResponseView(value: unknown): value is LoginResponseView {
     return (
         typeof value === 'object'
@@ -22,8 +30,8 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
     );
 }
 
-export async function loginUser(loginView: LoginView): Promise<AxiosResponse<LoginResponseView>> {
-    return coreAuthClient.login(loginView, withoutSession('CORE_API'));
+export async function loginUser(loginView: LoginView, client: AnonymousClient): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.login(loginView, asAnonymousClient('CORE_API', client));
 }
 
 /**
@@ -31,8 +39,8 @@ export async function loginUser(loginView: LoginView): Promise<AxiosResponse<Log
  * its JWT middleware (>= 1.2.0), so no session is forwarded and an expired JWT is not needed.
  * Core >= 2.0.0 rotates the refresh token: the one sent stops working and the body carries its replacement.
  */
-export async function refreshSession(refreshToken: string): Promise<AxiosResponse<RefreshResponseView>> {
-    return coreSessionsClient.refresh({ refresh_token: refreshToken }, withoutSession('CORE_API'));
+export async function refreshSession(refreshToken: string, client: AnonymousClient): Promise<AxiosResponse<RefreshResponseView>> {
+    return coreSessionsClient.refresh({ refresh_token: refreshToken }, asAnonymousClient('CORE_API', client));
 }
 
 /**
@@ -54,22 +62,24 @@ export async function logoutSession(caller: UpstreamRequestOptions): Promise<voi
 /** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
 export async function keycloakLoginUser(
     keycloakLoginView: KeycloakLoginView,
+    client: AnonymousClient,
 ): Promise<AxiosResponse<LoginResponseView>> {
-    return coreAuthClient.keycloakLogin(keycloakLoginView, withoutSession('CORE_API'));
+    return coreAuthClient.keycloakLogin(keycloakLoginView, asAnonymousClient('CORE_API', client));
 }
 
 export async function forceChangeUserPassword(
     forceChangePasswordView: ForceChangePasswordView,
+    client: AnonymousClient,
 ): Promise<void> {
-    await coreAuthClient.forceChangePassword(forceChangePasswordView, withoutSession('CORE_API'));
+    await coreAuthClient.forceChangePassword(forceChangePasswordView, asAnonymousClient('CORE_API', client));
 }
 
 /**
  * Asks Core to e-mail a reset link (POST /api/v1/auth/forgot_password, public). Core answers the same empty 200
  * whether the e-mail matches an account or not.
  */
-export async function requestPasswordReset(forgotPasswordView: ForgotPasswordView): Promise<void> {
-    await coreAuthClient.forgotPassword(forgotPasswordView, withoutSession('CORE_API'));
+export async function requestPasswordReset(forgotPasswordView: ForgotPasswordView, client: AnonymousClient): Promise<void> {
+    await coreAuthClient.forgotPassword(forgotPasswordView, asAnonymousClient('CORE_API', client));
 }
 
 /**
@@ -78,8 +88,9 @@ export async function requestPasswordReset(forgotPasswordView: ForgotPasswordVie
  */
 export async function resetUserPassword(
     resetPasswordView: ResetPasswordView,
+    client: AnonymousClient,
 ): Promise<AxiosResponse<ResetPasswordResponseView>> {
-    return coreAuthClient.resetPassword(resetPasswordView, withoutSession('CORE_API'));
+    return coreAuthClient.resetPassword(resetPasswordView, asAnonymousClient('CORE_API', client));
 }
 
 /**

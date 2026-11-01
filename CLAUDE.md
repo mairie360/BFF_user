@@ -135,6 +135,13 @@ and the legacy `/me` resolve.
   `TRUST_PROXY` is unset). The ZAP/k6 stacks set
   `AUTH_RATE_LIMIT_ENABLED=false` on bff-user.
   `createAuthRouter(limiters)` builds a router with its own counters for tests.
+  MAIR-679: `/auth/forgot_password` always answers 200, so the failed-only limiters never count it: two more limiters
+  (`forgotPasswordPerIp`, `forgotPasswordPerAccount`, `AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, default 10) count **every**
+  request, per client IP (same `TRUST_PROXY` + `X-Forwarded-For` rule) and per SHA-256 of the e-mail. Every anonymous
+  Core call goes through the lib's `asAnonymousClient('CORE_API', req)` (helpers of `core_helpers.ts` take the request):
+  Core rate-limits per client address and reads it from that `X-Forwarded-For`; with `withoutSession` every request
+  counted on the BFF pod and 10 forgot-password requests locked recovery for the whole instance. The integration stack
+  runs with the rate limits on (BFF `TRUST_PROXY=uniquelocal`, Core default) for the MAIR-679 journey.
 - **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
   `POST /api/v1/auth/keycloak` and sets the session exactly like `/auth/login`; Core's 503
   (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
@@ -183,7 +190,7 @@ Every error is `{ error: { code, message, details } }` (`@mairie360/bffs-lib`), 
 (`HttpError`, Express 5 forwards async rejections); `notFoundHandler` + `errorHandler()` close
 `src/app.ts`, keep the status and hide unexpected errors behind a generic 500. Everything comes from the lib
 (MAIR-430), no local copy: `parseRequest(schema, value, location)` (400 `Validation failed` with one
-`{ path: 'body.email', message }` detail per issue), `asCaller('CORE_API', req)` / `withoutSession('CORE_API')`
+`{ path: 'body.email', message }` detail per issue), `asCaller('CORE_API', req)` / `asAnonymousClient('CORE_API', req)` (public auth routes, MAIR-679)
 for the call options, and `callUpstream('CORE_API', call, { declared, retry })` / `upstreamError('CORE_API',
 error, declared)`: only the Core 4xx the route declares are kept (generic message), any other status, a network
 failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
@@ -205,7 +212,7 @@ never add span attributes holding request values (ids, URLs, bodies, headers). T
 `CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_SECRET` (must match Core,
 required at startup for the admin checks), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
-`AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX}` (see `src/middleware/rateLimit.ts`). Keycloak single logout (all optional, unset = no
+`AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`). Keycloak single logout (all optional, unset = no
 `logout_url`): `KEYCLOAK_REALM_URL` (public realm URL as the browser reaches it, e.g.
 `https://auth.<domain>/realms/mairie360`, not Core's in-cluster one), `KEYCLOAK_CLIENT_ID` (the
 fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
