@@ -8,42 +8,42 @@
 version: 1
 target: http://bff-user:4000
 wait: /health
-# The admin JWT of the stack (sub=1, the seeded Admin), the same one the ZAP scan uses.
+# The admin JWT of the run (sub=1, the seeded Admin), signed by stack_secrets.sh with its random secret.
 env: [ADMIN_JWT]
 steps:
   # There is no public sign-up: an administrator creates the account.
   - name: create the marker account (admin)
     request:
       method: POST
-      path: /bff/admin/users
+      path: /admin/users
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
-      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.email}}", password: "{{marker.password}}", phone_number: "{{marker.phone}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.email}}", password: "{{marker.password}}", phone_number: "{{marker.phone}}", phone_country: "FR"}
     expect: [201]
   - name: create the same e-mail again (deliberate error)
     request:
       method: POST
-      path: /bff/admin/users
+      path: /admin/users
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.email}}", password: "{{marker.password}}"}
     expect: [409]
   - name: create an account with a too short password (deliberate error)
     request:
       method: POST
-      path: /bff/admin/users
+      path: /admin/users
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "x{{marker.email}}", password: "Mk1!"}
     expect: [400]
   - name: create an account with an invalid e-mail (deliberate error)
     request:
       method: POST
-      path: /bff/admin/users
+      path: /admin/users
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", email: "{{marker.last_name}}", password: "{{marker.password}}"}
     expect: [400]
   - name: search the marker in the admin list (query string)
     request:
       method: GET
-      path: "/bff/admin/users?search={{marker.email}}"
+      path: "/admin/users?search={{marker.email}}"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
     capture:
       user_id: body.users.0.id
@@ -87,20 +87,20 @@ steps:
   - name: update the marker as admin (names and phone)
     request:
       method: PATCH
-      path: "/bff/admin/users/{{user_id}}"
+      path: "/admin/users/{{user_id}}"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
-      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", phone_number: "{{marker.phone}}"}
+      json: {first_name: "{{marker.first_name}}", last_name: "{{marker.last_name}}", phone_number: "{{marker.phone}}", phone_country: "FR"}
   - name: update the marker with an invalid phone (deliberate error)
     request:
       method: PATCH
-      path: "/bff/admin/users/{{user_id}}"
+      path: "/admin/users/{{user_id}}"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {phone_number: "{{marker.phone}}{{marker.last_name}}"}
     expect: [400]
   - name: reset the marker's password as admin
     request:
       method: PATCH
-      path: "/bff/admin/users/{{user_id}}/password"
+      path: "/admin/users/{{user_id}}/password"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {new_password: "{{marker.password}}3"}
   - name: log in with the new password
@@ -113,7 +113,7 @@ steps:
   - name: archive the marker account (admin)
     request:
       method: DELETE
-      path: "/bff/admin/users/{{user_id}}"
+      path: "/admin/users/{{user_id}}"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
   - name: log in to the archived account (deliberate error)
     request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}3", device_info: "gdpr marker"}}
