@@ -9,11 +9,11 @@ import {
     parseRequest,
     upstreamError,
     validationError,
+    verifySessionToken,
 } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiRateLimited, ErrorResponse, registry } from '../openapi-registry';
 import {
     CORE_LARGEST_PAGE,
     CORE_MAX_LIMIT,
@@ -87,21 +87,29 @@ const UserPasswordResetBody = z.object({
 const atLeastOneField = (value: Record<string, unknown>) => Object.values(value).some((field) => field !== undefined);
 const Email = z.string().trim().email().max(320).openapi({ example: 'jane.doe@mairie360.fr' });
 const PersonName = noMarkup(z.string().trim().min(1).max(64));
-const PhoneNumber = z.string().regex(/^\d{10,15}$/).openapi({ example: '0612345678' });
+// Core API (MAIR-480) parses the number as typed against `phone_country`, or its own `+` prefix in E.164
+// (400 otherwise), and clears it on `null` or `""`; same characters and length as Core.
+const PhoneNumber = z.string().max(32)
+    .regex(/^(?:\+?[\d\s.()-]+)?$/, 'Expected a phone number: digits, spaces, `.`, `-`, `(`, `)` and a leading `+`')
+    .openapi({ example: '06 12 34 56 78' });
+// Country of a national number (ISO 3166-1 alpha-2); Core refuses it without `phone_number`.
+const PhoneCountry = z.string().regex(/^[A-Z]{2}$/, 'Expected an ISO 3166-1 alpha-2 code').openapi({ example: 'FR' });
 const UserCreateBody = z.object({
     email: Email,
     first_name: PersonName.openapi({ example: 'Jane' }),
     last_name: PersonName.openapi({ example: 'Doe' }),
     password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
     phone_number: PhoneNumber.nullable().optional(),
+    phone_country: PhoneCountry.nullable().optional(),
 }).openapi('AdminUserCreateBody');
 // The password is not accepted here: Core writes it without any length check, the
-// PATCH /bff/admin/users/{userId}/password route enforces the policy and revokes the sessions.
+// PATCH /admin/users/{userId}/password route enforces the policy and revokes the sessions.
 const UserPatchBody = z.object({
     email: Email.nullable().optional().openapi({ example: 'scan-target@mairie360.fr' }),
     first_name: PersonName.nullable().optional().openapi({ example: 'Scan' }),
     last_name: PersonName.nullable().optional().openapi({ example: 'Target' }),
     phone_number: PhoneNumber.nullable().optional(),
+    phone_country: PhoneCountry.nullable().optional(),
 }).refine(atLeastOneField, { message: 'At least one field is required' }).openapi('AdminUserPatchBody');
 const UserRoleBody = z.object({
     role_id: z.number().int().positive().openapi({ example: 3 }),
@@ -220,6 +228,7 @@ const coreResponses = {
             },
         },
     },
+    429: CoreApiRateLimited,
     500: {
         description: 'Unexpected server error; the cause is only logged',
         content: {
@@ -279,39 +288,9 @@ async function requireAdmin(req: Request): Promise<void> {
         throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
-    let userId: number;
-
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) throw new Error('Invalid token');
-
-        const [encodedHeader, encodedPayload, signature] = parts;
-        const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8')) as {
-            alg?: unknown;
-        };
-        const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as {
-            sub?: unknown;
-            exp?: unknown;
-        };
-        const expectedSignature = createHmac('sha256', secret)
-            .update(`${encodedHeader}.${encodedPayload}`)
-            .digest();
-        const receivedSignature = Buffer.from(signature, 'base64url');
-        const validSignature =
-            header.alg === 'HS256' &&
-            expectedSignature.length === receivedSignature.length &&
-            timingSafeEqual(expectedSignature, receivedSignature);
-        userId = Number(payload.sub);
-        const validExpiration =
-            typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000);
-
-        if (!validSignature || !validExpiration || !Number.isInteger(userId) || userId <= 0) {
-            throw new Error('Invalid token');
-        }
-    } catch {
-        // Never send the parsing detail (JSON.parse, base64) to the client.
-        throw new HttpError(401, 'Invalid or expired session token');
-    }
+    // HS256 signature with JWT_SECRET, expiry and a positive integer `sub` (`@mairie360/bffs-lib`, the checks of
+    // Core): a forged or expired token gets its 401 without any Core call, and never learns which check failed.
+    verifySessionToken(token, secret);
 
     // The roles come from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
     // Core >= 2.0.0 lists every role in `roles` (`role` is only the first one) and, like its own admin guard,
@@ -324,7 +303,7 @@ async function requireAdmin(req: Request): Promise<void> {
     }
 }
 
-// Every /bff/admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
+// Every /admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
 // The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
 // Administration answers are session-bound: never cached by a proxy or the browser.
@@ -336,7 +315,7 @@ router.use(async (req: Request, _res: Response, next: NextFunction) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/users',
+    path: '/admin/users',
     tags: ['Administration'],
     summary: 'Liste les utilisateurs administrables, 20 éléments maximum par page',
     request: { query: UserListQuery },
@@ -354,7 +333,7 @@ router.get('/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/users',
+    path: '/admin/users',
     tags: ['Administration'],
     summary: 'Crée un utilisateur via le Core API',
     request: { body: jsonBodyRequest(UserCreateBody) },
@@ -374,7 +353,7 @@ router.post('/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/users/{userId}',
+    path: '/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Met à jour un utilisateur via le Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserPatchBody) },
@@ -396,7 +375,7 @@ router.patch('/users/:userId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/users/{userId}/password',
+    path: '/admin/users/{userId}/password',
     tags: ['Administration'],
     summary: 'Modifie le mot de passe et révoque les sessions utilisateur',
     request: {
@@ -430,7 +409,7 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/users/{userId}',
+    path: '/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Supprime définitivement un utilisateur via le Core API',
     request: { params: DeletedUserIdParams },
@@ -453,7 +432,7 @@ router.delete('/users/:userId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/users/{userId}/roles',
+    path: '/admin/users/{userId}/roles',
     tags: ['Administration'],
     summary: 'Ajoute un rôle à un utilisateur via le Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserRoleBody) },
@@ -483,7 +462,7 @@ router.post('/users/:userId/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/users/{userId}/roles/{roleId}',
+    path: '/admin/users/{userId}/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Retire un rôle à un utilisateur via le Core API',
     request: { params: UserRoleParams },
@@ -503,7 +482,7 @@ router.delete('/users/:userId/roles/:roleId', async (req: Request, res: Response
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/roles',
+    path: '/admin/roles',
     tags: ['Administration'],
     summary: 'Liste les rôles admin via le Core API',
     responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: RolesListSchema } } } },
@@ -516,7 +495,7 @@ router.get('/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/roles',
+    path: '/admin/roles',
     tags: ['Administration'],
     summary: 'Crée un rôle via le Core API',
     request: { body: jsonBodyRequest(RoleWriteBody) },
@@ -536,7 +515,7 @@ router.post('/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'put',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Remplace un rôle via le Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RoleReplaceBody) },
@@ -558,7 +537,7 @@ router.put('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Met à jour un rôle via le Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RolePatchBody) },
@@ -580,7 +559,7 @@ router.patch('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
     summary: 'Supprime un rôle via le Core API',
     request: { params: DeletedRoleIdParams },
@@ -600,7 +579,7 @@ router.delete('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups',
+    path: '/admin/groups',
     tags: ['Administration'],
     summary: 'Lists the groups through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
@@ -614,7 +593,7 @@ router.get('/groups', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/groups',
+    path: '/admin/groups',
     tags: ['Administration'],
     summary: 'Crée un groupe via le Core API',
     request: { body: jsonBodyRequest(GroupCreateBody) },
@@ -634,7 +613,7 @@ router.post('/groups', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Récupère un groupe via le Core API',
     request: { params: GroupIdParams },
@@ -650,7 +629,7 @@ router.get('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Met à jour le nom ou la description d’un groupe',
     request: {
@@ -678,7 +657,7 @@ router.patch('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
     summary: 'Supprime un groupe via le Core API',
     request: { params: DeletedGroupIdParams },
@@ -698,7 +677,7 @@ router.delete('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups/{groupId}/users',
+    path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
     summary: 'Liste les utilisateurs d’un groupe via le Core API',
     request: { params: GroupIdParams },
@@ -720,7 +699,7 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/groups/{groupId}/users',
+    path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
     summary: 'Ajoute un utilisateur à un groupe via le Core API',
     request: { params: GroupIdParams, body: jsonBodyRequest(GroupUserBody) },
@@ -752,7 +731,7 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/groups/{groupId}/users/{userId}',
+    path: '/admin/groups/{groupId}/users/{userId}',
     tags: ['Administration'],
     summary: 'Retire un utilisateur d’un groupe via le Core API',
     request: { params: GroupUserParams },
@@ -777,7 +756,7 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/sessions',
+    path: '/admin/sessions',
     tags: ['Administration'],
     summary: 'Liste les sessions actives via le Core API',
     responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
@@ -790,7 +769,7 @@ router.get('/sessions', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/sessions/history',
+    path: '/admin/sessions/history',
     tags: ['Administration'],
     summary: 'Reads the session history through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
@@ -804,7 +783,7 @@ router.get('/sessions/history', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/sessions/revoke',
+    path: '/admin/sessions/revoke',
     tags: ['Administration'],
     summary: 'Revokes a session through Core API',
     description: 'Core POST /api/v1/sessions/revoke: Core only revokes a session of the caller (the refresh token must belong to the JWT user). '

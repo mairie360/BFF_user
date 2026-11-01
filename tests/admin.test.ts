@@ -59,7 +59,7 @@ function tokenFor(userId: number) {
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
-app.use('/bff/admin', adminRouter);
+app.use('/admin', adminRouter);
 app.use(errorHandler({ onError: () => undefined }));
 
 /** Core API error as the generated axios client rejects it. */
@@ -86,7 +86,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser])));
 
         const response = await request(app)
-            .get('/bff/admin/users?page=1&page_size=20')
+            .get('/admin/users?page=1&page_size=20')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
@@ -98,7 +98,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
 
         const response = await request(app)
-            .get('/bff/admin/users?search=martin')
+            .get('/admin/users?search=martin')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
@@ -107,7 +107,7 @@ describe('Administration routes', () => {
 
     it('rejects a page size greater than 20', async () => {
         const response = await request(app)
-            .get('/bff/admin/users?page_size=21')
+            .get('/admin/users?page_size=21')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(400);
@@ -124,7 +124,7 @@ describe('Administration routes', () => {
 
         const token = tokenFor(1);
         const response = await request(app)
-            .delete('/bff/admin/users/42')
+            .delete('/admin/users/42')
             .set('Authorization', `Bearer ${token}`);
 
         expect(response.status).toBe(204);
@@ -140,7 +140,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
 
         const response = await request(app)
-            .get('/bff/admin/users')
+            .get('/admin/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
@@ -150,7 +150,7 @@ describe('Administration routes', () => {
         mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 
         const response = await request(app)
-            .delete('/bff/admin/users/42')
+            .delete('/admin/users/42')
             .set('Authorization', `Bearer ${tokenFor(2)}`);
 
         expect(response.status).toBe(403);
@@ -160,9 +160,9 @@ describe('Administration routes', () => {
 
     it.each([
         ['no session', undefined, 'Invalid session.'],
-        ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token'],
+        ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token.'],
     ])('answers 401 with %s before calling Core API', async (_label, authorization, message) => {
-        const call = request(app).delete('/bff/admin/users/42');
+        const call = request(app).delete('/admin/users/42');
         const response = await (authorization ? call.set('Authorization', authorization) : call);
 
         expect(response.status).toBe(401);
@@ -174,7 +174,7 @@ describe('Administration routes', () => {
         ['the accessToken cookie', (call: request.Test) => call.set('Cookie', `accessToken=${tokenFor(1)}`)],
         ['the x-session-token header', (call: request.Test) => call.set('x-session-token', tokenFor(1))],
     ])('ignores a session sent in %s: 401 before calling Core API', async (_label, prepare) => {
-        const response = await prepare(request(app).get('/bff/admin/users'));
+        const response = await prepare(request(app).get('/admin/users'));
 
         expect(response.status).toBe(401);
         expect(mockedGetMe).not.toHaveBeenCalled();
@@ -184,8 +184,8 @@ describe('Administration routes', () => {
     it('marks administration answers as not cacheable, errors included', async () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser])));
 
-        const ok = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
-        const refused = await request(app).get('/bff/admin/users');
+        const ok = await request(app).get('/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const refused = await request(app).get('/admin/users');
 
         expect(ok.headers['cache-control']).toBe('no-store');
         expect(refused.headers['cache-control']).toBe('no-store');
@@ -196,7 +196,7 @@ describe('Administration routes', () => {
         const secret = process.env.JWT_SECRET;
         delete process.env.JWT_SECRET;
         try {
-            const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${token}`);
+            const response = await request(app).delete('/admin/users/42').set('Authorization', `Bearer ${token}`);
 
             expect(response.status).toBe(503);
             expect(response.body).toEqual({
@@ -213,7 +213,7 @@ describe('Administration routes', () => {
     it('answers 503 without calling Core API when CORE_API_URL is not configured', async () => {
         delete process.env.CORE_API_URL;
 
-        const response = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const response = await request(app).get('/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(503);
         expect(response.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'The CORE_API service is not configured.', details: [] } });
@@ -224,7 +224,7 @@ describe('Administration routes', () => {
     it('answers 401 before 503 to a caller without session on a misconfigured instance', async () => {
         delete process.env.CORE_API_URL;
 
-        const response = await request(app).get('/bff/admin/users');
+        const response = await request(app).get('/admin/users');
 
         expect(response.status).toBe(401);
     });
@@ -238,7 +238,7 @@ describe('Administration routes', () => {
         mockedDeleteUser.mockRejectedValue(coreError(coreStatus, 'duplicate key value violates unique constraint "users_email_key"'));
 
         const response = await request(app)
-            .delete('/bff/admin/users/42')
+            .delete('/admin/users/42')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(status);
@@ -248,7 +248,7 @@ describe('Administration routes', () => {
     it('never retries a write, even on a transient Core failure', async () => {
         mockedDeleteUser.mockRejectedValue(coreError(503));
 
-        const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const response = await request(app).delete('/admin/users/42').set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
         expect(mockedDeleteUser).toHaveBeenCalledTimes(1);
@@ -258,7 +258,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockRejectedValue(coreError(409));
 
         const response = await request(app)
-            .get('/bff/admin/users')
+            .get('/admin/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
@@ -269,7 +269,7 @@ describe('Administration routes', () => {
         mockedGetMe.mockRejectedValue(new AxiosError('connect ECONNREFUSED'));
 
         const response = await request(app)
-            .get('/bff/admin/users')
+            .get('/admin/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
@@ -280,7 +280,7 @@ describe('Administration routes', () => {
         mockedResetUserPassword.mockResolvedValue(axiosResponse(undefined, 204));
 
         const response = await request(app)
-            .patch('/bff/admin/users/42/password')
+            .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ new_password: 'Temporary-123!' });
 
@@ -294,7 +294,7 @@ describe('Administration routes', () => {
 
     it('rejects an invalid new password', async () => {
         const response = await request(app)
-            .patch('/bff/admin/users/42/password')
+            .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ new_password: 'short' });
 
@@ -306,7 +306,7 @@ describe('Administration routes', () => {
         mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 
         const response = await request(app)
-            .patch('/bff/admin/users/42/password')
+            .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(2)}`)
             .send({ new_password: 'Temporary-123!' });
 
@@ -318,7 +318,7 @@ describe('Administration routes', () => {
         mockedPatchGroup.mockResolvedValue(axiosResponse(group(4, { name: 'Direction générale', description: 'Équipe de direction' })));
 
         const response = await request(app)
-            .patch('/bff/admin/groups/4')
+            .patch('/admin/groups/4')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ name: 'Direction générale', description: 'Équipe de direction' });
 
@@ -335,19 +335,19 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser], { page_size: 500 })));
 
         const response = await request(app)
-            .get('/bff/admin/groups/4/users')
+            .get('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
         expect(mockedListUsers).toHaveBeenCalledWith({ group_id: 4, page_size: 500 }, expect.anything());
-        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles')));
+        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles' && field !== 'role')));
     });
 
     it('does not add a member who already belongs to the group', async () => {
         mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([7])));
 
         const response = await request(app)
-            .post('/bff/admin/groups/4/users')
+            .post('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ user_id: 7 });
 
@@ -361,7 +361,7 @@ describe('Administration routes', () => {
         mockedAddUserToGroup.mockResolvedValue(axiosResponse('User added to group'));
 
         const response = await request(app)
-            .post('/bff/admin/groups/4/users')
+            .post('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ user_id: 7 });
 
@@ -371,18 +371,23 @@ describe('Administration routes', () => {
     });
 
     it.each([
-        ['post', '/bff/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
-        ['post', '/bff/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
-        ['patch', '/bff/admin/users/7', {}],
-        ['post', '/bff/admin/users/7/roles', { role_id: '3' }],
-        ['post', '/bff/admin/roles', { name: 'Agent' }],
-        ['put', '/bff/admin/roles/3', { name: '', description: 'Municipal agent' }],
-        ['patch', '/bff/admin/roles/3', {}],
-        ['post', '/bff/admin/groups', { name: 'Culture' }],
-        ['post', '/bff/admin/roles', { name: '<script>alert(1)</script>', description: 'Municipal agent' }],
-        ['patch', '/bff/admin/groups/4', { description: '<img src=x onerror=alert(1)>' }],
-        ['post', '/bff/admin/groups/4/users', { user_id: 0 }],
-        ['post', '/bff/admin/sessions/revoke', { token: 'opaque-refresh-token' }],
+        ['post', '/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
+        ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
+        ['patch', '/admin/users/7', {}],
+        // MAIR-480: Core's phone characters, an upper-case ISO 3166-1 alpha-2 country.
+        ['patch', '/admin/users/7', { phone_number: '06+12345678' }],
+        ['patch', '/admin/users/7', { phone_number: '0'.repeat(33) }],
+        ['patch', '/admin/users/7', { phone_number: '0612345678', phone_country: 'fr' }],
+        ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd', phone_number: '0612345678', phone_country: 'FRA' }],
+        ['post', '/admin/users/7/roles', { role_id: '3' }],
+        ['post', '/admin/roles', { name: 'Agent' }],
+        ['put', '/admin/roles/3', { name: '', description: 'Municipal agent' }],
+        ['patch', '/admin/roles/3', {}],
+        ['post', '/admin/groups', { name: 'Culture' }],
+        ['post', '/admin/roles', { name: '<script>alert(1)</script>', description: 'Municipal agent' }],
+        ['patch', '/admin/groups/4', { description: '<img src=x onerror=alert(1)>' }],
+        ['post', '/admin/groups/4/users', { user_id: 0 }],
+        ['post', '/admin/sessions/revoke', { token: 'opaque-refresh-token' }],
     ])('rejects an invalid %s %s body without calling Core API', async (method, path, body) => {
         const response = await request(app)[method as 'post'](path)
             .set('Authorization', `Bearer ${tokenFor(1)}`)
@@ -399,7 +404,7 @@ describe('Administration routes', () => {
 
     it('rejects a role assignment whose body names another user than the path', async () => {
         const response = await request(app)
-            .post('/bff/admin/users/7/roles')
+            .post('/admin/users/7/roles')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ user_id: 1, role_id: 1 });
 
@@ -412,7 +417,7 @@ describe('Administration routes', () => {
         jest.mocked(coreAdminUsersClient.adminAddRoleToUser).mockResolvedValue(axiosResponse(undefined, 200));
 
         const response = await request(app)
-            .post('/bff/admin/users/7/roles')
+            .post('/admin/users/7/roles')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ role_id: 3 });
 
@@ -422,7 +427,7 @@ describe('Administration routes', () => {
 
     it('rejects a group membership whose body names another group than the path', async () => {
         const response = await request(app)
-            .post('/bff/admin/groups/4/users')
+            .post('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ group_id: 5, user_id: 7 });
 
@@ -435,7 +440,7 @@ describe('Administration routes', () => {
         mockedPatchUser.mockResolvedValue(axiosResponse('User updated', 200));
 
         const response = await request(app)
-            .patch('/bff/admin/users/7')
+            .patch('/admin/users/7')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ first_name: 'Jane', password: 'x' });
 
@@ -447,7 +452,7 @@ describe('Administration routes', () => {
         mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([9])));
 
         const response = await request(app)
-            .delete('/bff/admin/groups/4/users/7')
+            .delete('/admin/groups/4/users/7')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(404);

@@ -1,4 +1,4 @@
-import { asCaller, bearerToken, HttpError, noStore, parseRequest, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
+import { asCaller, bearerToken, HttpError, noStore, parseRequest, requestId, upstreamError, upstreamStatus } from '@mairie360/bffs-lib';
 import type { AxiosResponse } from 'axios';
 import axios from 'axios';
 import { z } from 'zod';
@@ -7,7 +7,9 @@ import {
     CoreApiNotConfigured,
     ErrorResponse,
     AuthSessionResponse,
+    CoreApiRateLimited,
     ForceChangePasswordViewSchema,
+    ForgotPasswordViewSchema,
     KeycloakLoginViewSchema,
     LoginViewSchema,
     LogoutResponse,
@@ -15,8 +17,10 @@ import {
     RefreshResponse,
     RefreshViewSchema,
     registry,
+    ResetPasswordViewSchema,
 } from '../openapi-registry';
 import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
+import { logger } from '../logger';
 import {
     clearRefreshTokenCookie,
     clearTokenCookie,
@@ -34,6 +38,8 @@ import {
     loginUser,
     refreshSession,
     logoutSession,
+    requestPasswordReset,
+    resetUserPassword,
     revokeSession,
 } from './core_helpers';
 
@@ -185,7 +191,98 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
+    path: '/auth/forgot_password',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Requests a password reset e-mail',
+    description: 'Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link '
+        + '(`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the '
+        + 'same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. '
+        + 'Malformed requests are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For; '
+        + 'Core API limits the requests per client and per e-mail address.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: ForgotPasswordViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        200: {
+            description: 'Request accepted, empty body. Does not tell whether an e-mail was sent.',
+        },
+        400: {
+            description: 'Invalid payload (missing `email`, or not an e-mail address of at most 320 characters)',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        502: {
+            description: 'Core API unavailable, or it could not send the e-mail',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        503: CoreApiNotConfigured,
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/reset_password',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Resets a password with the e-mailed token',
+    description: 'Forwards the reset token of the e-mail, the new password and the device to Core API (POST /api/v1/auth/reset_password), '
+        + 'which saves the password, revokes every other session of the account and opens a new one. The session is then set exactly '
+        + 'like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies): the user is signed in. The token is single use: '
+        + 'a second reset with it answers 401. Failed attempts are rate limited per client IP when TRUST_PROXY is set and the request '
+        + 'carries X-Forwarded-For.',
+    request: {
+        body: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: ResetPasswordViewSchema,
+                },
+            },
+        },
+    },
+    responses: {
+        200: {
+            description: 'Password reset and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
+        },
+        400: {
+            description: 'Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character)',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        401: {
+            description: 'Reset token unknown, expired or already used, or account archived since the e-mail was sent; request a new e-mail.',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        429: tooManyAttempts,
+        500: {
+            description: 'Server error',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        502: {
+            description: 'Core API unavailable or invalid upstream answer',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        503: CoreApiNotConfigured,
+    },
+});
+
+registry.registerPath({
+    method: 'post',
     path: '/auth/refresh',
+    security: [],
     tags: ['Authentication'],
     summary: 'Renews the access JWT',
     description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.',
@@ -299,6 +396,7 @@ registry.registerPath({
 registry.registerPath({
     method: 'post',
     path: '/auth/keycloak',
+    security: [],
     tags: ['Authentication'],
     summary: 'Signs a user in with Keycloak',
     description: 'Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the '
@@ -338,6 +436,7 @@ registry.registerPath({
             description: 'Server error',
             content: { 'application/json': { schema: ErrorResponse } },
         },
+        429: CoreApiRateLimited,
         502: {
             description: 'Core API or Keycloak unavailable, or invalid upstream response',
             content: { 'application/json': { schema: ErrorResponse } },
@@ -431,6 +530,29 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         }
     });
 
+    router.post('/forgot_password', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(ForgotPasswordViewSchema, req.body, 'body');
+
+        try {
+            // Core answers the same empty 200 for a known or an unknown address (no account enumeration).
+            await requestPasswordReset(body);
+            return res.status(200).send();
+        } catch (error) {
+            throw upstreamError('CORE_API', error, [400, 429]);
+        }
+    });
+
+    router.post('/reset_password', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(ResetPasswordViewSchema, req.body, 'body');
+
+        try {
+            // Core consumes the token, saves the password and opens a session answered like a login.
+            return sendSession(res, await resetUserPassword(body));
+        } catch (error) {
+            throw upstreamError('CORE_API', error, [400, 401, 429]);
+        }
+    });
+
     router.post('/refresh', limiters.perIp, limiters.perRefreshToken, async (req: Request, res: Response) => {
         const body = parseRequest(RefreshViewSchema, req.body ?? {}, 'body');
 
@@ -482,7 +604,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             } catch (error) {
                 // Never log the tokens: the status is enough to diagnose.
                 const status = error instanceof HttpError ? error.status : upstreamStatus(error);
-                console.warn('[BFF Auth] Session revocation failed on logout', { status: status ?? 'network error' });
+                logger.warn('session revocation failed on logout', { request_id: requestId(req), status: status ?? 'network error' });
             }
         }
 

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createRateLimiter, parseTrustProxy } from '@mairie360/bffs-lib';
 import type { Request, RequestHandler, Response } from 'express';
+import { logger } from '../logger';
 import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
 
 /**
@@ -17,7 +18,8 @@ import { readCookie, REFRESH_TOKEN_COOKIE } from '../utils/cookieUtils';
  * - `AUTH_RATE_LIMIT_MAX`         failed logins per account e-mail and window, default 10.
  *                                 Also the failed refreshes per refresh token on `/auth/refresh`.
  * - `AUTH_RATE_LIMIT_IP_MAX`      failed attempts per client IP and window over every limited route,
- *                                 default 100. Only applied when `TRUST_PROXY` is set and the request
+ *                                 default 100, over /auth/login, /auth/force_change_password,
+ *                                 /auth/forgot_password, /auth/reset_password and /auth/refresh. Only applied when `TRUST_PROXY` is set and the request
  *                                 carries `X-Forwarded-For`.
  *
  * The per-e-mail and per-refresh-token counters are keyed on the account / token hash alone
@@ -104,7 +106,7 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
 export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateLimitOptionsFromEnv()): AuthRateLimiters {
     if (options.enabled && !options.perClientIp && !warnedPerIpDisabled) {
         warnedPerIpDisabled = true;
-        console.warn('[BFF Auth] TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies.');
+        logger.warn('TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies.');
     }
 
     const common = {
