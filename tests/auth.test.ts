@@ -951,6 +951,7 @@ describe('authentication rate limiting', () => {
                 isolated.createAuthRateLimiters({ ...base, enabled: true, perClientIp: false });
                 expect(logs).toEqual([expect.objectContaining({ level: 'WARN', target: 'bff-user' })]);
                 expect(logs[0].message).toContain('TRUST_PROXY is not set');
+                expect(logs[0].message).toContain('Core API sees every client as the front pod');
                 jest.restoreAllMocks();
             });
         });

@@ -136,7 +136,10 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
 export function createAuthRateLimiters(options: AuthRateLimitOptions = authRateLimitOptionsFromEnv()): AuthRateLimiters {
     if (options.enabled && !options.perClientIp && !warnedPerIpDisabled) {
         warnedPerIpDisabled = true;
-        logger.warn('TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies.');
+        // MAIR-679: the address relayed to Core API is then the front pod's too, so Core's own per-IP budgets
+        // (forgot password 10 / 15 min, sign-in 30 / min) are shared by every user behind that pod.
+        logger.warn('TRUST_PROXY is not set: per-IP rate limiting is disabled, only the per-e-mail limit applies, '
+            + 'and Core API sees every client as the front pod (its per-IP limits are shared by all users).');
     }
 
     const common = {
