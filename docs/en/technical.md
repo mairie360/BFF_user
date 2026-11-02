@@ -141,7 +141,7 @@ The type generator is pinned to `openapi-typescript@7.10.1` in `scripts/contract
 
 The `contracts.yml` job uses Node.js 24.22.1, `actions/checkout@v7` and `actions/setup-node@v7`. It runs on pushes, pull requests and manual dispatch; it installs with `npm ci`, checks contracts and runs the associated tests.
 
-`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v4.5.0`, with `cicd_version: v4.5.0` and `node_version: "24.22.1"`. Reusable steps and GitHub environments determine actual checks, publications and deployments. A push to `main` stops after `release-dev`; staging and prod go through the manual `promote-staging.yml` / `promote-prod.yml` workflows (MAIR-494).
+`cicd.yml` calls `mairie360/CICD/.github/workflows/BFFs-cicd.yml@v5.2.2`, with `cicd_version: v5.2.2` and `node_version: "24.22.1"`. Reusable steps and GitHub environments determine actual checks, publications and deployments. A push to `main` stops after `release-dev`; staging and prod go through the manual `promote-staging.yml` / `promote-prod.yml` workflows (MAIR-494).
 
 The `Dockerfile` (build and runtime) and `development.Dockerfile` use `node:24.22.1-alpine` pinned by digest, the same Node.js as the CI jobs; the production image command is `["node", "dist/index.js"]` (the `@mairie360/*-openapi` packages are bundled by esbuild, nothing is compiled at runtime) and the development image runs `npm run start` (`tsx watch`).
 
