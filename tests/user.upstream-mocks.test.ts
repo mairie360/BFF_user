@@ -26,7 +26,7 @@ const CORE = {
   adminUsers: '/api/v1/admin/users/', adminUser: '/api/v1/admin/users/{userId}/', adminUserRoles: '/api/v1/admin/users/{userId}/roles/',
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
   groups: '/api/v1/groups/', group: '/api/v1/groups/{groupId}/',
-  sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout',
+  sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout', authLogout: '/api/v1/auth/logout',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -482,7 +482,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     test('revokes the Core session with the refresh token of the refreshToken cookie and clears both cookies', async () => {
-      coreApi.on('post', CORE.sessionsRevoke, { status: 200, raw: 'Session revoked', contentType: 'text/plain' });
+      coreApi.on('post', CORE.authLogout, { status: 204 });
+      coreApi.on('post', CORE.sessionsLogout, { status: 204 });
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).set('Cookie', 'refreshToken=opaque-refresh-token');
 
@@ -491,29 +492,39 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
       expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=;.*Path=\/auth/);
-      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
+      // MAIR-692: both revocations, started together (a stale refresh token must not leave the JWT's session open).
+      expect([...upstreamSequence()].sort()).toEqual(
+        [called('POST', coreApiUrls.getLogoutWithRefreshTokenUrl()), called('POST', coreApiUrls.getLogoutUrl())].sort(),
+      );
+      const byRefreshToken = coreApi.requests.find((r) => r.body && (r.body as { refresh_token?: string }).refresh_token);
+      expect(byRefreshToken).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' } });
+      // The refresh token is the proof: the JWT is not forwarded with it (it may have expired).
+      expect(byRefreshToken?.headers.authorization).toBeUndefined();
+      expect(coreApi.requests.find((r) => r !== byRefreshToken)?.headers.authorization).toBe(`Bearer ${SESSION}`);
     });
 
-    test('revokes the Core session with the caller session and refresh token', async () => {
-      coreApi.on('post', CORE.sessionsRevoke, { status: 200, raw: 'Session revoked', contentType: 'text/plain' });
+    test('MAIR-692 revokes the Core session from the refresh token alone, without any session', async () => {
+      coreApi.on('post', CORE.authLogout, { status: 204 });
 
-      const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
+      const response = await request(app).post('/auth/logout').send({ refresh_token: 'opaque-refresh-token' });
 
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/logout', response);
       expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getRevokeUrl())]);
-      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' }, headers: { authorization: `Bearer ${SESSION}` } });
+      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getLogoutWithRefreshTokenUrl())]);
+      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' } });
     });
 
     test.each([
-      ['a Core API 401', coreError(401, 'Invalid refresh token')],
+      ['a Core API 429', coreError(429, 'Too many requests')],
+      ['a Core API 503 (revocation not published)', coreError(503, 'The logout could not be completed, please try again.')],
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],
     ] as Array<[string, MockReply]>)('still clears the cookie on %s', async (_label, reply) => {
       captureLogs();
-      coreApi.on('post', CORE.sessionsRevoke, reply);
+      coreApi.on('post', CORE.authLogout, reply);
+      coreApi.on('post', CORE.sessionsLogout, reply);
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
 

@@ -44,11 +44,12 @@ export async function refreshSession(refreshToken: string, client: AnonymousClie
 }
 
 /**
- * Revokes the caller's own Core session (POST /api/v1/sessions/revoke): Core checks that the refresh
- * token belongs to the JWT's user, then rejects that JWT on its next session check.
+ * Ends the session of a refresh token, without a JWT (POST /api/v1/auth/logout, MAIR-692): works after the
+ * access JWT expired. Called with `asAnonymousClient('CORE_API', req)`: Core rate-limits it per client
+ * address (refresh budget). Core answers the same 204 whether the token matched a session or not.
  */
-export async function revokeSession(refreshToken: string, caller: UpstreamRequestOptions): Promise<void> {
-    await coreSessionsClient.revoke({ refresh_token: refreshToken }, caller);
+export async function logoutWithRefreshToken(refreshToken: string, client: UpstreamRequestOptions): Promise<void> {
+    await coreAuthClient.logoutWithRefreshToken({ refresh_token: refreshToken }, client);
 }
 
 /**

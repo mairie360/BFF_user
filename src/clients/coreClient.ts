@@ -56,6 +56,7 @@ export const coreAuthClient = {
     forceChangePassword: coreApi.forceChangePassword,
     forgotPassword: coreApi.forgotPassword,
     resetPassword: coreApi.resetPassword,
+    logoutWithRefreshToken: coreApi.logoutWithRefreshToken,
 };
 
 export const coreAdminUsersClient = {

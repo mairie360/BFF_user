@@ -157,7 +157,7 @@ export const RefreshResponse = z.object({
 
 export const LogoutViewSchema = z.object({
     refresh_token: z.string().min(1).optional().openapi({
-        description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. With the session, the Core API session is revoked through it (POST /api/v1/sessions/revoke); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.',
+        description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. The Core API session is revoked through it (POST /api/v1/auth/logout), with or without a valid JWT (MAIR-692); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
     post_logout_redirect_uri: z.url().optional().openapi({

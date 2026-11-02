@@ -49,6 +49,7 @@ const CONSUMED = [
   { operationId: 'getActiveSessions', method: 'get', url: coreApiUrls.getGetActiveSessionsUrl() },
   { operationId: 'history', method: 'get', url: coreApiUrls.getHistoryUrl() },
   { operationId: 'logout', method: 'post', url: coreApiUrls.getLogoutUrl() },
+  { operationId: 'logoutWithRefreshToken', method: 'post', url: coreApiUrls.getLogoutWithRefreshTokenUrl() },
   { operationId: 'refresh', method: 'post', url: coreApiUrls.getRefreshUrl() },
   { operationId: 'revoke', method: 'post', url: coreApiUrls.getRevokeUrl() },
   { operationId: 'health', method: 'get', url: coreApiUrls.getHealthUrl() },
