@@ -351,7 +351,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692); else, when the session (`Authorization: Bearer` header) is sent, from the JWT alone through POST /api/v1/sessions/logout. Without either, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
+    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT\'s session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
         + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
         + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
         + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
@@ -590,25 +590,31 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         // accessToken cookie); the accessToken cookie itself is never a credential.
         const hasSession = bearerToken(req) !== undefined;
 
-        let sessionRevoked = false;
-        if (refreshToken || hasSession) {
-            try {
-                // MAIR-692: the refresh token alone ends its session (POST /api/v1/auth/logout, no JWT), so an
-                // agent whose access JWT expired is still signed out for good. Without it, the JWT alone
-                // (POST /api/v1/sessions/logout). Once revoked, Core and the other APIs refuse the session's
-                // JWTs. Inside the try: a missing CORE_API_URL (503) must not prevent clearing the cookies.
-                if (refreshToken) {
-                    await logoutWithRefreshToken(refreshToken, asAnonymousClient('CORE_API', req));
-                } else {
-                    await logoutSession(asCaller('CORE_API', req));
-                }
-                sessionRevoked = true;
-            } catch (error) {
-                // Never log the tokens: the status is enough to diagnose.
-                const status = error instanceof HttpError ? error.status : upstreamStatus(error);
-                logger.warn('session revocation failed on logout', { request_id: requestId(req), status: status ?? 'network error' });
-            }
+        // MAIR-692: the refresh token alone ends its session (POST /api/v1/auth/logout, no JWT), so an agent whose
+        // access JWT expired is still signed out for good. Core answers that call 204 even for a token matching no
+        // session, so the Bearer session, when sent, is revoked as well (POST /api/v1/sessions/logout): a stale
+        // refresh token must not leave a valid JWT's session open. Both start together. Once revoked, Core and the
+        // other APIs refuse the session's JWTs. The calls are built inside the thunks: a missing CORE_API_URL (503)
+        // must not prevent clearing the cookies.
+        const revocations: Array<{ via: 'refresh_token' | 'jwt'; run: () => Promise<void> }> = [];
+        if (refreshToken) {
+            revocations.push({ via: 'refresh_token', run: () => logoutWithRefreshToken(refreshToken, asAnonymousClient('CORE_API', req)) });
         }
+        if (hasSession) {
+            revocations.push({ via: 'jwt', run: () => logoutSession(asCaller('CORE_API', req)) });
+        }
+        const results = await Promise.allSettled(revocations.map(async ({ run }) => run()));
+        const sessionRevoked = results.some((result) => result.status === 'fulfilled');
+        results.forEach((result, index) => {
+            if (result.status === 'fulfilled') return;
+            const status = result.reason instanceof HttpError ? result.reason.status : upstreamStatus(result.reason);
+            // Expected once the refresh token ended the session: the JWT had expired, or was revoked by that call.
+            if (sessionRevoked && revocations[index].via === 'jwt' && status === 401) return;
+            // Never log the tokens: the status is enough to diagnose.
+            logger.warn('session revocation failed on logout', {
+                request_id: requestId(req), via: revocations[index].via, status: status ?? 'network error',
+            });
+        });
 
         clearTokenCookie(res);
         clearRefreshTokenCookie(res);

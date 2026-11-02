@@ -123,10 +123,11 @@ and the legacy `/me` resolve.
 - **`/auth/logout`** revokes the Core session and always clears the cookies. With a `refresh_token` (body or
   cookie) it calls Core's public `POST /api/v1/auth/logout` (MAIR-692, `logoutWithRefreshToken`, anonymous through
   `asAnonymousClient`, no JWT needed), so a user whose access JWT expired is still signed out for good; the former
-  `POST /api/v1/sessions/revoke` needed a valid JWT and silently failed then. Without a refresh token it revokes the
-  session from the JWT alone through `POST /api/v1/sessions/logout`. Any Core failure is only logged (status only):
-  the cookies are still cleared and `session_revoked` is `false`. Without a refresh token nor a Bearer session
-  nothing is called.
+  `POST /api/v1/sessions/revoke` needed a valid JWT and silently failed then. With a Bearer session it also calls
+  `POST /api/v1/sessions/logout` (both together): Core answers 204 to a refresh token matching no session, so a stale
+  one must not leave the JWT's session open. `session_revoked` is `true` when either call succeeded. A failure is
+  only logged (`via`, status only), except the expected 401 of the JWT once the refresh token ended the session; the
+  cookies are always cleared. Without a refresh token nor a Bearer session nothing is called.
 - **Rate limiting** (`src/middleware/rateLimit.ts`, three lib `createRateLimiter` instances with
   `envPrefix: 'AUTH_RATE_LIMIT'`, 412 counted as a success): failed attempts on
   `/auth/login` (per IP and per e-mail), `/auth/force_change_password` (per IP) and

@@ -483,6 +483,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
     test('revokes the Core session with the refresh token of the refreshToken cookie and clears both cookies', async () => {
       coreApi.on('post', CORE.authLogout, { status: 204 });
+      coreApi.on('post', CORE.sessionsLogout, { status: 204 });
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).set('Cookie', 'refreshToken=opaque-refresh-token');
 
@@ -491,10 +492,15 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: true });
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
       expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=;.*Path=\/auth/);
-      expect(upstreamSequence()).toEqual([called('POST', coreApiUrls.getLogoutWithRefreshTokenUrl())]);
-      expect(coreApi.requests[0]).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' } });
-      // The refresh token is the proof: the JWT is not forwarded (it may have expired).
-      expect(coreApi.requests[0].headers.authorization).toBeUndefined();
+      // MAIR-692: both revocations, started together (a stale refresh token must not leave the JWT's session open).
+      expect([...upstreamSequence()].sort()).toEqual(
+        [called('POST', coreApiUrls.getLogoutWithRefreshTokenUrl()), called('POST', coreApiUrls.getLogoutUrl())].sort(),
+      );
+      const byRefreshToken = coreApi.requests.find((r) => r.body && (r.body as { refresh_token?: string }).refresh_token);
+      expect(byRefreshToken).toMatchObject({ body: { refresh_token: 'opaque-refresh-token' } });
+      // The refresh token is the proof: the JWT is not forwarded with it (it may have expired).
+      expect(byRefreshToken?.headers.authorization).toBeUndefined();
+      expect(coreApi.requests.find((r) => r !== byRefreshToken)?.headers.authorization).toBe(`Bearer ${SESSION}`);
     });
 
     test('MAIR-692 revokes the Core session from the refresh token alone, without any session', async () => {
@@ -518,6 +524,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     ] as Array<[string, MockReply]>)('still clears the cookie on %s', async (_label, reply) => {
       captureLogs();
       coreApi.on('post', CORE.authLogout, reply);
+      coreApi.on('post', CORE.sessionsLogout, reply);
 
       const response = await request(app).post('/auth/logout').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
 
