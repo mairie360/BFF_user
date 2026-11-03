@@ -24,7 +24,7 @@ source ./stack_secrets.sh || exit 1
 # init-test.sql and the agents of init-perf.sql. Keep the range in step with AGENTS in load-test.js.
 # In a private directory (mode 700): the file stays readable by the k6 container user through its bind
 # mount, never by the other users of the host (MAIR-680).
-JWT_TOKENS_DIR="$(mktemp -d)"
+JWT_TOKENS_DIR="$(mktemp -d)" || exit 1
 JWT_TOKENS_FILE="$JWT_TOKENS_DIR/tokens.json"
 export JWT_TOKENS_FILE
 echo "==> Signing the k6 callers' tokens..."
