@@ -25,6 +25,8 @@ source ./stack_secrets.sh || exit 1
 # In a private directory (mode 700): the file stays readable by the k6 container user through its bind
 # mount, never by the other users of the host (MAIR-680).
 JWT_TOKENS_DIR="$(mktemp -d)" || exit 1
+# Removed on any exit from here on (the full trap below also removes the CPU-set file).
+trap 'rm -rf "$JWT_TOKENS_DIR"' EXIT
 JWT_TOKENS_FILE="$JWT_TOKENS_DIR/tokens.json"
 export JWT_TOKENS_FILE
 echo "==> Signing the k6 callers' tokens..."
