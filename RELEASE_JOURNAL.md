@@ -1,47 +1,55 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "d774f6cf22766808867da6d482c2d7b14df84a80", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-03 02:07 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "7931bcc759e415fdb2f82a8e6162e52bd25b73c8", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-03 14:22 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.1.0 | `b754a6c` | 2026-10-21 10:09 UTC |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `d774f6c` | 2026-11-03 02:07 UTC |
+| dev | — | `7931bcc` | 2026-11-03 14:22 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.1.0)
 
 #### Changements de comportement
-- `POST /auth/logout` révoque la session à partir du refresh token, sans JWT valide. Si un refresh token est fourni (corps ou cookie `refreshToken`), le BFF appelle `POST /api/v1/auth/logout` de Core de façon anonyme. Avec une session Bearer, il appelle aussi `POST /api/v1/sessions/logout` ; `session_revoked` vaut `true` si l'un des deux appels réussit. Sans aucun identifiant, rien n'est appelé. Les cookies sont toujours effacés. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
-- `POST /auth/forgot_password` compte chaque requête, réussie ou non, par IP cliente (si `TRUST_PROXY` est défini et que la requête porte `X-Forwarded-For`) et par adresse e-mail (SHA-256). Le plafond est `AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, 10 par fenêtre de 15 minutes par défaut ; au-delà, la requête est refusée. L'IP cliente est relayée à Core dans `X-Forwarded-For` sur les appels anonymes (connexion, Keycloak, mot de passe oublié, réinitialisation, changement imposé, refresh). (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+
+- Les jetons de session sont désormais vérifiés avec la clé publique Ed25519 de Core (`JWT_PUBLIC_KEY`, EdDSA, `kid`, `iss` `mairie360-core`, `aud` `mairie360`) au lieu du secret HS256 `JWT_SECRET`. Sans `JWT_SECRET` défini, un jeton HS256 est refusé en 401 sans appel à Core ; `JWT_SECRET` seul reste accepté pendant la transition. Un appelant qui signe encore avec `JWT_SECRET` seul est donc refusé. (MAIR-680, [#290](https://github.com/mairie360/BFF_user/pull/290))
+- Au démarrage, l'instance refuse de démarrer sans clé de session (`JWT_PUBLIC_KEY`, ou `JWT_SECRET` pendant la transition) ou si la clé PEM est invalide. Les descriptions des réponses 503 nomment `JWT_PUBLIC_KEY`. (MAIR-680, [#290](https://github.com/mairie360/BFF_user/pull/290))
+- `POST /auth/logout` avec un refresh token (corps ou cookie `refreshToken`) appelle la route publique `POST /api/v1/auth/logout` de Core, sans JWT, et révoque la session même si le JWT a expiré. Avec un Bearer, `POST /api/v1/sessions/logout` est appelé en parallèle ; `session_revoked` vaut `true` si l'un des deux réussit. Sans aucun des deux, rien n'est appelé. Les cookies sont toujours effacés. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
+- `/auth/forgot_password` est limité par IP cliente et par adresse e-mail (`AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, 10 par fenêtre de 15 minutes par défaut). Chaque requête compte, y compris celles qui répondent 200 ; au-delà du quota, la requête est refusée par le limiteur. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
 
 #### Corrections
-- Déconnexion avec un JWT expiré : avant, l'appel à Core échouait (`session_revoked: false`, erreur seulement journalisée) et le refresh token restait valable 30 jours côté Core. Maintenant, le refresh token révoque la session. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
-- Mot de passe oublié : avant, 10 requêtes anonymes bloquaient la récupération pour toute l'instance pendant 15 minutes, car le budget par IP de Core était consommé par le pod du BFF. Maintenant, la limite s'applique par IP cliente et par e-mail. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
-- Journaux : avant, l'erreur brute était journalisée, y compris le Bearer token et les corps de requête et de réponse. Maintenant, `describeError` ne journalise que le type, le statut, le code et le message. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+
+- Déconnexion avec JWT expiré : avant, `/auth/logout` échouait sans bruit (`session_revoked: false`) et le refresh token restait valide 30 jours côté Core ; maintenant le refresh token est révoqué. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
+- Mot de passe oublié verrouillable pour toute l'instance : avant, les appels anonymes au Core partaient sans adresse cliente, donc les quotas de Core étaient consommés par le pod du BFF ; maintenant chaque appel anonyme (connexion, Keycloak, mot de passe oublié, réinitialisation, changement forcé, refresh) transmet l'IP cliente en `X-Forwarded-For`. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+- Journaux : avant, les erreurs étaient journalisées avec leur valeur brute (Bearer token et corps de requête dans la cause de l'erreur axios) ; maintenant `errorHandler` et `checkApis` journalisent un descriptif (type, statut, code, message). (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
 
 #### Technique
-- Dépendances : épinglage par digest des images et actions GitHub (Renovate, [#285](https://github.com/mairie360/BFF_user/pull/285)), mises à jour TypeScript ([#276](https://github.com/mairie360/BFF_user/pull/276)), dotenv 18.0.9 ([#274](https://github.com/mairie360/BFF_user/pull/274)), `@mairie360/bffs-lib` 2.6.0 ([#281](https://github.com/mairie360/BFF_user/pull/281)), `core-api` et `database` épinglés en `dev-72dca5b` / `dev-76437e3` ([#284](https://github.com/mairie360/BFF_user/pull/284)).
-- Node.js 24.22.1 pour la CI, les images Dockerfile et le conteneur de développement, désormais exécuté avec l'utilisateur `node` ([#275](https://github.com/mairie360/BFF_user/pull/275)).
-- CI et tests : CICD v5.2.2 avec `ANTHROPIC_WORKSPACE_ID` et test de version ([#287](https://github.com/mairie360/BFF_user/pull/287)), stack d'intégration newman ([#273](https://github.com/mairie360/BFF_user/pull/273)), simulation RGPD ([#217](https://github.com/mairie360/BFF_user/pull/217)), marqueur RGPD ([#213](https://github.com/mairie360/BFF_user/pull/213)), checklist RGPD des PR ([#218](https://github.com/mairie360/BFF_user/pull/218)).
-- Documentation : versions CICD alignées ([#271](https://github.com/mairie360/BFF_user/pull/271)) et mise à jour de la doc technique en v5.2.2 ([#287](https://github.com/mairie360/BFF_user/pull/287)).
+
+- Dépendances : `@mairie360/bffs-lib` passé à 2.7.0 (#290) ; `@mairie360/core-api-openapi` en 2.2.0, images Core `dev-72dca5b` et base `dev-76437e3` dans les stacks (#284) ; mises à jour TypeScript (#276) et dotenv 18.0.9 (#274), selon la description de la PR.
+- CI/CD : workflows sur mairie360/CICD v5.2.2 avec `ANTHROPIC_WORKSPACE_ID` (#287) ; images et actions épinglées par digest, Node.js 24.22.1, utilisateur `node` dans l'image de développement (#275, #285) ; checklist RGPD des PR (#218) ; documentation CICD v4.4.3 (#271).
+- Tests : stack d'intégration newman avec collection Postman (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273)), test du marqueur RGPD (MAIR-290, #213) et simulation d'usage RGPD (MAIR-497, [#217](https://github.com/mairie360/BFF_user/pull/217)), clés Ed25519 générées par run dans les stacks de test (#290).
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
 #### Changements de comportement
-- `POST /auth/logout` révoque la session à partir du refresh token, sans JWT valide. Si un refresh token est fourni (corps ou cookie `refreshToken`), le BFF appelle `POST /api/v1/auth/logout` de Core de façon anonyme. Avec une session Bearer, il appelle aussi `POST /api/v1/sessions/logout` ; `session_revoked` vaut `true` si l'un des deux appels réussit. Sans aucun identifiant, rien n'est appelé. Les cookies sont toujours effacés. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
-- `POST /auth/forgot_password` compte chaque requête, réussie ou non, par IP cliente (si `TRUST_PROXY` est défini et que la requête porte `X-Forwarded-For`) et par adresse e-mail (SHA-256). Le plafond est `AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, 10 par fenêtre de 15 minutes par défaut ; au-delà, la requête est refusée. L'IP cliente est relayée à Core dans `X-Forwarded-For` sur les appels anonymes (connexion, Keycloak, mot de passe oublié, réinitialisation, changement imposé, refresh). (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+
+- Les jetons de session sont désormais vérifiés avec la clé publique Ed25519 de Core (`JWT_PUBLIC_KEY`, EdDSA, `kid`, `iss` `mairie360-core`, `aud` `mairie360`) au lieu du secret HS256 `JWT_SECRET`. Sans `JWT_SECRET` défini, un jeton HS256 est refusé en 401 sans appel à Core ; `JWT_SECRET` seul reste accepté pendant la transition. Un appelant qui signe encore avec `JWT_SECRET` seul est donc refusé. (MAIR-680, [#290](https://github.com/mairie360/BFF_user/pull/290))
+- Au démarrage, l'instance refuse de démarrer sans clé de session (`JWT_PUBLIC_KEY`, ou `JWT_SECRET` pendant la transition) ou si la clé PEM est invalide. Les descriptions des réponses 503 nomment `JWT_PUBLIC_KEY`. (MAIR-680, [#290](https://github.com/mairie360/BFF_user/pull/290))
+- `POST /auth/logout` avec un refresh token (corps ou cookie `refreshToken`) appelle la route publique `POST /api/v1/auth/logout` de Core, sans JWT, et révoque la session même si le JWT a expiré. Avec un Bearer, `POST /api/v1/sessions/logout` est appelé en parallèle ; `session_revoked` vaut `true` si l'un des deux réussit. Sans aucun des deux, rien n'est appelé. Les cookies sont toujours effacés. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
+- `/auth/forgot_password` est limité par IP cliente et par adresse e-mail (`AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX`, 10 par fenêtre de 15 minutes par défaut). Chaque requête compte, y compris celles qui répondent 200 ; au-delà du quota, la requête est refusée par le limiteur. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
 
 #### Corrections
-- Déconnexion avec un JWT expiré : avant, l'appel à Core échouait (`session_revoked: false`, erreur seulement journalisée) et le refresh token restait valable 30 jours côté Core. Maintenant, le refresh token révoque la session. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
-- Mot de passe oublié : avant, 10 requêtes anonymes bloquaient la récupération pour toute l'instance pendant 15 minutes, car le budget par IP de Core était consommé par le pod du BFF. Maintenant, la limite s'applique par IP cliente et par e-mail. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
-- Journaux : avant, l'erreur brute était journalisée, y compris le Bearer token et les corps de requête et de réponse. Maintenant, `describeError` ne journalise que le type, le statut, le code et le message. (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
+
+- Déconnexion avec JWT expiré : avant, `/auth/logout` échouait sans bruit (`session_revoked: false`) et le refresh token restait valide 30 jours côté Core ; maintenant le refresh token est révoqué. (MAIR-692, [#284](https://github.com/mairie360/BFF_user/pull/284))
+- Mot de passe oublié verrouillable pour toute l'instance : avant, les appels anonymes au Core partaient sans adresse cliente, donc les quotas de Core étaient consommés par le pod du BFF ; maintenant chaque appel anonyme (connexion, Keycloak, mot de passe oublié, réinitialisation, changement forcé, refresh) transmet l'IP cliente en `X-Forwarded-For`. (MAIR-679, [#281](https://github.com/mairie360/BFF_user/pull/281))
+- Journaux : avant, les erreurs étaient journalisées avec leur valeur brute (Bearer token et corps de requête dans la cause de l'erreur axios) ; maintenant `errorHandler` et `checkApis` journalisent un descriptif (type, statut, code, message). (MAIR-290, [#213](https://github.com/mairie360/BFF_user/pull/213))
 
 #### Technique
-- Dépendances : épinglage par digest des images et actions GitHub (Renovate, [#285](https://github.com/mairie360/BFF_user/pull/285)), mises à jour TypeScript ([#276](https://github.com/mairie360/BFF_user/pull/276)), dotenv 18.0.9 ([#274](https://github.com/mairie360/BFF_user/pull/274)), `@mairie360/bffs-lib` 2.6.0 ([#281](https://github.com/mairie360/BFF_user/pull/281)), `core-api` et `database` épinglés en `dev-72dca5b` / `dev-76437e3` ([#284](https://github.com/mairie360/BFF_user/pull/284)).
-- Node.js 24.22.1 pour la CI, les images Dockerfile et le conteneur de développement, désormais exécuté avec l'utilisateur `node` ([#275](https://github.com/mairie360/BFF_user/pull/275)).
-- CI et tests : CICD v5.2.2 avec `ANTHROPIC_WORKSPACE_ID` et test de version ([#287](https://github.com/mairie360/BFF_user/pull/287)), stack d'intégration newman ([#273](https://github.com/mairie360/BFF_user/pull/273)), simulation RGPD ([#217](https://github.com/mairie360/BFF_user/pull/217)), marqueur RGPD ([#213](https://github.com/mairie360/BFF_user/pull/213)), checklist RGPD des PR ([#218](https://github.com/mairie360/BFF_user/pull/218)).
-- Documentation : versions CICD alignées ([#271](https://github.com/mairie360/BFF_user/pull/271)) et mise à jour de la doc technique en v5.2.2 ([#287](https://github.com/mairie360/BFF_user/pull/287)).
+
+- Dépendances : `@mairie360/bffs-lib` passé à 2.7.0 (#290) ; `@mairie360/core-api-openapi` en 2.2.0, images Core `dev-72dca5b` et base `dev-76437e3` dans les stacks (#284) ; mises à jour TypeScript (#276) et dotenv 18.0.9 (#274), selon la description de la PR.
+- CI/CD : workflows sur mairie360/CICD v5.2.2 avec `ANTHROPIC_WORKSPACE_ID` (#287) ; images et actions épinglées par digest, Node.js 24.22.1, utilisateur `node` dans l'image de développement (#275, #285) ; checklist RGPD des PR (#218) ; documentation CICD v4.4.3 (#271).
+- Tests : stack d'intégration newman avec collection Postman (MAIR-262, [#273](https://github.com/mairie360/BFF_user/pull/273)), test du marqueur RGPD (MAIR-290, #213) et simulation d'usage RGPD (MAIR-497, [#217](https://github.com/mairie360/BFF_user/pull/217)), clés Ed25519 générées par run dans les stacks de test (#290).
 
 ## Différence staging → prod (en staging, pas encore en prod)
 
@@ -52,6 +60,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-03 14:22 UTC | dev | — | `7931bcc` | [run](https://github.com/mairie360/BFF_user/actions/runs/41652093723) |
 | 2026-11-03 02:07 UTC | dev | — | `d774f6c` | [run](https://github.com/mairie360/BFF_user/actions/runs/41563618435) |
 | 2026-11-03 00:02 UTC | dev | — | `243acbe` | [run](https://github.com/mairie360/BFF_user/actions/runs/41548478302) |
 | 2026-11-02 12:56 UTC | dev | — | `cd4e695` | [run](https://github.com/mairie360/BFF_user/actions/runs/41448169133) |
