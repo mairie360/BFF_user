@@ -85,7 +85,8 @@ production image runs `node dist/index.js` and nothing registers `ts-node` at ru
 
 `src/index.ts` starts with `import 'dotenv/config'` and, only when run as the entry point
 (`require.main === module`), calls `assertStartupConfiguration()`: `assertConfigured(['CORE_API'])` + a
-`JWT_SECRET` check, so a misconfigured instance refuses to start. Tests import the app without it.
+session key check (`sessionKeysFromEnv()` of the lib: `JWT_PUBLIC_KEY`, or `JWT_SECRET` during the HS256
+transition; an invalid PEM refuses too), so a misconfigured instance refuses to start. Tests import the app without it.
 
 ### App and entry point (MAIR-430)
 
@@ -160,15 +161,16 @@ and the legacy `/me` resolve.
   `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
   if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
 - **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
-  *locally* with the lib's `verifySessionToken` — HS256 signature against `JWT_SECRET`, `exp`, `sub` — then reads the roles from Core
-  `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing `JWT_SECRET` answers 503 (declared on every admin route). It is a `router.use` guard on **every**
+  *locally* with the lib's `verifySessionToken` — EdDSA signature against Core's public key `JWT_PUBLIC_KEY` (MAIR-680:
+  `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 only while `JWT_SECRET` is set), `exp`, `sub` — then reads the roles from Core
+  `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
   header, read with `authorization()` / `requireSession` / `bearerToken()` of `@mairie360/bffs-lib`
   (the fronts' proxy builds it from the `accessToken` cookie). `/me`, `/session/me` and `/user/*` go through
-  `requireSession` (bffs-lib >= 1.2.0, MAIR-474): the token is verified like the admin one (HS256 with
-  `JWT_SECRET`, `exp`, positive `sub`), so a forged or expired token gets its 401 without any Core call; Core
+  `requireSession` (bffs-lib >= 1.2.0, MAIR-474): the token is verified like the admin one (EdDSA with
+  `JWT_PUBLIC_KEY`, `exp`, positive `sub`), so a forged or expired token gets its 401 without any Core call; Core
   still checks revocation and archived accounts. The `accessToken` cookie, `x-session-token`
   and other schemes are ignored, also by `/auth/logout` and `requireAdmin`; the `refreshToken` cookie of
   `/auth/refresh` and `/auth/logout` is a different credential and is kept. `/me`, `/session/me` and
@@ -212,8 +214,11 @@ never add span attributes holding request values (ids, URLs, bodies, headers). T
 
 ## Environment variables
 
-`CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_SECRET` (must match Core,
-required at startup for the admin checks), `COOKIE_DOMAIN` (omit for host-only
+`CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_PUBLIC_KEY` (MAIR-680: Core's Ed25519
+public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required to verify Core's EdDSA tokens, while during the HS256
+transition `JWT_SECRET` alone also passes the startup check; Core alone
+signs the session tokens), `JWT_SECRET` (HS256 transition only: while it is set, HS256 tokens signed with it are still
+accepted; remove it once `JWT_PUBLIC_KEY` is deployed), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
 `AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`). Keycloak single logout (all optional, unset = no
 `logout_url`): `KEYCLOAK_REALM_URL` (public realm URL as the browser reaches it, e.g.
@@ -254,7 +259,7 @@ database + liquibase + `init-test.sql`, Redis, fake Resend) and a `newman` servi
 `tests/postman/collection.json` with `tests/postman/environment.json` against the BFF, `--bail` on the first
 failing request; the exit code of newman is the exit code of the script. Like the other stacks it tests the
 image named by `IMAGE_REF` (`bff-user:local` built from `development.Dockerfile` when empty), sources
-`stack_secrets.sh` (random `JWT_SECRET` per run) and drops the volumes before and after. In CI it is the
+`stack_secrets.sh` (fresh Ed25519 key pair per run, MAIR-680) and drops the volumes before and after. In CI it is the
 `integration_tests` staging gate of `promote-staging.yml` (mairie360/CICD `integration/bffs`) on the
 published `dev-<sha>` image: a failure blocks the promotion; the junit report (`newman-reports/newman.xml`,
 gitignored) is published as job summary and artifact.
@@ -272,9 +277,11 @@ The collection is split in two kinds of checks, both on the BFF's own routes:
   session, password reset by the administrator (sessions revoked) and by e-mail (the reset link is read
   from the fake Resend journal `/__admin/requests`), logout, deletion (404 afterwards, sign-in refused).
 
-The seeded accounts have no known password: the collection-level pre-request script forges their JWTs
-(HS256 `{ sub, role, exp }`, like `mairie360_api_lib`) with the `jwt_secret` the compose file injects
-(`jwt_admin`, `jwt_agent`); the committed `environment.json` holds no secret or token. One fresh e-mail per
+The seeded accounts have no known password and the Postman sandbox cannot sign EdDSA (MAIR-680):
+`integration_test.sh` signs their JWTs like Core with the run's key and the compose file passes them with `--env-var`
+(`jwt_admin`, `jwt_agent`, and `jwt_forged`: Core's `kid`, another key); the collection-level pre-request script only
+forges `jwt_hs256`, an HS256 admin token that must be refused (`MAIR-680 …` requests, including the account creation
+refused with it). The committed `environment.json` holds no key or token. One fresh e-mail per
 run (`run_id`) keeps the collection replayable. Isolated endpoint checks (validation errors, token refusals)
 stay in jest: the collection only holds journeys and the checks that need a real Core.
 
@@ -307,16 +314,20 @@ so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /
 rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
 seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
 members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
-signed in k6), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.
+signed by `performance_test.sh` into the token file mounted at `/tokens.json`), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.
 Thresholds are strict: `checks == 100%`, `http_req_failed == 0`, `dropped_iterations == 0`. `K6_PROFILE`
 (passed by the compose file) sizes the load: `ci` (default, 30 readers, rush at 30/s) is what the 4 vCPU
 CI runner holds, `stress` (100 readers, 100/s) is run by hand. Keep `init-perf.sql` and the id ranges at
 the top of `load-test.js` in step.
 
 The ZAP and k6 stacks run the same fake Resend (`fake-resend`, MAIR-552), so `POST /auth/forgot_password` reaches a
-working Core. Both scripts source `stack_secrets.sh` (MAIR-474): a random `JWT_SECRET` per run, shared by core-api,
-bff-user and k6, and `ADMIN_JWT` (`sub=1`, 4 h) signed with it for the ZAP replacer; the compose files
-refuse to start without them, and nothing signed with a committed secret is left in the repository. They
+working Core. Every `*_test.sh` sources `stack_secrets.sh` (MAIR-474, MAIR-680): a fresh Ed25519 key pair per run (core-api gets
+`JWT_PRIVATE_KEY` + `JWT_PUBLIC_KEY` and signs the session JWTs, bff-user only `JWT_PUBLIC_KEY`, no `JWT_SECRET`
+anywhere), `ADMIN_JWT` (`sub=1`, 4 h, EdDSA like Core) for the ZAP replacer and k6, and `sign_jwt` / `sign_jwt_file`
+(node, for the thousands of k6 tokens: k6 cannot sign Ed25519) for the other callers; the compose files refuse to
+start without them, and no key or token is committed. The core-api image of the stacks must be one that signs EdDSA
+(`dev-3b40c2a` or later). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
+shell provides the key pair (`source ./stack_secrets.sh` before `docker compose up`). They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
 the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
 ignores `100000`: a 500 / 502 answered during the scan fails it. Its only scope-out is `/auth/keycloak`, whose

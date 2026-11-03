@@ -12,10 +12,11 @@ import type { GetUserResponseView } from '@mairie360/core-api-openapi/model';
 import { ContractMockServer, unreachableUrl, type MockReply } from './support/contract-mock-server';
 import { OpenApiContract } from './support/openapi-contract';
 import {
-  JWT_SECRET, adminUsersPage, coreApiUrls, expiredToken, group, groupResult, groupsResult, historyResult, loadCoreApiContract,
-  loginResponse, meResponse, postGroupResult, role, rolesResult, session, sessionToken, sessionsResult, userResponse,
+  adminUsersPage, coreApiUrls, expiredToken, group, groupResult, groupsResult, historyResult, loadCoreApiContract,
+  loginResponse, meResponse, postGroupResult, role, rolesResult, session, sessionToken, sessionsResult, useSessionPublicKey, userResponse,
 } from './support/core-fixtures';
 import { captureLogs } from './support/logs';
+import { foreignKeyPair } from './support/session-keys';
 
 const coreApi = new ContractMockServer('CORE_API', loadCoreApiContract());
 // Gabarits du contrat Core API (clés des mocks) ; les chemins concrets attendus viennent de coreApiUrls.
@@ -45,7 +46,7 @@ beforeAll(async () => {
   // CORE_API_URL is read on every call (MAIR-431); beforeEach sets it again.
   process.env.CORE_API_URL = coreApi.url;
   delete process.env.CORE_API_PORT;
-  process.env.JWT_SECRET = JWT_SECRET;
+  useSessionPublicKey();
   ({ app } = await import('../src/app'));
 });
 afterAll(async () => { await coreApi.stop(); });
@@ -864,9 +865,9 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
 
-    test('refuses a token signed with another secret without calling Core API', async () => {
+    test('refuses a token signed with a key Core does not hold without calling Core API', async () => {
       const response = await request(app).delete('/admin/users/7')
-        .set('Authorization', `Bearer ${sessionToken(ADMIN_ID, 'other-secret')}`);
+        .set('Authorization', `Bearer ${sessionToken(ADMIN_ID, { privateKey: foreignKeyPair.privateKey })}`);
 
       expect(response.status).toBe(401);
       expectBffContract('delete', '/admin/users/7', response);

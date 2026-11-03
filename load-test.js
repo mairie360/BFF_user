@@ -1,7 +1,5 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import crypto from 'k6/crypto';
-import encoding from 'k6/encoding';
 import { createCoverage } from '/coverage.js';
 
 // ---------------------------------------------------------------------------
@@ -34,13 +32,16 @@ import { createCoverage } from '/coverage.js';
 // runner holds, `stress` is the high load, run by hand to find the breaking point.
 // ---------------------------------------------------------------------------
 
-// The JWT_SECRET of the core-api / bff-user services of the test stack: random per run, generated
-// by stack_secrets.sh (MAIR-474). No default: nothing is signed with a committed secret.
-const JWT_SECRET = __ENV.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET is not set: run ./performance_test.sh, which generates it');
+// Session tokens of the run (MAIR-680): Core alone signs them (EdDSA) and k6 cannot sign Ed25519,
+// so performance_test.sh signs them with the run's key (stack_secrets.sh): ADMIN_JWT (sub=1, role
+// admin) and a { "<user id>": "<jwt>" } file for user 2 and the seeded agents. Nothing is committed.
+const ADMIN_JWT = __ENV.ADMIN_JWT;
+if (!ADMIN_JWT) throw new Error('ADMIN_JWT is not set: run ./performance_test.sh, which signs it');
+const TOKENS = JSON.parse(open(__ENV.JWT_TOKENS_FILE || '/tokens.json'));
 // User role only, seeded by init-test.sql: session reads.
 const USER_ID = __ENV.PERF_USER_ID || '2';
-// Admin role (seeded by the liquibase migrations): /admin/* and the login flow.
+// Admin role (seeded by the liquibase migrations): /admin/* and the login flow. ADMIN_JWT is signed
+// for user 1: keep PERF_ADMIN_ID on it.
 const ADMIN_ID = __ENV.PERF_ADMIN_ID || '1';
 // Rows of init-perf.sql: agents 500001..510000, groups 50000..51999 of 20 members each.
 const AGENTS = { first: 500001, count: 10000 };
@@ -65,18 +66,11 @@ const USER_PASSWORD = 'Perf-User-Passw0rd';
 // State of the current iteration (module scope is per VU in k6).
 let state = {};
 
-function b64url(value) {
-  return encoding.b64encode(value, 'rawurl');
-}
-
-// Minimal HS256 JWT accepted by Core API (sub + role + exp claims).
-function mintJwt(sub, role) {
-  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const now = Math.floor(Date.now() / 1000);
-  const payload = b64url(JSON.stringify({ sub, role, exp: now + 3600 }));
-  const signingInput = `${header}.${payload}`;
-  const signature = crypto.hmac('sha256', JWT_SECRET, signingInput, 'base64rawurl');
-  return `${signingInput}.${signature}`;
+/** EdDSA JWT of seeded user `id` (role user), signed by performance_test.sh. */
+function userJwt(id) {
+  const token = TOKENS[String(id)];
+  if (!token) throw new Error(`No token for user ${id}: sign it in performance_test.sh`);
+  return token;
 }
 
 function bearer(token) {
@@ -89,7 +83,7 @@ const agentTokens = {};
 /** A random seeded agent: its id and `Authorization` header (one token per agent and VU). */
 function randomAgent() {
   const id = AGENTS.first + randomInt(AGENTS.count);
-  if (!agentTokens[id]) agentTokens[id] = bearer(mintJwt(String(id), 'user'));
+  if (!agentTokens[id]) agentTokens[id] = bearer(userJwt(id));
   return { id, headers: agentTokens[id] };
 }
 
@@ -439,7 +433,7 @@ export const options = {
 
 // The admin signs in with a known password, set once through the admin password reset.
 export function setup() {
-  const admin = bearer(mintJwt(ADMIN_ID, 'admin'));
+  const admin = bearer(ADMIN_JWT);
   const about = http.get(coverage.url('GET /user/{userId}/about', { userId: ADMIN_ID }), { headers: admin });
   const adminEmail = (json(about) || {}).email;
   const reset = http.patch(
@@ -450,7 +444,7 @@ export function setup() {
   if (!adminEmail || reset.status !== 204) {
     throw new Error(`setup: cannot prepare the admin sign-in (about ${about.status}, password reset ${reset.status})`);
   }
-  return { adminEmail, admin, user: bearer(mintJwt(USER_ID, 'user')) };
+  return { adminEmail, admin, user: bearer(userJwt(USER_ID)) };
 }
 
 // Every GET handler, with a plain request() (no coverage accounting: `crud` owns the gate).

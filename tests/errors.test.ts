@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { app } from '../src/app';
 import { fetchUserAbout } from '../src/routes/core_helpers';
-import { JWT_SECRET, sessionToken } from './support/core-fixtures';
+import { sessionToken, useSessionPublicKey } from './support/core-fixtures';
 import { captureLogs } from './support/logs';
 
 // Final middlewares of the app (@mairie360/bffs-lib): every error ends in { error: { code, message, details } }.
@@ -14,7 +14,7 @@ describe('error envelope of the app', () => {
     beforeEach(() => {
         captureLogs();
         process.env.CORE_API_URL = 'http://core.test';
-        process.env.JWT_SECRET = JWT_SECRET;
+        useSessionPublicKey();
     });
 
     afterEach(() => {
