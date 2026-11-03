@@ -31,7 +31,7 @@ export const CoreApiRateLimited = {
 
 /** 503 of every route that calls Core API: `CORE_API_URL` is missing or invalid on this instance (MAIR-431). */
 export const CoreApiNotConfigured = {
-    description: 'Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid',
+    description: 'Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid',
     content: { 'application/json': { schema: ErrorResponse } },
 };
 

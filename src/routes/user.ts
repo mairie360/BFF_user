@@ -13,7 +13,7 @@ import { fetchUserAbout } from './core_helpers';
 const router = Router();
 
 // Session-bound: never cached, and 401 before anything else (validation, upstream call) without a valid
-// session token (verified locally: HS256 with JWT_SECRET, expiry).
+// session token (verified locally: EdDSA with JWT_PUBLIC_KEY, MAIR-680, expiry).
 router.use(noStore, requireSession);
 
 registry.registerPath({

@@ -7,6 +7,8 @@ import {
     INVALID_SESSION_MESSAGE,
     noStore,
     parseRequest,
+    sessionKeysFromEnv,
+    type SessionKeys,
     upstreamError,
     validationError,
     verifySessionToken,
@@ -246,7 +248,7 @@ const coreResponses = {
         },
     },
     503: {
-        description: 'Instance misconfigured: CORE_API_URL or JWT_SECRET is not set',
+        description: 'Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -272,7 +274,7 @@ const coreWriteResponses = {
 const READ_STATUSES = [400, 401, 403, 404] as const;
 const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
 
-// Throws 401 (no or invalid session), 503 (JWT_SECRET or CORE_API_URL missing) or 403 (not an administrator).
+// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (not an administrator).
 async function requireAdmin(req: Request): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
     const token = bearerToken(req);
@@ -280,17 +282,24 @@ async function requireAdmin(req: Request): Promise<void> {
         throw new HttpError(401, INVALID_SESSION_MESSAGE);
     }
 
-    const secret = process.env.JWT_SECRET;
+    // Core's public key `JWT_PUBLIC_KEY` (MAIR-680), plus `JWT_SECRET` while the HS256 transition lasts.
+    let keys: SessionKeys | undefined;
+    try {
+        keys = sessionKeysFromEnv();
+    } catch {
+        keys = undefined;
+    }
 
-    if (!secret) {
+    if (keys === undefined) {
         // A misconfigured instance, not a server bug: 503 like a missing upstream URL. The entry point refuses
-        // to start without JWT_SECRET, so this only happens when the app is mounted elsewhere (tests).
+        // to start without a session key, so this only happens when the app is mounted elsewhere (tests).
         throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
-    // HS256 signature with JWT_SECRET, expiry and a positive integer `sub` (`@mairie360/bffs-lib`, the checks of
-    // Core): a forged or expired token gets its 401 without any Core call, and never learns which check failed.
-    verifySessionToken(token, secret);
+    // EdDSA signature with Core's key (`kid`, `iss`, `aud`), or HS256 only while JWT_SECRET is set, expiry and a
+    // positive integer `sub` (`@mairie360/bffs-lib`, the checks of Core): a forged or expired token gets its 401
+    // without any Core call, and never learns which check failed.
+    verifySessionToken(token, keys);
 
     // The roles come from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
     // Core >= 2.0.0 lists every role in `roles` (`role` is only the first one) and, like its own admin guard,

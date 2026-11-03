@@ -180,7 +180,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -286,7 +286,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -374,7 +374,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -475,7 +475,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -576,7 +576,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -848,7 +848,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -976,7 +976,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1099,7 +1099,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1235,7 +1235,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1361,7 +1361,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1500,7 +1500,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1635,7 +1635,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1772,7 +1772,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1895,7 +1895,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2018,7 +2018,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2156,7 +2156,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2277,7 +2277,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2403,7 +2403,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2526,7 +2526,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2649,7 +2649,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2775,7 +2775,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2897,7 +2897,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3023,7 +3023,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3145,7 +3145,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3270,7 +3270,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3407,7 +3407,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3530,7 +3530,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3659,7 +3659,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3801,7 +3801,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3870,7 +3870,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3941,7 +3941,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;

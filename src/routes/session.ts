@@ -33,7 +33,7 @@ for (const path of ['/me', '/session/me']) {
 }
 
 // Per route, not router.use(): this router is also mounted at `/`, where a router-level guard would answer
-// 401 to every unknown path instead of 404. `requireSession` verifies the token (HS256 with JWT_SECRET, expiry):
+// 401 to every unknown path instead of 404. `requireSession` verifies the token (EdDSA with JWT_PUBLIC_KEY, MAIR-680, expiry):
 // a forged or expired one gets its 401 here, before any Core call.
 router.get('/me', noStore, requireSession, async (req: Request, res: Response) => {
     const options = asCaller('CORE_API', req);

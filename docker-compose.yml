@@ -118,7 +118,7 @@ services:
 
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:dev-72dca5b
+    image: ghcr.io/mairie360/core-api:dev-3b40c2a
     ports:
       - "3000:3000"
     networks:
@@ -138,8 +138,13 @@ services:
       DB_PORT: 5432
       PUBLIC_URL: http://core.development.mairie360.fr
       JWT_SECRET: b"secret"
+      # MAIR-680: Ed25519 session keys, taken from the shell and never committed. Unset, Core signs
+      # HS256 tokens with JWT_SECRET (transition); `source ./stack_secrets.sh` before `docker compose up`
+      # to run the stack like a deployment (EdDSA).
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       # mairie360_api_lib >= 2.0 refuses the well-known b"secret" without this flag. Local stack only:
-      # a deployment uses a random secret of at least 32 bytes (MAIR-428).
+      # a deployment uses no JWT_SECRET at all (MAIR-680).
       JWT_ALLOW_WEAK_SECRET: "true"
       JWT_TIMEOUT: 3600
       # Core sends the password e-mails through Resend (MAIR-522): the fake one by default, which records them.
@@ -187,6 +192,9 @@ services:
       # Le BFF n'accède ni à PostgreSQL ni à Redis : tout passe par Core API.
       HOST: "0.0.0.0"
       PORT: 4000
+      # MAIR-680: Core's public key when the shell provides it (stack_secrets.sh); JWT_SECRET is the
+      # HS256 transition of the dev stack only.
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       JWT_SECRET: 'b"secret"'
       # IMPORTANT : On utilise le nom du service Docker pour communiquer
       CORE_API_URL: "http://core:3000"

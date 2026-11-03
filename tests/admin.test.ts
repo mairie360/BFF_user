@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { errorHandler } from '@mairie360/bffs-lib';
 import { AxiosError, AxiosHeaders } from 'axios';
 import cookieParser from 'cookie-parser';
@@ -10,7 +9,7 @@ import {
     coreUsersClient,
 } from '../src/clients/coreClient';
 import adminRouter from '../src/routes/admin';
-import { adminUserRow, adminUsersPage, axiosResponse, group, groupMembers, meResponse } from './support/core-fixtures';
+import { adminUserRow, adminUsersPage, axiosResponse, group, groupMembers, meResponse, sessionToken, useSessionPublicKey } from './support/core-fixtures';
 
 // Test unitaire des règles du routeur : Core API est simulée au niveau du client généré. Chaque regroupement
 // expose exactement les opérations de getCoreAPIMairie360 (@mairie360/core-api-openapi), avec l'alias
@@ -43,18 +42,8 @@ const mockedAddUserToGroup = jest.mocked(coreGroupsClient.addUserToGroup);
 
 const adminUser = adminUserRow();
 
-function tokenFor(userId: number) {
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({
-        sub: String(userId),
-        exp: Math.floor(Date.now() / 1000) + 3_600,
-    })).toString('base64url');
-    const signature = createHmac('sha256', process.env.JWT_SECRET!)
-        .update(`${header}.${payload}`)
-        .digest('base64url');
-
-    return `${header}.${payload}.${signature}`;
-}
+// EdDSA session token signed with the test key of Core (MAIR-680).
+const tokenFor = (userId: number) => sessionToken(userId);
 
 const app = express();
 app.use(express.json());
@@ -69,7 +58,7 @@ const coreError = (status: number, data: unknown = 'Core error') => new AxiosErr
 
 describe('Administration routes', () => {
     beforeAll(() => {
-        process.env.JWT_SECRET = 'admin-test-secret';
+        useSessionPublicKey();
     });
 
     beforeEach(() => {
@@ -191,10 +180,9 @@ describe('Administration routes', () => {
         expect(refused.headers['cache-control']).toBe('no-store');
     });
 
-    it('answers 503 without calling Core API when JWT_SECRET is not configured', async () => {
+    it('answers 503 without calling Core API when neither JWT_PUBLIC_KEY nor JWT_SECRET is configured', async () => {
         const token = tokenFor(1);
-        const secret = process.env.JWT_SECRET;
-        delete process.env.JWT_SECRET;
+        delete process.env.JWT_PUBLIC_KEY;
         try {
             const response = await request(app).delete('/admin/users/42').set('Authorization', `Bearer ${token}`);
 
@@ -202,11 +190,11 @@ describe('Administration routes', () => {
             expect(response.body).toEqual({
                 error: { code: 'SERVICE_UNAVAILABLE', message: 'The administrator session check is not configured.', details: [] },
             });
-            // The secret's name is not disclosed.
-            expect(JSON.stringify(response.body)).not.toContain('JWT_SECRET');
+            // The names of the keys are not disclosed.
+            expect(JSON.stringify(response.body)).not.toMatch(/JWT_(PUBLIC_KEY|SECRET)/);
             expect(mockedGetMe).not.toHaveBeenCalled();
         } finally {
-            process.env.JWT_SECRET = secret;
+            useSessionPublicKey();
         }
     });
 

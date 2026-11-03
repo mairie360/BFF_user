@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { type EddsaTokenOptions, eddsaToken } from './session-keys';
 import { AxiosHeaders, type AxiosResponse, type RawAxiosResponseHeaders } from 'axios';
 import { getCoreAPIMairie360 } from '@mairie360/core-api-openapi/endpoints/coreAPIMairie360';
 import type {
@@ -107,19 +107,19 @@ export function adminUsersPage(users: AdminUserRow[], overrides: Partial<AdminLi
   return { users, page: 1, page_size: 20, total: users.length, total_pages: users.length === 0 ? 0 : 1, ...overrides };
 }
 
-export const JWT_SECRET = 'contract-test-secret';
-
-/** JWT HS256 signé avec JWT_SECRET : `requireAdmin` le vérifie localement, Core API (simulée) le reçoit tel quel. */
-export function sessionToken(userId: number, secret = JWT_SECRET, expiresIn = 3_600): string {
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ sub: String(userId), exp: Math.floor(Date.now() / 1000) + expiresIn })).toString('base64url');
-  const signature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
-  return `${header}.${payload}.${signature}`;
+/**
+ * EdDSA session token signed like Core signs it (MAIR-680): `requireSession` / `requireAdmin` verify it locally
+ * with `JWT_PUBLIC_KEY`, Core API (mocked) receives it unchanged. `privateKey` signs it with another key.
+ */
+export function sessionToken(userId: number, options: EddsaTokenOptions = {}): string {
+  return eddsaToken(userId, options);
 }
 
-export const expiredToken = (userId: number) => sessionToken(userId, JWT_SECRET, -60);
+export const expiredToken = (userId: number) => sessionToken(userId, { expiresIn: -60 });
 
 /** Contrat Core API reconstruit depuis le paquet installé : le BFF n'appelle que ses opérations. */
 export function loadCoreApiContract(): OpenApiContract {
   return loadOrvalContract('@mairie360/core-api-openapi');
 }
+
+export { JWT_PUBLIC_KEY, useSessionPublicKey } from './session-keys';
