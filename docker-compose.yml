@@ -192,8 +192,9 @@ services:
       # Le BFF n'accède ni à PostgreSQL ni à Redis : tout passe par Core API.
       HOST: "0.0.0.0"
       PORT: 4000
-      # MAIR-680: Core's public key when the shell provides it (stack_secrets.sh); JWT_SECRET is the
-      # HS256 transition of the dev stack only.
+      # MAIR-680: the public key of the Core that signs this stack's sessions (local or remote), from the
+      # shell (`source ./stack_secrets.sh` gives a pair only for a Core started here with it); JWT_SECRET
+      # is the HS256 transition of the dev stack only.
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       JWT_SECRET: 'b"secret"'
       # IMPORTANT : On utilise le nom du service Docker pour communiquer

@@ -215,7 +215,8 @@ never add span attributes holding request values (ids, URLs, bodies, headers). T
 ## Environment variables
 
 `CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_PUBLIC_KEY` (MAIR-680: Core's Ed25519
-public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required at startup, Core alone
+public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required to verify Core's EdDSA tokens, while during the HS256
+transition `JWT_SECRET` alone also passes the startup check; Core alone
 signs the session tokens), `JWT_SECRET` (HS256 transition only: while it is set, HS256 tokens signed with it are still
 accepted; remove it once `JWT_PUBLIC_KEY` is deployed), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and

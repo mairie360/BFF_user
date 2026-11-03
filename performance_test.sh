@@ -22,7 +22,10 @@ echo "==> BFF under test: $IMAGE_REF"
 source ./stack_secrets.sh || exit 1
 # Tokens of every caller of load-test.js (k6 cannot sign Ed25519): the Admin (1), the user 2 of
 # init-test.sql and the agents of init-perf.sql. Keep the range in step with AGENTS in load-test.js.
-JWT_TOKENS_FILE="$(mktemp --suffix=.json)"
+# In a private directory (mode 700): the file stays readable by the k6 container user through its bind
+# mount, never by the other users of the host (MAIR-680).
+JWT_TOKENS_DIR="$(mktemp -d)"
+JWT_TOKENS_FILE="$JWT_TOKENS_DIR/tokens.json"
 export JWT_TOKENS_FILE
 echo "==> Signing the k6 callers' tokens..."
 sign_jwt_file "$JWT_TOKENS_FILE" user 14400 1 2 $(seq 500001 510000) || exit 1
@@ -46,7 +49,7 @@ PERF_CPUS="${PERF_CPUS:-4}"
 CPUS=$(nproc)
 [ "$CPUS" -gt "$PERF_CPUS" ] && CPUS="$PERF_CPUS"
 CPUSET_FILE="$(mktemp --suffix=.yml)"
-trap 'rm -f "$CPUSET_FILE" "$JWT_TOKENS_FILE"' EXIT
+trap 'rm -f "$CPUSET_FILE"; rm -rf "$JWT_TOKENS_DIR"' EXIT
 {
     echo "services:"
     for service in $(docker compose -f "$COMPOSE_FILE" config --services); do
