@@ -333,6 +333,12 @@ const handlers = {
     }),
   // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
   // sessions, hence the admin login).
+  // MAIR-609: a single-use Keycloak console link. Core's rate limits are off in the perf stack
+  // (RATE_LIMIT_ENABLED=false), so every call gets its link.
+  'POST /admin/keycloak/console-access': ({ request, data }) =>
+    check(request({ headers: data.admin }), {
+      'console link 200': (r) => r.status === 200 && r.json('expires_in') === 120,
+    }),
   'POST /admin/sessions/revoke': ({ request, data }) =>
     check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
       'revoke 200': (r) => r.status === 200,

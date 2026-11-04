@@ -15,6 +15,12 @@
       "enabled": true
     },
     {
+      "key": "coreUrl",
+      "value": "http://localhost:3000",
+      "type": "default",
+      "enabled": true
+    },
+    {
       "key": "admin_user_id",
       "value": "1",
       "type": "default",
@@ -136,6 +142,18 @@
     },
     {
       "key": "reset_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "kc_link_token",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "kc_console_cookie",
       "value": "",
       "type": "default",
       "enabled": true

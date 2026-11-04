@@ -2919,6 +2919,238 @@
       "description": "The account becomes an administrator, sees and revokes its own session, then loses the role."
     },
     {
+      "name": "Administration: Keycloak console (MAIR-609)",
+      "item": [
+        {
+          "name": "MAIR-609 A plain user is refused a console link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_agent}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/keycloak/console-access",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "keycloak",
+                "console-access"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test(\"Error envelope\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error.code).to.be.a(\"string\");",
+                  "    pm.expect(body.error.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "MAIR-609 An administrator gets a single-use console link",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/keycloak/console-access",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "keycloak",
+                "console-access"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"The answer is not cached\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\");",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Only the link and its lifetime are relayed\", function () {",
+                  "    pm.expect(body).to.have.all.keys(\"url\", \"expires_in\");",
+                  "    pm.expect(body.expires_in).to.eql(120);",
+                  "    pm.expect(body.url).to.match(/^http:\\/\\/core-api:3000\\/admin-access\\?token=[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+$/);",
+                  "});",
+                  "pm.environment.set(\"kc_link_token\", body.url.split(\"token=\")[1]);"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "MAIR-609 Opening the link sets the console cookie",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/admin-access?token={{kc_link_token}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "admin-access"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{kc_link_token}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 303\", function () {",
+                  "    pm.response.to.have.status(303);",
+                  "});",
+                  "pm.test(\"Redirects to the realm admin console\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.eql(\"/admin/mairie360/console/\");",
+                  "});",
+                  "const setCookie = pm.response.headers.all().filter((h) => h.key.toLowerCase() === \"set-cookie\").map((h) => h.value).find((v) => v.startsWith(\"__Secure-mairie360-kc-console=\"));",
+                  "pm.test(\"The console cookie is HttpOnly, Secure, SameSite=Strict and bound to /admin\", function () {",
+                  "    pm.expect(setCookie, \"console Set-Cookie\").to.be.a(\"string\");",
+                  "    [\"HttpOnly\", \"Secure\", \"SameSite=Strict\", \"Path=/admin\"].forEach((attribute) => pm.expect(setCookie).to.include(attribute));",
+                  "});",
+                  "pm.environment.set(\"kc_console_cookie\", setCookie.split(\";\")[0].substring(\"__Secure-mairie360-kc-console=\".length));"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "MAIR-609 The cookie opens the console",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "__Secure-mairie360-kc-console={{kc_console_cookie}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{coreUrl}}/internal/keycloak-console/verify",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "internal",
+                "keycloak-console",
+                "verify"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "protocolProfileBehavior": {
+            "disableCookies": true
+          }
+        },
+        {
+          "name": "MAIR-609 The link works only once",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{coreUrl}}/admin-access?token={{kc_link_token}}",
+              "host": [
+                "{{coreUrl}}"
+              ],
+              "path": [
+                "admin-access"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{kc_link_token}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [],
+          "protocolProfileBehavior": {
+            "disableCookies": true,
+            "followRedirects": false
+          }
+        }
+      ]
+    },
+    {
       "name": "Password recovery under flood (MAIR-679)",
       "description": "MAIR-679: one client flooding the forgot password form must not lock password recovery for the other users. The BFF trusts the stack network (TRUST_PROXY), so X-Forwarded-For names the client, and relays that address to Core API, whose own per-client limit (10 / 15 min) used to count every request on the BFF's address.",
       "item": [

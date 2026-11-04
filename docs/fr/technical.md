@@ -113,10 +113,13 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | GET | `/admin/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | GET | `/admin/sessions/history` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/sessions/revoke` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| POST | `/admin/keycloak/console-access` | — | 200, 401, 403, 429, 500, 502, 503 |
 | GET | `/me` | — | 200, 401, 502 |
 | GET | `/session/me` | — | 200, 401, 502 |
 
 `GET /admin/groups` et `GET /admin/sessions/history` renvoient une page de la liste de Core, choisie par le front avec `limit` (1 à 500) et `offset` (0 à 1000000), les bornes de Core API : une valeur hors bornes donne un 400, et sans eux Core renvoie ses 100 premiers éléments. Les vérifications faites par le BFF lui-même (les groupes de `/me`, la lecture des membres avant d'ajouter ou de retirer un membre d'un groupe) lisent la plus grande page de Core, 500 éléments.
+
+`POST /admin/keycloak/console-access` (MAIR-609) ouvre la console d'administration Keycloak pour un temps limité : Core renvoie `{ url, expires_in }`, un lien à usage unique valable 120 secondes que le front ouvre dans un nouvel onglet. Sur l'hôte Keycloak, le lien pose un cookie de console de 30 minutes limité à `/admin` et redirige vers la console du realm ; Keycloak demande toujours un compte du realm ayant les rôles `realm-management`, et la console se ferme dès que l'administrateur perd le rôle Admin ou est archivé. Seuls `url` et `expires_in` sont relayés. Le 429 de Core (10 liens par administrateur toutes les 15 minutes) est relayé avec son `Retry-After`, et son 503 (accès console non configuré sur l'instance) est conservé pour que le front puisse masquer le bouton.
 
 ## Session, permissions et erreurs
 

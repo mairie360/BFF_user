@@ -326,7 +326,7 @@ working Core. Every `*_test.sh` sources `stack_secrets.sh` (MAIR-474, MAIR-680):
 anywhere), `ADMIN_JWT` (`sub=1`, 4 h, EdDSA like Core) for the ZAP replacer and k6, and `sign_jwt` / `sign_jwt_file`
 (node, for the thousands of k6 tokens: k6 cannot sign Ed25519) for the other callers; the compose files refuse to
 start without them, and no key or token is committed. The core-api image of the stacks must be one that signs EdDSA
-(`dev-3b40c2a` or later). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
+(`dev-690f32b` or later, MAIR-609 console access). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
 shell provides the key pair (`source ./stack_secrets.sh` before `docker compose up`). They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
 the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer

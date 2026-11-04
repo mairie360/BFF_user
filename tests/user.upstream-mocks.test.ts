@@ -843,6 +843,64 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
   });
 
+  describe('MAIR-609 POST /admin/keycloak/console-access', () => {
+    const CONSOLE = '/api/v1/admin/keycloak/console-access';
+    const LINK = { url: 'https://auth.dev.mairie360-eip.fr/admin-access?token=a.b.c', expires_in: 120 };
+    const call = (token = SESSION) => request(app).post('/admin/keycloak/console-access').set('Authorization', `Bearer ${token}`);
+
+    test('checks the admin role, forwards the session and relays only the link', async () => {
+      coreApi.on('post', CONSOLE, { body: { ...LINK, internal: 'dropped' } });
+
+      const response = await call();
+
+      expect(response.status).toBe(200);
+      expectBffContract('post', '/admin/keycloak/console-access', response);
+      expect(response.body).toEqual(LINK);
+      expect(response.headers['cache-control']).toContain('no-store');
+      expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl()), called('POST', coreApiUrls.getRequestKeycloakConsoleAccessUrl())]);
+      expect(coreApi.requests[1].headers.authorization).toBe(`Bearer ${SESSION}`);
+    });
+
+    test('is refused to a plain user without asking Core for a link', async () => {
+      coreApi.on('get', CORE.me, { body: meResponse({ role: 'User' }) });
+
+      const response = await call(sessionToken(7));
+
+      expect(response.status).toBe(403);
+      expectBffContract('post', '/admin/keycloak/console-access', response);
+      expect(coreApi.calls(CONSOLE)).toHaveLength(0);
+    });
+
+    test('relays the Core rate limit with its Retry-After', async () => {
+      coreApi.on('post', CONSOLE, { ...coreError(429, 'Too many requests'), headers: { 'Retry-After': '840' } });
+
+      const response = await call();
+
+      expect(response.status).toBe(429);
+      expectBffContract('post', '/admin/keycloak/console-access', response);
+      expect(response.headers['retry-after']).toBe('840');
+    });
+
+    test('keeps the 503 of an instance without console access, so the front can hide the button', async () => {
+      coreApi.on('post', CONSOLE, coreError(503, 'Keycloak console access is not configured on this instance.'));
+
+      const response = await call();
+
+      expect(response.status).toBe(503);
+      expectBffContract('post', '/admin/keycloak/console-access', response);
+      expect(response.body.error.message).toBe('Keycloak console access is not configured');
+    });
+
+    test('answers 502 to a link outside the contract instead of relaying it', async () => {
+      coreApi.on('post', CONSOLE, { body: { url: 'not a url', expires_in: 120 }, outOfContract: true });
+
+      const response = await call();
+
+      expect(response.status).toBe(502);
+      expectBffContract('post', '/admin/keycloak/console-access', response);
+    });
+  });
+
   describe('DELETE /admin/users/:userId', () => {
     test('checks the admin role locally, then deletes the user in Core API', async () => {
       coreApi.on('delete', CORE.adminUser, { status: 204 });

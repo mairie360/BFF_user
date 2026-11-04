@@ -1,4 +1,4 @@
-import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
+import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -13,6 +13,7 @@ import {
     validationError,
     verifySessionToken,
 } from '@mairie360/bffs-lib';
+import axios from 'axios';
 import { NextFunction, Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { CoreApiRateLimited, ErrorResponse, registry } from '../openapi-registry';
@@ -23,6 +24,7 @@ import {
     coreAdminRolesClient,
     coreAdminUsersClient,
     coreGroupsClient,
+    coreKeycloakConsoleClient,
     coreSessionsClient,
     coreUsersClient,
 } from '../clients/coreClient';
@@ -809,6 +811,48 @@ router.post('/sessions/revoke', async (req: Request, res: Response) => {
         return forwardCoreResponse(res, response);
     } catch (error) {
         throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/keycloak/console-access',
+    tags: ['Administration'],
+    summary: 'Opens the Keycloak admin console for a short time (MAIR-609)',
+    description: 'Core POST /api/v1/admin/keycloak/console-access: returns a single-use link, valid 2 minutes, to open '
+        + 'in a new tab. On the Keycloak host it sets a 30-minute console cookie bound to `/admin` and redirects to the '
+        + 'realm admin console; Keycloak then asks for a realm account holding the `realm-management` roles. The console '
+        + 'closes as soon as the administrator loses the Admin role or is archived. Never cache the answer.',
+    responses: {
+        200: { description: 'Single-use console link', content: { 'application/json': { schema: KeycloakConsoleAccessSchema } } },
+        401: coreResponses[401],
+        403: coreResponses[403],
+        429: {
+            description: 'At most 10 links per administrator every 15 minutes: retry after the Retry-After header (seconds)',
+            headers: { 'Retry-After': { description: 'Seconds to wait', schema: { type: 'integer' } } },
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+        500: coreResponses[500],
+        502: coreResponses[502],
+        503: {
+            description: 'Console access is not configured on this instance (no Keycloak realm URL or no Core signing key), '
+                + 'or CORE_API_URL / the session key of the BFF is not set',
+            content: { 'application/json': { schema: ErrorResponse } },
+        },
+    },
+});
+
+router.post('/keycloak/console-access', async (req: Request, res: Response) => {
+    try {
+        const response = await coreKeycloakConsoleClient.requestKeycloakConsoleAccess(asCaller('CORE_API', req));
+        return res.status(200).json(whitelist(KeycloakConsoleAccessSchema, response.data));
+    } catch (error) {
+        // Core answers 503 when console access is not configured: keep it so the front can hide the button.
+        if (axios.isAxiosError(error) && error.response?.status === 503) {
+            throw new HttpError(503, 'Keycloak console access is not configured');
+        }
+        // A 429 is relayed with its Retry-After by the lib.
+        throw upstreamError('CORE_API', error, [401, 403]);
     }
 });
 
