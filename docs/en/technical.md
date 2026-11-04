@@ -113,10 +113,13 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | GET | `/admin/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | GET | `/admin/sessions/history` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/sessions/revoke` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| POST | `/admin/keycloak/console-access` | — | 200, 401, 403, 429, 500, 502, 503 |
 | GET | `/me` | — | 200, 401, 502 |
 | GET | `/session/me` | — | 200, 401, 502 |
 
 `GET /admin/groups` and `GET /admin/sessions/history` return one page of Core's list, chosen by the front with `limit` (1 to 500) and `offset` (0 to 1000000), Core API's own bounds: a value outside them is a 400, and without them Core answers its first 100 items. The checks the BFF makes itself (the groups of `/me`, the membership read before adding or removing a group member) read Core's largest page, 500 items.
+
+`POST /admin/keycloak/console-access` (MAIR-609) opens the Keycloak admin console for a short time: Core answers `{ url, expires_in }`, a single-use link valid 120 seconds that the front opens in a new tab. On the Keycloak host the link sets a 30-minute console cookie bound to `/admin` and redirects to the realm console; Keycloak still asks for a realm account holding the `realm-management` roles, and the console closes as soon as the administrator loses the Admin role or is archived. Only `url` and `expires_in` are relayed. Core's 429 (10 links per administrator every 15 minutes) is relayed with its `Retry-After`, and its 503 (console access not configured on the instance) is kept so the front can hide the button.
 
 ## Session, permissions and errors
 

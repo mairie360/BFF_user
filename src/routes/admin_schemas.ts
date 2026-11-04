@@ -4,6 +4,14 @@ import { registry } from '../openapi-registry';
 export const AdministrationRoleSchema = registry.register('AdministrationRole', z.object({
   id: z.number(), name: z.string(), description: z.string(), can_be_deleted: z.boolean().nullable().optional(),
 }));
+// Answer of Core POST /api/v1/admin/keycloak/console-access (MAIR-609): a single-use link to the Keycloak console.
+export const KeycloakConsoleAccessSchema = registry.register('KeycloakConsoleAccess', z.object({
+  url: z.string().url().openapi({
+    description: 'Single-use link to open in a new tab, on the Keycloak host: it sets the 30-minute console cookie and redirects to the realm admin console.',
+    example: 'https://auth.dev.mairie360-eip.fr/admin-access?token=<link token>',
+  }),
+  expires_in: z.number().int().positive().openapi({ description: 'Seconds before the link expires (120).', example: 120 }),
+}));
 export const AdministrationUserSchema = registry.register('AdministrationUser', z.object({
   id: z.number(), first_name: z.string(), last_name: z.string(), email: z.string(), phone_number: z.string().nullable(),
   phone_country: z.string().nullable().optional(),

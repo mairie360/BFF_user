@@ -70,6 +70,11 @@ export const coreAdminUsersClient = {
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
 };
 
+// Temporary access to the Keycloak admin console (MAIR-609).
+export const coreKeycloakConsoleClient = {
+    requestKeycloakConsoleAccess: coreApi.requestKeycloakConsoleAccess,
+};
+
 export const coreAdminRolesClient = {
     adminGetRole: coreApi.adminGetRole,
     adminPostRole: coreApi.adminPostRole,

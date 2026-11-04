@@ -390,6 +390,27 @@
           "description"
         ]
       },
+      "KeycloakConsoleAccess": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Single-use link to open in a new tab, on the Keycloak host: it sets the 30-minute console cookie and redirects to the realm admin console.",
+            "example": "https://auth.dev.mairie360-eip.fr/admin-access?token=<link token>"
+          },
+          "expires_in": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Seconds before the link expires (120).",
+            "example": 120
+          }
+        },
+        "required": [
+          "url",
+          "expires_in"
+        ]
+      },
       "AdministrationUser": {
         "type": "object",
         "properties": {
@@ -5096,6 +5117,95 @@
           },
           "503": {
             "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/keycloak/console-access": {
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Opens the Keycloak admin console for a short time (MAIR-609)",
+        "description": "Core POST /api/v1/admin/keycloak/console-access: returns a single-use link, valid 2 minutes, to open in a new tab. On the Keycloak host it sets a 30-minute console cookie bound to `/admin` and redirects to the realm admin console; Keycloak then asks for a realm account holding the `realm-management` roles. The console closes as soon as the administrator loses the Admin role or is archived. Never cache the answer.",
+        "responses": {
+          "200": {
+            "description": "Single-use console link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeycloakConsoleAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès refusé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "At most 10 links per administrator every 15 minutes: retry after the Retry-After header (seconds)",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Console access is not configured on this instance (no Keycloak realm URL or no Core signing key), or CORE_API_URL / the session key of the BFF is not set",
             "content": {
               "application/json": {
                 "schema": {

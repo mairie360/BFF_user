@@ -3818,6 +3818,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/keycloak/console-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Opens the Keycloak admin console for a short time (MAIR-609)
+         * @description Core POST /api/v1/admin/keycloak/console-access: returns a single-use link, valid 2 minutes, to open in a new tab. On the Keycloak host it sets a 30-minute console cookie bound to `/admin` and redirects to the realm admin console; Keycloak then asks for a realm account holding the `realm-management` roles. The console closes as soon as the administrator loses the Admin role or is archived. Never cache the answer.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Single-use console link */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["KeycloakConsoleAccess"];
+                    };
+                };
+                /** @description Non authentifié */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Accès refusé */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description At most 10 links per administrator every 15 minutes: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Console access is not configured on this instance (no Keycloak realm URL or no Core signing key), or CORE_API_URL / the session key of the BFF is not set */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -4147,6 +4242,19 @@ export interface components {
             name: string;
             description: string;
             can_be_deleted?: boolean | null;
+        };
+        KeycloakConsoleAccess: {
+            /**
+             * Format: uri
+             * @description Single-use link to open in a new tab, on the Keycloak host: it sets the 30-minute console cookie and redirects to the realm admin console.
+             * @example https://auth.dev.mairie360-eip.fr/admin-access?token=<link token>
+             */
+            url: string;
+            /**
+             * @description Seconds before the link expires (120).
+             * @example 120
+             */
+            expires_in: number;
         };
         AdministrationUser: {
             id: number;
