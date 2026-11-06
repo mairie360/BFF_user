@@ -1,6 +1,6 @@
 # Development image: runs the TypeScript sources with tsx watch (npm run start). The security and
 # performance stacks build it as bff-user:local when IMAGE_REF is empty.
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
+FROM node:24.22.2-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8
 
 # curl for the Docker healthchecks.
 RUN apk add --no-cache curl
