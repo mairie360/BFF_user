@@ -1,16 +1,17 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "26fd3d3428a430e68ab385fb0052c9d9028914cc", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-12 13:16 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "654debef52abf46227b71f01c1ba005cd67ff31c", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-12 20:58 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.1.0 | `b754a6c` | 2026-10-21 10:09 UTC |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `26fd3d3` | 2026-11-12 13:16 UTC |
+| dev | — | `654debe` | 2026-11-12 20:58 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.1.0)
 
+- fix: MAIR-1001 Release staging: align internal versions and deploy ([#300](https://github.com/mairie360/BFF_user/pull/300))
 - fix(deps): MAIR-816 Release dev: align internal versions and deploy (#298) ([#298](https://github.com/mairie360/BFF_user/pull/298))
 - chore(deps): update dependency dotenv to v18.0.10 (#296) ([#296](https://github.com/mairie360/BFF_user/pull/296))
 - chore(deps): update dependency supertest to v7.3.2 (#295) ([#295](https://github.com/mairie360/BFF_user/pull/295))
@@ -31,6 +32,7 @@
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+- fix: MAIR-1001 Release staging: align internal versions and deploy ([#300](https://github.com/mairie360/BFF_user/pull/300))
 - fix(deps): MAIR-816 Release dev: align internal versions and deploy (#298) ([#298](https://github.com/mairie360/BFF_user/pull/298))
 - chore(deps): update dependency dotenv to v18.0.10 (#296) ([#296](https://github.com/mairie360/BFF_user/pull/296))
 - chore(deps): update dependency supertest to v7.3.2 (#295) ([#295](https://github.com/mairie360/BFF_user/pull/295))
@@ -60,6 +62,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-12 20:58 UTC | dev | — | `654debe` | [run](https://github.com/mairie360/BFF_user/actions/runs/43305006579) |
 | 2026-11-12 13:16 UTC | dev | — | `26fd3d3` | [run](https://github.com/mairie360/BFF_user/actions/runs/43224988483) |
 | 2026-11-12 05:30 UTC | dev | — | `329d75a` | [run](https://github.com/mairie360/BFF_user/actions/runs/43161243565) |
 | 2026-11-10 18:37 UTC | dev | — | `0f7bf60` | [run](https://github.com/mairie360/BFF_user/actions/runs/42876274924) |
