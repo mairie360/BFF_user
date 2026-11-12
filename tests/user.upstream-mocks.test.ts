@@ -739,6 +739,35 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
 
+    // MAIR-241: every proxied admin route, not only one, hides a Core failure behind a documented 502 and makes a
+    // single call to Core (a write is never replayed).
+    test.each(cases)('$route maps a Core API 500 to a documented 502 without leaking it, in a single upstream call', async ({ route, body, template }) => {
+      const [method, pathname] = route.split(' ');
+      coreApi.on(method.toLowerCase() as 'get', template, coreError(500, 'An error occurred while accessing the table users.'));
+      let call = request(app)[method.toLowerCase() as 'get'](pathname).set('Authorization', `Bearer ${SESSION}`);
+      if (body) call = call.send(body);
+
+      const response = await call;
+
+      expect(response.status).toBe(502);
+      expectBffContract(method, pathname, response);
+      expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
+      expect(JSON.stringify(response.body)).not.toContain('table users');
+      expect(coreApi.requests).toHaveLength(2);
+    });
+
+    test.each(cases)('$route answers 502 when the Core connection drops', async ({ route, body, template }) => {
+      const [method, pathname] = route.split(' ');
+      coreApi.on(method.toLowerCase() as 'get', template, { dropConnection: true });
+      let call = request(app)[method.toLowerCase() as 'get'](pathname).set('Authorization', `Bearer ${SESSION}`);
+      if (body) call = call.send(body);
+
+      const response = await call;
+
+      expect(response.status).toBe(502);
+      expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } });
+    });
+
     test('POST /admin/sessions/refresh is no longer served and never reaches Core API', async () => {
       const response = await request(app).post('/admin/sessions/refresh').set('Authorization', `Bearer ${SESSION}`).send({ refresh_token: 'opaque-refresh-token' });
 
