@@ -1,16 +1,17 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "0f7bf6050fee6873d4493e0fd8ecd494bf83d464", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-10 18:37 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
+<!-- release-journal-state {"dev": "329d75a7235ea92fdf2820eddc3a0fc2e5501a3f", "prod": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "prod_tag": "v1.1.0", "staging": "b754a6ce95b82af224e1bc4fead48f0f59e56433", "updated": {"dev": "2026-11-12 05:30 UTC", "prod": "2026-10-21 10:09 UTC", "staging": "2026-10-21 09:41 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.1.0 | `b754a6c` | 2026-10-21 10:09 UTC |
 | staging | — | `b754a6c` | 2026-10-21 09:41 UTC |
-| dev | — | `0f7bf60` | 2026-11-10 18:37 UTC |
+| dev | — | `329d75a` | 2026-11-12 05:30 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.1.0)
 
+- chore(deps): update dependency dotenv to v18.0.10 (#296) ([#296](https://github.com/mairie360/BFF_user/pull/296))
 - chore(deps): update dependency supertest to v7.3.2 (#295) ([#295](https://github.com/mairie360/BFF_user/pull/295))
 - feat: MAIR-609 Core/BFF_user - Accès temporaire à la console Keycloak pour les admins de mairie (#292) ([#292](https://github.com/mairie360/BFF_user/pull/292))
 - fix: MAIR-680 [Audit 23/10] Toutes les APIs et BFFs : remplacer le secret JWT HS256 partagé par 12 services (A1) ([#290](https://github.com/mairie360/BFF_user/pull/290))
@@ -29,6 +30,7 @@
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+- chore(deps): update dependency dotenv to v18.0.10 (#296) ([#296](https://github.com/mairie360/BFF_user/pull/296))
 - chore(deps): update dependency supertest to v7.3.2 (#295) ([#295](https://github.com/mairie360/BFF_user/pull/295))
 - feat: MAIR-609 Core/BFF_user - Accès temporaire à la console Keycloak pour les admins de mairie (#292) ([#292](https://github.com/mairie360/BFF_user/pull/292))
 - fix: MAIR-680 [Audit 23/10] Toutes les APIs et BFFs : remplacer le secret JWT HS256 partagé par 12 services (A1) ([#290](https://github.com/mairie360/BFF_user/pull/290))
@@ -56,6 +58,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-12 05:30 UTC | dev | — | `329d75a` | [run](https://github.com/mairie360/BFF_user/actions/runs/43161243565) |
 | 2026-11-10 18:37 UTC | dev | — | `0f7bf60` | [run](https://github.com/mairie360/BFF_user/actions/runs/42876274924) |
 | 2026-11-04 15:15 UTC | dev | — | `2ab34b3` | [run](https://github.com/mairie360/BFF_user/actions/runs/41854314320) |
 | 2026-11-03 14:22 UTC | dev | — | `7931bcc` | [run](https://github.com/mairie360/BFF_user/actions/runs/41652093723) |
