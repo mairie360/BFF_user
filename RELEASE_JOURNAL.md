@@ -1,20 +1,22 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "95d1af0221c0178ff14c6be3bfd4c17567404db8", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-13 00:51 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
+<!-- release-journal-state {"dev": "a2366089e95441845aa1b981eebe887cbccd496d", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-13 10:11 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.2.0 | `c6eda65` | 2026-11-13 00:45 UTC |
 | staging | — | `c6eda65` | 2026-11-13 00:31 UTC |
-| dev | — | `95d1af0` | 2026-11-13 00:51 UTC |
+| dev | — | `a236608` | 2026-11-13 10:11 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.2.0)
 
+- chore(deps): update typescript dependencies (#302) ([#302](https://github.com/mairie360/BFF_user/pull/302))
 - ci: MAIR-1003 Release prod: align internal versions and deploy ([#308](https://github.com/mairie360/BFF_user/pull/308))
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+- chore(deps): update typescript dependencies (#302) ([#302](https://github.com/mairie360/BFF_user/pull/302))
 - ci: MAIR-1003 Release prod: align internal versions and deploy ([#308](https://github.com/mairie360/BFF_user/pull/308))
 
 ## Différence staging → prod (en staging, pas encore en prod)
@@ -28,6 +30,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-13 10:11 UTC | dev | — | `a236608` | [run](https://github.com/mairie360/BFF_user/actions/runs/43406521618) |
 | 2026-11-13 00:51 UTC | dev | — | `95d1af0` | [run](https://github.com/mairie360/BFF_user/actions/runs/43340048866) |
 | 2026-11-13 00:45 UTC | prod | v1.2.0 | `c6eda65` | [run](https://github.com/mairie360/BFF_user/actions/runs/43337858213) |
 | 2026-11-13 00:31 UTC | staging | — | `c6eda65` | [run](https://github.com/mairie360/BFF_user/actions/runs/43336603406) |
