@@ -740,7 +740,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
     });
 
     // MAIR-241: every proxied admin route, not only one, hides a Core failure behind a documented 502 and makes a
-    // single call to Core (a write is never replayed).
+    // single call to Core (a write is never replayed; only the idempotent GETs are retried once, on a dropped connection).
     test.each(cases)('$route maps a Core API 500 to a documented 502 without leaking it, in a single upstream call', async ({ route, body, template }) => {
       const [method, pathname] = route.split(' ');
       coreApi.on(method.toLowerCase() as 'get', template, coreError(500, 'An error occurred while accessing the table users.'));
@@ -766,10 +766,9 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(502);
       expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } });
-      // A dropped connection never replays a write; only an idempotent GET may be retried, once.
-      const attempts = coreApi.calls(template, method).length;
-      if (method === 'GET') expect(attempts).toBeLessThanOrEqual(2);
-      else expect(attempts).toBe(1);
+      // A dropped connection never replays a write (one attempt). An idempotent GET is retried once by design
+      // (`retry: true` of callUpstream): exactly two attempts, so a third one or the loss of the retry shows.
+      expect(coreApi.calls(template, method)).toHaveLength(method === 'GET' ? 2 : 1);
     });
 
     test('POST /admin/sessions/refresh is no longer served and never reaches Core API', async () => {
