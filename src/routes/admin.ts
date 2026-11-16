@@ -182,7 +182,7 @@ function jsonBodyRequest(schema: z.ZodType) {
 
 const coreResponses = {
     200: {
-        description: 'Réponse du Core API',
+        description: 'Response of Core API',
         content: {
             'application/json': {
                 schema: CoreResponse,
@@ -190,7 +190,7 @@ const coreResponses = {
         },
     },
     201: {
-        description: 'Créé par le Core API',
+        description: 'Created by Core API',
         content: {
             'application/json': {
                 schema: CoreResponse,
@@ -198,10 +198,10 @@ const coreResponses = {
         },
     },
     204: {
-        description: 'Aucun contenu retourné par le Core API',
+        description: 'No content returned by Core API',
     },
     400: {
-        description: 'Erreur Core API',
+        description: 'Core API error',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -209,7 +209,7 @@ const coreResponses = {
         },
     },
     401: {
-        description: 'Non authentifié',
+        description: 'Not authenticated',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -217,7 +217,7 @@ const coreResponses = {
         },
     },
     403: {
-        description: 'Accès refusé',
+        description: 'Access denied',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -225,7 +225,7 @@ const coreResponses = {
         },
     },
     404: {
-        description: 'Introuvable',
+        description: 'Not found',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -328,9 +328,9 @@ registry.registerPath({
     method: 'get',
     path: '/admin/users',
     tags: ['Administration'],
-    summary: 'Liste les utilisateurs administrables, 20 éléments maximum par page',
+    summary: 'List the manageable users, at most 20 items per page',
     request: { query: UserListQuery },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: AdministrationUsersPageSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: AdministrationUsersPageSchema } } } },
 });
 
 router.get('/users', async (req: Request, res: Response) => {
@@ -346,7 +346,7 @@ registry.registerPath({
     method: 'post',
     path: '/admin/users',
     tags: ['Administration'],
-    summary: 'Crée un utilisateur via le Core API',
+    summary: 'Create a user through Core API',
     request: { body: jsonBodyRequest(UserCreateBody) },
     responses: coreWriteResponses,
 });
@@ -366,7 +366,7 @@ registry.registerPath({
     method: 'patch',
     path: '/admin/users/{userId}',
     tags: ['Administration'],
-    summary: 'Met à jour un utilisateur via le Core API',
+    summary: 'Update a user through Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserPatchBody) },
     responses: coreWriteResponses,
 });
@@ -388,7 +388,7 @@ registry.registerPath({
     method: 'patch',
     path: '/admin/users/{userId}/password',
     tags: ['Administration'],
-    summary: 'Modifie le mot de passe et révoque les sessions utilisateur',
+    summary: 'Change the password and revoke the user sessions',
     request: {
         params: UserIdParams,
         body: {
@@ -422,7 +422,7 @@ registry.registerPath({
     method: 'delete',
     path: '/admin/users/{userId}',
     tags: ['Administration'],
-    summary: 'Supprime définitivement un utilisateur via le Core API',
+    summary: 'Delete a user for good through Core API',
     request: { params: DeletedUserIdParams },
     responses: coreWriteResponses,
 });
@@ -445,7 +445,7 @@ registry.registerPath({
     method: 'post',
     path: '/admin/users/{userId}/roles',
     tags: ['Administration'],
-    summary: 'Ajoute un rôle à un utilisateur via le Core API',
+    summary: 'Add a role to a user through Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserRoleBody) },
     responses: coreWriteResponses,
 });
@@ -475,7 +475,7 @@ registry.registerPath({
     method: 'delete',
     path: '/admin/users/{userId}/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Retire un rôle à un utilisateur via le Core API',
+    summary: 'Remove a role from a user through Core API',
     request: { params: UserRoleParams },
     responses: coreWriteResponses,
 });
@@ -495,8 +495,8 @@ registry.registerPath({
     method: 'get',
     path: '/admin/roles',
     tags: ['Administration'],
-    summary: 'Liste les rôles admin via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: RolesListSchema } } } },
+    summary: 'List the admin roles through Core API',
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: RolesListSchema } } } },
 });
 
 router.get('/roles', async (req: Request, res: Response) => {
@@ -508,7 +508,7 @@ registry.registerPath({
     method: 'post',
     path: '/admin/roles',
     tags: ['Administration'],
-    summary: 'Crée un rôle via le Core API',
+    summary: 'Create a role through Core API',
     request: { body: jsonBodyRequest(RoleWriteBody) },
     responses: coreWriteResponses,
 });
@@ -528,7 +528,7 @@ registry.registerPath({
     method: 'put',
     path: '/admin/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Remplace un rôle via le Core API',
+    summary: 'Replace a role through Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RoleReplaceBody) },
     responses: coreWriteResponses,
 });
@@ -550,7 +550,7 @@ registry.registerPath({
     method: 'patch',
     path: '/admin/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Met à jour un rôle via le Core API',
+    summary: 'Update a role through Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RolePatchBody) },
     responses: coreWriteResponses,
 });
@@ -572,7 +572,7 @@ registry.registerPath({
     method: 'delete',
     path: '/admin/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Supprime un rôle via le Core API',
+    summary: 'Delete a role through Core API',
     request: { params: DeletedRoleIdParams },
     responses: coreWriteResponses,
 });
@@ -594,7 +594,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Lists the groups through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupsListSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: GroupsListSchema } } } },
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
@@ -606,7 +606,7 @@ registry.registerPath({
     method: 'post',
     path: '/admin/groups',
     tags: ['Administration'],
-    summary: 'Crée un groupe via le Core API',
+    summary: 'Create a group through Core API',
     request: { body: jsonBodyRequest(GroupCreateBody) },
     responses: coreWriteResponses,
 });
@@ -626,9 +626,9 @@ registry.registerPath({
     method: 'get',
     path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Récupère un groupe via le Core API',
+    summary: 'Get a group through Core API',
     request: { params: GroupIdParams },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupDetailSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: GroupDetailSchema } } } },
 });
 
 router.get('/groups/:groupId', async (req: Request, res: Response) => {
@@ -642,7 +642,7 @@ registry.registerPath({
     method: 'patch',
     path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Met à jour le nom ou la description d’un groupe',
+    summary: 'Update the name or the description of a group',
     request: {
         params: GroupIdParams,
         body: {
@@ -670,7 +670,7 @@ registry.registerPath({
     method: 'delete',
     path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Supprime un groupe via le Core API',
+    summary: 'Delete a group through Core API',
     request: { params: DeletedGroupIdParams },
     responses: coreWriteResponses,
 });
@@ -690,9 +690,9 @@ registry.registerPath({
     method: 'get',
     path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
-    summary: 'Liste les utilisateurs d’un groupe via le Core API',
+    summary: 'List the users of a group through Core API',
     request: { params: GroupIdParams },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupMembersSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: GroupMembersSchema } } } },
 });
 
 router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
@@ -712,7 +712,7 @@ registry.registerPath({
     method: 'post',
     path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
-    summary: 'Ajoute un utilisateur à un groupe via le Core API',
+    summary: 'Add a user to a group through Core API',
     request: { params: GroupIdParams, body: jsonBodyRequest(GroupUserBody) },
     responses: coreWriteResponses,
 });
@@ -744,7 +744,7 @@ registry.registerPath({
     method: 'delete',
     path: '/admin/groups/{groupId}/users/{userId}',
     tags: ['Administration'],
-    summary: 'Retire un utilisateur d’un groupe via le Core API',
+    summary: 'Remove a user from a group through Core API',
     request: { params: GroupUserParams },
     responses: coreWriteResponses,
 });
@@ -769,8 +769,8 @@ registry.registerPath({
     method: 'get',
     path: '/admin/sessions',
     tags: ['Administration'],
-    summary: 'Liste les sessions actives via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
+    summary: 'List the active sessions through Core API',
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions', async (req: Request, res: Response) => {
@@ -784,7 +784,7 @@ registry.registerPath({
     tags: ['Administration'],
     summary: 'Reads the session history through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {

@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Vérifie la santé du BFF */
+        /** Check the health of the BFF */
         get: {
             parameters: {
                 query?: never;
@@ -120,7 +120,7 @@ export interface paths {
                         "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
-                /** @description Données invalides */
+                /** @description Invalid data */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -138,7 +138,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Première connexion : mot de passe à changer */
+                /** @description First sign-in: the password must be changed */
                 412: {
                     headers: {
                         [name: string]: unknown;
@@ -162,7 +162,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur serveur */
+                /** @description Server error */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -208,7 +208,7 @@ export interface paths {
         put?: never;
         /**
          * Force le changement de mot de passe
-         * @description Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force_change_password.
+         * @description Forwards the token and the new password to Core API on /api/v1/auth/force_change_password.
          */
         post: {
             parameters: {
@@ -223,14 +223,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Mot de passe changé avec succès */
+                /** @description Password changed */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Données invalides */
+                /** @description Invalid data */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -239,7 +239,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Token invalide ou expiré */
+                /** @description Invalid or expired token */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -248,7 +248,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Token de première connexion inconnu ou expiré */
+                /** @description Unknown or expired first sign-in token */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -268,7 +268,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur serveur */
+                /** @description Server error */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -637,7 +637,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur serveur */
+                /** @description Server error */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -778,7 +778,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Identifiant numérique de l'utilisateur */
+                    /** @description Numeric id of the user */
                     userId: number;
                 };
                 cookie?: never;
@@ -874,7 +874,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liste les utilisateurs administrables, 20 éléments maximum par page */
+        /** List the manageable users, at most 20 items per page */
         get: {
             parameters: {
                 query?: {
@@ -888,7 +888,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -897,7 +897,7 @@ export interface paths {
                         "application/json": components["schemas"]["AdministrationUsersPage"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -906,14 +906,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -922,7 +922,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -931,7 +931,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -940,7 +940,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -988,7 +988,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Crée un utilisateur via le Core API */
+        /** Create a user through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -1002,7 +1002,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1011,7 +1011,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1020,14 +1020,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1036,7 +1036,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1045,7 +1045,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1054,7 +1054,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1126,7 +1126,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Supprime définitivement un utilisateur via le Core API */
+        /** Delete a user for good through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -1138,7 +1138,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1147,7 +1147,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1156,14 +1156,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1172,7 +1172,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1181,7 +1181,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1190,7 +1190,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1248,7 +1248,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Met à jour un utilisateur via le Core API */
+        /** Update a user through Core API */
         patch: {
             parameters: {
                 query?: never;
@@ -1264,7 +1264,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1273,7 +1273,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1282,14 +1282,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1298,7 +1298,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1307,7 +1307,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1316,7 +1316,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1387,7 +1387,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Modifie le mot de passe et révoque les sessions utilisateur */
+        /** Change the password and revoke the user sessions */
         patch: {
             parameters: {
                 query?: never;
@@ -1403,7 +1403,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1412,7 +1412,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1421,14 +1421,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1437,7 +1437,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1446,7 +1446,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1455,7 +1455,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1522,7 +1522,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Ajoute un rôle à un utilisateur via le Core API */
+        /** Add a role to a user through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -1538,7 +1538,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1547,7 +1547,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1556,14 +1556,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1572,7 +1572,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1581,7 +1581,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1590,7 +1590,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1662,7 +1662,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire un rôle à un utilisateur via le Core API */
+        /** Remove a role from a user through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -1675,7 +1675,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1684,7 +1684,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1693,14 +1693,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1709,7 +1709,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1718,7 +1718,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1727,7 +1727,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1795,7 +1795,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liste les rôles admin via le Core API */
+        /** List the admin roles through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -1805,7 +1805,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1816,7 +1816,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1825,14 +1825,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1841,7 +1841,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1850,7 +1850,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1859,7 +1859,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1907,7 +1907,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Crée un rôle via le Core API */
+        /** Create a role through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -1921,7 +1921,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1930,7 +1930,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1939,14 +1939,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1955,7 +1955,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1964,7 +1964,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1973,7 +1973,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2043,7 +2043,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Remplace un rôle via le Core API */
+        /** Replace a role through Core API */
         put: {
             parameters: {
                 query?: never;
@@ -2059,7 +2059,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2068,7 +2068,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2077,14 +2077,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2093,7 +2093,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2102,7 +2102,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2111,7 +2111,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2168,7 +2168,7 @@ export interface paths {
             };
         };
         post?: never;
-        /** Supprime un rôle via le Core API */
+        /** Delete a role through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -2180,7 +2180,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2189,7 +2189,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2198,14 +2198,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2214,7 +2214,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2223,7 +2223,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2232,7 +2232,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2290,7 +2290,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Met à jour un rôle via le Core API */
+        /** Update a role through Core API */
         patch: {
             parameters: {
                 query?: never;
@@ -2306,7 +2306,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2315,7 +2315,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2324,14 +2324,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2340,7 +2340,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2349,7 +2349,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2358,7 +2358,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2436,7 +2436,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2447,7 +2447,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2456,14 +2456,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2472,7 +2472,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2481,7 +2481,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2490,7 +2490,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2538,7 +2538,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Crée un groupe via le Core API */
+        /** Create a group through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -2552,7 +2552,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2561,7 +2561,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2570,14 +2570,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2586,7 +2586,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2595,7 +2595,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2604,7 +2604,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2673,7 +2673,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Récupère un groupe via le Core API */
+        /** Get a group through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -2685,7 +2685,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2696,7 +2696,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2705,14 +2705,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2721,7 +2721,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2730,7 +2730,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2739,7 +2739,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2788,7 +2788,7 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Supprime un groupe via le Core API */
+        /** Delete a group through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -2800,7 +2800,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2809,7 +2809,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2818,14 +2818,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2834,7 +2834,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2843,7 +2843,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2852,7 +2852,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2910,7 +2910,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Met à jour le nom ou la description d’un groupe */
+        /** Update the name or the description of a group */
         patch: {
             parameters: {
                 query?: never;
@@ -2926,7 +2926,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2935,7 +2935,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2944,14 +2944,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2960,7 +2960,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2969,7 +2969,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2978,7 +2978,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3043,7 +3043,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liste les utilisateurs d’un groupe via le Core API */
+        /** List the users of a group through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -3055,7 +3055,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3066,7 +3066,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3075,14 +3075,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3091,7 +3091,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3100,7 +3100,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3109,7 +3109,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3157,7 +3157,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Ajoute un utilisateur à un groupe via le Core API */
+        /** Add a user to a group through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -3173,7 +3173,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3182,7 +3182,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3191,14 +3191,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3207,7 +3207,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3216,7 +3216,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3225,7 +3225,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3297,7 +3297,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire un utilisateur d’un groupe via le Core API */
+        /** Remove a user from a group through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -3310,7 +3310,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3319,7 +3319,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3328,14 +3328,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3344,7 +3344,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3353,7 +3353,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3362,7 +3362,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3430,7 +3430,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liste les sessions actives via le Core API */
+        /** List the active sessions through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -3440,7 +3440,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3451,7 +3451,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3460,14 +3460,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3476,7 +3476,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3485,7 +3485,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3494,7 +3494,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3569,7 +3569,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3580,7 +3580,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3589,14 +3589,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3605,7 +3605,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3614,7 +3614,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3623,7 +3623,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3704,7 +3704,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3713,7 +3713,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3722,14 +3722,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3738,7 +3738,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3747,7 +3747,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3756,7 +3756,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3849,7 +3849,7 @@ export interface paths {
                         "application/json": components["schemas"]["KeycloakConsoleAccess"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3858,7 +3858,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -4073,17 +4073,17 @@ export interface components {
         LoginView: {
             /**
              * Format: email
-             * @description Adresse email de l'utilisateur
+             * @description E-mail address of the user
              * @example alice.dupont@mairie360.fr
              */
             email: string;
             /**
-             * @description Mot de passe de l'utilisateur
+             * @description Password of the user
              * @example MotDePasse123
              */
             password: string;
             /**
-             * @description Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)
+             * @description Device used to sign in (an empty string is accepted, as Core API does)
              * @example Firefox
              */
             device_info: string;
@@ -4156,27 +4156,27 @@ export interface components {
         AboutResponseView: {
             /**
              * Format: email
-             * @description Adresse email de l'utilisateur
+             * @description E-mail address of the user
              * @example alice.dupont@mairie360.fr
              */
             email: string;
             /**
-             * @description Prénom de l'utilisateur
+             * @description First name of the user
              * @example Alice
              */
             first_name: string;
             /**
-             * @description Nom de l'utilisateur
+             * @description Last name of the user
              * @example Dupont
              */
             last_name: string;
             /**
-             * @description Numéro de téléphone de l'utilisateur (null si non renseigné)
+             * @description Phone number of the user (null if not set)
              * @example +33123456789
              */
             phone: string | null;
             /**
-             * @description Statut du compte utilisateur
+             * @description Status of the user account
              * @example active
              */
             status: string;
@@ -4226,7 +4226,7 @@ export interface components {
         };
         UserIdParams: {
             /**
-             * @description Identifiant numérique de l'utilisateur
+             * @description Numeric id of the user
              * @example 42
              */
             userId: number;

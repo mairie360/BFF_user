@@ -83,7 +83,7 @@ registry.registerPath({
             },
         },
         400: {
-            description: 'Données invalides',
+            description: 'Invalid data',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -91,7 +91,7 @@ registry.registerPath({
             },
         },
         412: {
-            description: 'Première connexion : mot de passe à changer',
+            description: 'First sign-in: the password must be changed',
             content: { 'application/json': { schema: z.object({ token: z.string() }).passthrough() } },
         },
         401: {
@@ -104,7 +104,7 @@ registry.registerPath({
         },
         429: tooManyAttempts,
         500: {
-            description: 'Erreur serveur',
+            description: 'Server error',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -129,7 +129,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Force le changement de mot de passe',
-    description: 'Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force_change_password.',
+    description: 'Forwards the token and the new password to Core API on /api/v1/auth/force_change_password.',
     request: {
         body: {
             required: true,
@@ -142,10 +142,10 @@ registry.registerPath({
     },
     responses: {
         204: {
-            description: 'Mot de passe changé avec succès',
+            description: 'Password changed',
         },
         400: {
-            description: 'Données invalides',
+            description: 'Invalid data',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -153,7 +153,7 @@ registry.registerPath({
             },
         },
         401: {
-            description: 'Token invalide ou expiré',
+            description: 'Invalid or expired token',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -161,7 +161,7 @@ registry.registerPath({
             },
         },
         403: {
-            description: 'Token de première connexion inconnu ou expiré',
+            description: 'Unknown or expired first sign-in token',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -170,7 +170,7 @@ registry.registerPath({
         },
         429: tooManyAttempts,
         500: {
-            description: 'Erreur serveur',
+            description: 'Server error',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -385,7 +385,7 @@ registry.registerPath({
             },
         },
         500: {
-            description: 'Erreur serveur',
+            description: 'Server error',
             content: {
                 'application/json': {
                     schema: ErrorResponse,

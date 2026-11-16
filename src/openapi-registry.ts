@@ -2,7 +2,7 @@ import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-op
 import { ErrorResponseSchema } from '@mairie360/bffs-lib';
 import { z } from 'zod';
 
-// On ajoute les méthodes .openapi() à Zod
+// Adds the .openapi() methods to Zod
 extendZodWithOpenApi(z);
 
 export const registry = new OpenAPIRegistry();
@@ -37,15 +37,15 @@ export const CoreApiNotConfigured = {
 
 export const LoginViewSchema = z.object({
     email: z.email().openapi({
-        description: 'Adresse email de l\'utilisateur',
+        description: 'E-mail address of the user',
         example: 'alice.dupont@mairie360.fr',
     }),
     password: z.string().min(1).openapi({
-        description: 'Mot de passe de l\'utilisateur',
+        description: 'Password of the user',
         example: 'MotDePasse123',
     }),
     device_info: z.string().openapi({
-        description: 'Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)',
+        description: 'Device used to sign in (an empty string is accepted, as Core API does)',
         example: 'Firefox',
     }),
 }).openapi('LoginView');
@@ -112,23 +112,23 @@ export const ResetPasswordViewSchema = z.object({
 
 export const AboutResponseViewSchema = z.object({
     email: z.email().openapi({
-        description: 'Adresse email de l\'utilisateur',
+        description: 'E-mail address of the user',
         example: 'alice.dupont@mairie360.fr',
     }),
     first_name: z.string().openapi({
-        description: 'Prénom de l\'utilisateur',
+        description: 'First name of the user',
         example: 'Alice',
     }),
     last_name: z.string().openapi({
-        description: 'Nom de l\'utilisateur',
+        description: 'Last name of the user',
         example: 'Dupont',
     }),
     phone: z.string().nullable().openapi({
-        description: 'Numéro de téléphone de l\'utilisateur (null si non renseigné)',
+        description: 'Phone number of the user (null if not set)',
         example: '+33123456789',
     }),
     status: z.string().openapi({
-        description: 'Statut du compte utilisateur',
+        description: 'Status of the user account',
         example: 'active',
     }),
 }).openapi('AboutResponseView');
@@ -185,7 +185,7 @@ export const LogoutResponse = z.object({
 
 export const UserIdParams = z.object({
     userId: z.coerce.number().int().positive().openapi({
-        description: 'Identifiant numérique de l\'utilisateur',
+        description: 'Numeric id of the user',
         example: 42,
     }),
 }).openapi('UserIdParams');
