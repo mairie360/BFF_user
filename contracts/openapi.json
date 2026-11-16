@@ -1204,7 +1204,7 @@
             }
           },
           "401": {
-            "description": "Identifiants invalides",
+            "description": "Invalid credentials",
             "content": {
               "application/json": {
                 "schema": {

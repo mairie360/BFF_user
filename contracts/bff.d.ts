@@ -129,7 +129,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Identifiants invalides */
+                /** @description Invalid credentials */
                 401: {
                     headers: {
                         [name: string]: unknown;

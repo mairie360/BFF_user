@@ -95,7 +95,7 @@ registry.registerPath({
             content: { 'application/json': { schema: z.object({ token: z.string() }).passthrough() } },
         },
         401: {
-            description: 'Identifiants invalides',
+            description: 'Invalid credentials',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
