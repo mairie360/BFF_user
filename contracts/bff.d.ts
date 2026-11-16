@@ -3920,6 +3920,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the identity, groups and roles of the session */
         get: {
             parameters: {
                 query?: never;
@@ -3991,6 +3992,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the identity, groups and roles of the session */
         get: {
             parameters: {
                 query?: never;

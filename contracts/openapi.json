@@ -5219,6 +5219,7 @@
     },
     "/me": {
       "get": {
+        "summary": "Get the identity, groups and roles of the session",
         "responses": {
           "200": {
             "description": "Identity, groups and roles of the session (contract fields only)",
@@ -5275,6 +5276,7 @@
     },
     "/session/me": {
       "get": {
+        "summary": "Get the identity, groups and roles of the session",
         "responses": {
           "200": {
             "description": "Identity, groups and roles of the session (contract fields only)",
