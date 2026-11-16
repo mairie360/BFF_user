@@ -45,7 +45,7 @@ Generated contract: [`contracts/openapi.json`](contracts/openapi.json) (36 opera
 | `GET` | `/health` | Check the health of the BFF |
 | `GET` | `/check_apis` | Checks that Core API is reachable |
 | `POST` | `/auth/login` | Signs a user in |
-| `POST` | `/auth/force_change_password` | Force le changement de mot de passe |
+| `POST` | `/auth/force_change_password` | Force a password change |
 | `POST` | `/auth/forgot_password` | Requests a password reset e-mail |
 | `POST` | `/auth/reset_password` | Resets a password with the e-mailed token |
 | `POST` | `/auth/refresh` | Renews the access JWT |

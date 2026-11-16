@@ -128,7 +128,7 @@ registry.registerPath({
     path: '/auth/force_change_password',
     security: [],
     tags: ['Authentication'],
-    summary: 'Force le changement de mot de passe',
+    summary: 'Force a password change',
     description: 'Forwards the token and the new password to Core API on /api/v1/auth/force_change_password.',
     request: {
         body: {
