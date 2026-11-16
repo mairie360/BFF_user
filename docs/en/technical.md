@@ -10,9 +10,9 @@ The `auth`, `session`, `user` and `admin` routers are mounted in `src/app.ts`, w
 
 ## Data and persistence
 
-Core supplies identity and session operations. The BFF SQL repositories also read users and roles and perform some password and group mutations. The first-sign-in flow uses PostgreSQL and Redis. Data access is therefore a mixture of HTTP and direct database operations.
+Core API supplies identity, sessions, users, roles and groups: the BFF has no database or Redis access, and every read or write goes through Core API, first sign-in included.
 
-Monitoring, backups, application logs and system policy described in administration requirements are not guaranteed by this contract. SQL access requires a compatible schema, including `group_members`; this name differs from `group_users` used in other contracts.
+Monitoring, backups, application logs and system policy described in administration requirements are not guaranteed by this contract.
 
 ## Installation and local startup
 
@@ -175,7 +175,7 @@ Every log is one JSON object per line on stdout (MAIR-531, `@mairie360/bffs-lib`
 
 ## Troubleshooting
 
-If sign-in works but administration fails, check `JWT_PUBLIC_KEY` (Core's current public key), the stored role and SQL access. If first-sign-in password change fails, check Redis, the temporary token and PostgreSQL.
+If sign-in works but administration fails, check `JWT_PUBLIC_KEY` (Core's current public key), and the stored role. If the first-sign-in password change fails, check the temporary token and the logs of Core API, which keeps that token in Redis.
 
 ## Repository reference
 

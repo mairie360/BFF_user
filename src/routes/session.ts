@@ -23,7 +23,7 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
     roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() })])),
 }));
 for (const path of ['/me', '/session/me']) {
-    registry.registerPath({ method: 'get', path, responses: {
+    registry.registerPath({ method: 'get', path, summary: 'Get the identity, groups and roles of the session', responses: {
         200: { description: 'Identity, groups and roles of the session (contract fields only)', content: { 'application/json': { schema: SessionResponseSchema } } },
         401: { description: 'Missing `Authorization: Bearer` header, or invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
         429: CoreApiRateLimited,

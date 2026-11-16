@@ -79,18 +79,18 @@
           "email": {
             "type": "string",
             "format": "email",
-            "description": "Adresse email de l'utilisateur",
+            "description": "E-mail address of the user",
             "example": "alice.dupont@mairie360.fr"
           },
           "password": {
             "type": "string",
             "minLength": 1,
-            "description": "Mot de passe de l'utilisateur",
+            "description": "Password of the user",
             "example": "MotDePasse123"
           },
           "device_info": {
             "type": "string",
-            "description": "Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)",
+            "description": "Device used to sign in (an empty string is accepted, as Core API does)",
             "example": "Firefox"
           }
         },
@@ -217,17 +217,17 @@
           "email": {
             "type": "string",
             "format": "email",
-            "description": "Adresse email de l'utilisateur",
+            "description": "E-mail address of the user",
             "example": "alice.dupont@mairie360.fr"
           },
           "first_name": {
             "type": "string",
-            "description": "Prénom de l'utilisateur",
+            "description": "First name of the user",
             "example": "Alice"
           },
           "last_name": {
             "type": "string",
-            "description": "Nom de l'utilisateur",
+            "description": "Last name of the user",
             "example": "Dupont"
           },
           "phone": {
@@ -235,12 +235,12 @@
               "string",
               "null"
             ],
-            "description": "Numéro de téléphone de l'utilisateur (null si non renseigné)",
+            "description": "Phone number of the user (null if not set)",
             "example": "+33123456789"
           },
           "status": {
             "type": "string",
-            "description": "Statut du compte utilisateur",
+            "description": "Status of the user account",
             "example": "active"
           }
         },
@@ -334,7 +334,7 @@
           "userId": {
             "type": "integer",
             "exclusiveMinimum": 0,
-            "description": "Identifiant numérique de l'utilisateur",
+            "description": "Numeric id of the user",
             "example": 42
           }
         },
@@ -1117,7 +1117,7 @@
         "tags": [
           "Connectivity"
         ],
-        "summary": "Vérifie la santé du BFF",
+        "summary": "Check the health of the BFF",
         "responses": {
           "200": {
             "description": "OK"
@@ -1194,7 +1194,7 @@
             }
           },
           "400": {
-            "description": "Données invalides",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1204,7 +1204,7 @@
             }
           },
           "401": {
-            "description": "Identifiants invalides",
+            "description": "Invalid credentials",
             "content": {
               "application/json": {
                 "schema": {
@@ -1214,7 +1214,7 @@
             }
           },
           "412": {
-            "description": "Première connexion : mot de passe à changer",
+            "description": "First sign-in: the password must be changed",
             "content": {
               "application/json": {
                 "schema": {
@@ -1251,7 +1251,7 @@
             }
           },
           "500": {
-            "description": "Erreur serveur",
+            "description": "Server error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1289,8 +1289,8 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Force le changement de mot de passe",
-        "description": "Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force_change_password.",
+        "summary": "Force a password change",
+        "description": "Forwards the token and the new password to Core API on /api/v1/auth/force_change_password.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1303,10 +1303,10 @@
         },
         "responses": {
           "204": {
-            "description": "Mot de passe changé avec succès"
+            "description": "Password changed"
           },
           "400": {
-            "description": "Données invalides",
+            "description": "Invalid data",
             "content": {
               "application/json": {
                 "schema": {
@@ -1316,7 +1316,7 @@
             }
           },
           "401": {
-            "description": "Token invalide ou expiré",
+            "description": "Invalid or expired token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1326,7 +1326,7 @@
             }
           },
           "403": {
-            "description": "Token de première connexion inconnu ou expiré",
+            "description": "Unknown or expired first sign-in token",
             "content": {
               "application/json": {
                 "schema": {
@@ -1354,7 +1354,7 @@
             }
           },
           "500": {
-            "description": "Erreur serveur",
+            "description": "Server error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1725,7 +1725,7 @@
             }
           },
           "500": {
-            "description": "Erreur serveur",
+            "description": "Server error",
             "content": {
               "application/json": {
                 "schema": {
@@ -1859,11 +1859,11 @@
             "schema": {
               "type": "integer",
               "exclusiveMinimum": 0,
-              "description": "Identifiant numérique de l'utilisateur",
+              "description": "Numeric id of the user",
               "example": 42
             },
             "required": true,
-            "description": "Identifiant numérique de l'utilisateur",
+            "description": "Numeric id of the user",
             "name": "userId",
             "in": "path"
           }
@@ -1957,7 +1957,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Liste les utilisateurs administrables, 20 éléments maximum par page",
+        "summary": "List the manageable users, at most 20 items per page",
         "parameters": [
           {
             "schema": {
@@ -1992,7 +1992,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -2002,7 +2002,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2012,10 +2012,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2025,7 +2025,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2035,7 +2035,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2045,7 +2045,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2100,7 +2100,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Crée un utilisateur via le Core API",
+        "summary": "Create a user through Core API",
         "requestBody": {
           "required": true,
           "content": {
@@ -2113,7 +2113,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2123,7 +2123,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2133,10 +2133,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2146,7 +2146,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2156,7 +2156,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2166,7 +2166,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2233,7 +2233,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Met à jour un utilisateur via le Core API",
+        "summary": "Update a user through Core API",
         "parameters": [
           {
             "schema": {
@@ -2257,7 +2257,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2267,7 +2267,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2277,10 +2277,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2290,7 +2290,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2300,7 +2300,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2310,7 +2310,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2375,7 +2375,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Supprime définitivement un utilisateur via le Core API",
+        "summary": "Delete a user for good through Core API",
         "parameters": [
           {
             "schema": {
@@ -2390,7 +2390,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2400,7 +2400,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2410,10 +2410,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2423,7 +2423,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2433,7 +2433,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2443,7 +2443,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2510,7 +2510,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Modifie le mot de passe et révoque les sessions utilisateur",
+        "summary": "Change the password and revoke the user sessions",
         "parameters": [
           {
             "schema": {
@@ -2534,7 +2534,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2544,7 +2544,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2554,10 +2554,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2567,7 +2567,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2577,7 +2577,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2587,7 +2587,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2654,7 +2654,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Ajoute un rôle à un utilisateur via le Core API",
+        "summary": "Add a role to a user through Core API",
         "parameters": [
           {
             "schema": {
@@ -2678,7 +2678,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2688,7 +2688,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2698,10 +2698,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2711,7 +2711,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2721,7 +2721,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2731,7 +2731,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2798,7 +2798,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Retire un rôle à un utilisateur via le Core API",
+        "summary": "Remove a role from a user through Core API",
         "parameters": [
           {
             "schema": {
@@ -2821,7 +2821,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2831,7 +2831,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2841,10 +2841,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2854,7 +2854,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2864,7 +2864,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -2874,7 +2874,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -2941,10 +2941,10 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Liste les rôles admin via le Core API",
+        "summary": "List the admin roles through Core API",
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -2965,7 +2965,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -2975,10 +2975,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -2988,7 +2988,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -2998,7 +2998,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3008,7 +3008,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3063,7 +3063,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Crée un rôle via le Core API",
+        "summary": "Create a role through Core API",
         "requestBody": {
           "required": true,
           "content": {
@@ -3076,7 +3076,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3086,7 +3086,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3096,10 +3096,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3109,7 +3109,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3119,7 +3119,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3129,7 +3129,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3196,7 +3196,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Remplace un rôle via le Core API",
+        "summary": "Replace a role through Core API",
         "parameters": [
           {
             "schema": {
@@ -3220,7 +3220,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3230,7 +3230,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3240,10 +3240,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3253,7 +3253,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3263,7 +3263,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3273,7 +3273,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3338,7 +3338,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Met à jour un rôle via le Core API",
+        "summary": "Update a role through Core API",
         "parameters": [
           {
             "schema": {
@@ -3362,7 +3362,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3372,7 +3372,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3382,10 +3382,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3395,7 +3395,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3405,7 +3405,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3415,7 +3415,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3480,7 +3480,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Supprime un rôle via le Core API",
+        "summary": "Delete a role through Core API",
         "parameters": [
           {
             "schema": {
@@ -3495,7 +3495,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3505,7 +3505,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3515,10 +3515,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3528,7 +3528,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3538,7 +3538,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3548,7 +3548,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3645,7 +3645,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -3666,7 +3666,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3676,10 +3676,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3689,7 +3689,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3699,7 +3699,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3709,7 +3709,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3764,7 +3764,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Crée un groupe via le Core API",
+        "summary": "Create a group through Core API",
         "requestBody": {
           "required": true,
           "content": {
@@ -3777,7 +3777,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3787,7 +3787,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3797,10 +3797,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3810,7 +3810,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3820,7 +3820,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3830,7 +3830,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -3897,7 +3897,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Récupère un groupe via le Core API",
+        "summary": "Get a group through Core API",
         "parameters": [
           {
             "schema": {
@@ -3911,7 +3911,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -3929,7 +3929,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -3939,10 +3939,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -3952,7 +3952,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -3962,7 +3962,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -3972,7 +3972,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4027,7 +4027,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Met à jour le nom ou la description d’un groupe",
+        "summary": "Update the name or the description of a group",
         "parameters": [
           {
             "schema": {
@@ -4051,7 +4051,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4061,7 +4061,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4071,10 +4071,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4084,7 +4084,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4094,7 +4094,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4104,7 +4104,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4169,7 +4169,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Supprime un groupe via le Core API",
+        "summary": "Delete a group through Core API",
         "parameters": [
           {
             "schema": {
@@ -4184,7 +4184,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4194,7 +4194,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4204,10 +4204,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4217,7 +4217,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4227,7 +4227,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4237,7 +4237,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4304,7 +4304,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Liste les utilisateurs d’un groupe via le Core API",
+        "summary": "List the users of a group through Core API",
         "parameters": [
           {
             "schema": {
@@ -4318,7 +4318,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -4339,7 +4339,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4349,10 +4349,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4362,7 +4362,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4372,7 +4372,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4382,7 +4382,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4437,7 +4437,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Ajoute un utilisateur à un groupe via le Core API",
+        "summary": "Add a user to a group through Core API",
         "parameters": [
           {
             "schema": {
@@ -4461,7 +4461,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4471,7 +4471,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4481,10 +4481,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4494,7 +4494,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4504,7 +4504,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4514,7 +4514,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4581,7 +4581,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Retire un utilisateur d’un groupe via le Core API",
+        "summary": "Remove a user from a group through Core API",
         "parameters": [
           {
             "schema": {
@@ -4604,7 +4604,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4614,7 +4614,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4624,10 +4624,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4637,7 +4637,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4647,7 +4647,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4657,7 +4657,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4724,10 +4724,10 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Liste les sessions actives via le Core API",
+        "summary": "List the active sessions through Core API",
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -4748,7 +4748,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4758,10 +4758,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4771,7 +4771,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4781,7 +4781,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4791,7 +4791,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -4878,7 +4878,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Données de l’administration",
+            "description": "Administration data",
             "content": {
               "application/json": {
                 "schema": {
@@ -4899,7 +4899,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -4909,10 +4909,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -4922,7 +4922,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -4932,7 +4932,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -4942,7 +4942,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5013,7 +5013,7 @@
         },
         "responses": {
           "200": {
-            "description": "Réponse du Core API",
+            "description": "Response of Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -5023,7 +5023,7 @@
             }
           },
           "201": {
-            "description": "Créé par le Core API",
+            "description": "Created by Core API",
             "content": {
               "application/json": {
                 "schema": {
@@ -5033,10 +5033,10 @@
             }
           },
           "204": {
-            "description": "Aucun contenu retourné par le Core API"
+            "description": "No content returned by Core API"
           },
           "400": {
-            "description": "Erreur Core API",
+            "description": "Core API error",
             "content": {
               "application/json": {
                 "schema": {
@@ -5046,7 +5046,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -5056,7 +5056,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -5066,7 +5066,7 @@
             }
           },
           "404": {
-            "description": "Introuvable",
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5147,7 +5147,7 @@
             }
           },
           "401": {
-            "description": "Non authentifié",
+            "description": "Not authenticated",
             "content": {
               "application/json": {
                 "schema": {
@@ -5157,7 +5157,7 @@
             }
           },
           "403": {
-            "description": "Accès refusé",
+            "description": "Access denied",
             "content": {
               "application/json": {
                 "schema": {
@@ -5219,6 +5219,7 @@
     },
     "/me": {
       "get": {
+        "summary": "Get the identity, groups and roles of the session",
         "responses": {
           "200": {
             "description": "Identity, groups and roles of the session (contract fields only)",
@@ -5275,6 +5276,7 @@
     },
     "/session/me": {
       "get": {
+        "summary": "Get the identity, groups and roles of the session",
         "responses": {
           "200": {
             "description": "Identity, groups and roles of the session (contract fields only)",
