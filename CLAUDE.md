@@ -9,8 +9,8 @@ session context, and account/role/group administration for the Mairie360 fronten
 adapting the upstream **Core API**. It is an Express 5 + TypeScript HTTP service with no
 UI of its own.
 
-Codebase comments, log lines, and user-facing messages are a mix of French and English; write new
-text in English (see `../../CLAUDE.md`). Docs under `docs/` are bilingual (en/fr): update both.
+Comments, log lines, error messages and OpenAPI descriptions are written in English (the
+rule of every mairie360 repository); translate the French text that is left when you touch it. Docs under `docs/` are bilingual (en/fr): update both.
 
 ## Commands
 
