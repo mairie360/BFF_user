@@ -766,6 +766,10 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
       expect(response.status).toBe(502);
       expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } });
+      // A dropped connection never replays a write; only an idempotent GET may be retried, once.
+      const attempts = coreApi.calls(template, method).length;
+      if (method === 'GET') expect(attempts).toBeLessThanOrEqual(2);
+      else expect(attempts).toBe(1);
     });
 
     test('POST /admin/sessions/refresh is no longer served and never reaches Core API', async () => {
