@@ -21,6 +21,7 @@ const pathname = (url: string) => new URL(url, 'http://upstream').pathname;
 // adressées par les helpers d'URL du client généré.
 const CONSUMED = [
   { operationId: 'login', method: 'post', url: coreApiUrls.getLoginUrl() },
+  { operationId: 'loginTwoFactor', method: 'post', url: coreApiUrls.getLoginTwoFactorUrl() },
   { operationId: 'forceChangePassword', method: 'post', url: coreApiUrls.getForceChangePasswordUrl() },
   { operationId: 'forgotPassword', method: 'post', url: coreApiUrls.getForgotPasswordUrl() },
   { operationId: 'resetPassword', method: 'post', url: coreApiUrls.getResetPasswordUrl() },
@@ -28,6 +29,7 @@ const CONSUMED = [
   { operationId: 'adminPostUser', method: 'post', url: coreApiUrls.getAdminPostUserUrl() },
   { operationId: 'adminDeleteUser', method: 'delete', url: coreApiUrls.getAdminDeleteUserUrl(7) },
   { operationId: 'adminResetUserPassword', method: 'patch', url: coreApiUrls.getAdminResetUserPasswordUrl(7) },
+  { operationId: 'adminResetUserTwoFactor', method: 'delete', url: coreApiUrls.getAdminResetUserTwoFactorUrl(7) },
   { operationId: 'adminPatchUser', method: 'patch', url: coreApiUrls.getAdminPatchUserUrl(7) },
   { operationId: 'adminAddRoleToUser', method: 'post', url: coreApiUrls.getAdminAddRoleToUserUrl(7) },
   { operationId: 'adminDeleteUserRole', method: 'delete', url: coreApiUrls.getAdminDeleteUserRoleUrl(7, 3) },

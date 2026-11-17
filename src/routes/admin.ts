@@ -420,6 +420,28 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
+    path: '/admin/users/{userId}/2fa',
+    tags: ['Administration'],
+    summary: 'Reset the second factor of a user',
+    description: 'Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. '
+        + 'Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/2fa', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminResetUserTwoFactor(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
     path: '/admin/users/{userId}',
     tags: ['Administration'],
     summary: 'Delete a user for good through Core API',

@@ -120,6 +120,15 @@ export interface paths {
                         "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
+                /** @description The account is protected by a second factor: no session is open. Send the `token` with a code to `POST /auth/login/2fa` within five minutes. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorRequiredResponse"];
+                    };
+                };
                 /** @description Invalid data */
                 400: {
                     headers: {
@@ -428,6 +437,15 @@ export interface paths {
                         "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
+                /** @description Password reset, but the account is protected by a second factor: no session is open (the mailbox is not a second factor). Send the `token` with a code to `POST /auth/login/2fa`. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorRequiredResponse"];
+                    };
+                };
                 /** @description Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character) */
                 400: {
                     headers: {
@@ -639,6 +657,107 @@ export interface paths {
                 };
                 /** @description Server error */
                 500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Completes the sign-in of a protected account (second factor)
+         * @description Second step of `POST /auth/login` (or `POST /auth/reset_password`) when they answered `202` `2fa_required`: forwards the login token and the code (TOTP or backup code) to Core API. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The token is single use and burnt after five wrong codes: restart from the password.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LoginTwoFactorView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or burnt login token, or wrong or already used code. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1511,6 +1630,144 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/admin/users/{userId}/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset the second factor of a user
+         * @description Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/users/{userId}/roles": {
@@ -4090,6 +4347,18 @@ export interface components {
              */
             device_info: string;
         };
+        LoginTwoFactorView: {
+            /**
+             * @description Login token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description Six-digit code of the authenticator application, or a backup code (`xxxx-xxxx`).
+             * @example 492039
+             */
+            code: string;
+        };
         KeycloakLoginView: {
             /**
              * @description Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).
@@ -4190,7 +4459,7 @@ export interface components {
         RefreshView: {
             /**
              * @description Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.
-             * @example 8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE
+             * @example example-two-factor-token
              */
             refresh_token?: string;
         };
@@ -4437,6 +4706,18 @@ export interface components {
                 id?: number;
                 name: string;
             })[];
+        };
+        TwoFactorRequiredResponse: {
+            /**
+             * @description The password was accepted but a second factor is required: no session is open.
+             * @enum {string}
+             */
+            status: "2fa_required";
+            /**
+             * @description Login token to send to `POST /auth/login/2fa` with the code. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
         };
     };
     responses: never;

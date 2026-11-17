@@ -100,6 +100,29 @@
           "device_info"
         ]
       },
+      "LoginTwoFactorView": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Login token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: \"2fa_required\"`. Single use, valid 5 minutes.",
+            "example": "example-two-factor-token"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "Six-digit code of the authenticator application, or a backup code (`xxxx-xxxx`).",
+            "example": "492039"
+          }
+        },
+        "required": [
+          "token",
+          "code"
+        ]
+      },
       "KeycloakLoginView": {
         "type": "object",
         "properties": {
@@ -271,7 +294,7 @@
             "type": "string",
             "minLength": 1,
             "description": "Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.",
-            "example": "8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE"
+            "example": "example-two-factor-token"
           }
         }
       },
@@ -1106,6 +1129,27 @@
           "groups",
           "roles"
         ]
+      },
+      "TwoFactorRequiredResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "2fa_required"
+            ],
+            "description": "The password was accepted but a second factor is required: no session is open."
+          },
+          "token": {
+            "type": "string",
+            "description": "Login token to send to `POST /auth/login/2fa` with the code. Single use, valid 5 minutes.",
+            "example": "example-two-factor-token"
+          }
+        },
+        "required": [
+          "status",
+          "token"
+        ]
       }
     },
     "parameters": {}
@@ -1189,6 +1233,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The account is protected by a second factor: no session is open. Send the `token` with a code to `POST /auth/login/2fa` within five minutes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorRequiredResponse"
                 }
               }
             }
@@ -1506,6 +1560,16 @@
               }
             }
           },
+          "202": {
+            "description": "Password reset, but the account is protected by a second factor: no session is open (the mailbox is not a second factor). Send the `token` with a code to `POST /auth/login/2fa`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorRequiredResponse"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character)",
             "content": {
@@ -1726,6 +1790,114 @@
           },
           "500": {
             "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login/2fa": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Completes the sign-in of a protected account (second factor)",
+        "description": "Second step of `POST /auth/login` (or `POST /auth/reset_password`) when they answered `202` `2fa_required`: forwards the login token and the code (TOTP or backup code) to Core API. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The token is single use and burnt after five wrong codes: restart from the password.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginTwoFactorView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired or burnt login token, or wrong or already used code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2532,6 +2704,141 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/2fa": {
+      "delete": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Reset the second factor of a user",
+        "description": "Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Response of Core API",

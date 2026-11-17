@@ -36,6 +36,7 @@ const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedListUsers = jest.mocked(coreAdminUsersClient.adminListUsers);
 const mockedDeleteUser = jest.mocked(coreAdminUsersClient.adminDeleteUser);
 const mockedResetUserPassword = jest.mocked(coreAdminUsersClient.adminResetUserPassword);
+const mockedResetUserTwoFactor = jest.mocked(coreAdminUsersClient.adminResetUserTwoFactor);
 const mockedPatchGroup = jest.mocked(coreGroupsClient.patchGroup);
 const mockedGetGroupUsers = jest.mocked(coreGroupsClient.getGroupUsers);
 const mockedAddUserToGroup = jest.mocked(coreGroupsClient.addUserToGroup);
@@ -278,6 +279,40 @@ describe('Administration routes', () => {
             { new_password: 'Temporary-123!' },
             expect.anything(),
         );
+    });
+
+    it('MAIR-805 resets the second factor of a user for an administrator', async () => {
+        mockedResetUserTwoFactor.mockResolvedValue(axiosResponse(undefined, 204));
+
+        const response = await request(app)
+            .delete('/admin/users/42/2fa')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(204);
+        expect(mockedResetUserTwoFactor).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-805 refuses the second factor reset to a non-administrator, before any Core call', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
+
+        const response = await request(app)
+            .delete('/admin/users/42/2fa')
+            .set('Authorization', `Bearer ${tokenFor(2)}`);
+
+        expect(response.status).toBe(403);
+        expect(mockedResetUserTwoFactor).not.toHaveBeenCalled();
+    });
+
+    it('MAIR-805 relays the 404 of an unknown user and rejects a non-numeric id', async () => {
+        mockedResetUserTwoFactor.mockRejectedValue(new AxiosError('nf', undefined, undefined, undefined, {
+            data: 'x', status: 404, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
+        }));
+
+        const missing = await request(app).delete('/admin/users/99/2fa').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const invalid = await request(app).delete('/admin/users/abc/2fa').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(missing.status).toBe(404);
+        expect(invalid.status).toBe(400);
     });
 
     it('rejects an invalid new password', async () => {

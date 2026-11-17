@@ -6,7 +6,7 @@ import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
 import {
-    forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword,
+    forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword,
 } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
@@ -23,8 +23,12 @@ jest.mock('../src/routes/core_helpers', () => ({
         && value !== null
         && 'refresh_token' in value
     )),
+    isTwoFactorRequired: jest.fn((value: unknown) => (
+        typeof value === 'object' && value !== null && (value as { status?: unknown }).status === '2fa_required'
+    )),
     keycloakLoginUser: jest.fn(),
     loginUser: jest.fn(),
+    loginUserTwoFactor: jest.fn(),
     logoutSession: jest.fn(),
     logoutWithRefreshToken: jest.fn(),
     refreshSession: jest.fn(),
@@ -33,6 +37,7 @@ jest.mock('../src/routes/core_helpers', () => ({
 }));
 
 const mockedLoginUser = jest.mocked(loginUser);
+const mockedLoginTwoFactor = jest.mocked(loginUserTwoFactor);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedLogoutWithRefreshToken = jest.mocked(logoutWithRefreshToken);
 const mockedLogoutSession = jest.mocked(logoutSession);
@@ -1188,5 +1193,74 @@ describe('POST /auth/logout', () => {
             expect.arrayContaining([expect.objectContaining({ level: 'WARN', message: expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID') })]),
         );
         jest.restoreAllMocks();
+    });
+});
+
+describe('MAIR-805 second factor', () => {
+    const LOGIN_TOKEN = 'example-two-factor-token';
+    const challenge = { status: '2fa_required', token: LOGIN_TOKEN };
+    const RESET = { token: '11111111-2222-4333-8444-555555555555', new_password: 'Updated-456!', device_info: 'Firefox' };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('relays the 202 of a protected account on login: the login token only, no cookie', async () => {
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...challenge, internal: 'hidden' }, 202));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual(challenge);
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(response.headers.authorization).toBeUndefined();
+    });
+
+    it('relays the 202 of a protected account on reset_password', async () => {
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(challenge, 202));
+
+        const response = await request(app).post('/auth/reset_password').send(RESET);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual(challenge);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('opens the session once the code is accepted: HttpOnly cookies only', async () => {
+        mockedLoginTwoFactor.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '492039' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedLoginTwoFactor).toHaveBeenCalledWith({ token: LOGIN_TOKEN, code: '492039' }, expect.anything());
+    });
+
+    it.each([400, 401, 429])('keeps the Core %i of the second step', async (status) => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+
+        expect(response.status).toBe(status);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 503 when Core has no encryption key, on the three routes', async () => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(503));
+        mockedLoginUser.mockRejectedValue(coreError(503));
+        mockedResetUserPassword.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '1' })).status).toBe(503);
+        expect((await request(app).post('/auth/login').send(credentials)).status).toBe(503);
+        expect((await request(app).post('/auth/reset_password').send(RESET)).status).toBe(503);
+    });
+
+    it('refuses a malformed second step before any Core call', async () => {
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN });
+
+        expect(response.status).toBe(400);
+        expect(mockedLoginTwoFactor).not.toHaveBeenCalled();
     });
 });

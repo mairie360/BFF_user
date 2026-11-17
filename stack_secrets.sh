@@ -36,6 +36,12 @@ fi
 unset jwt_derived_public jwt_given_public
 export JWT_PRIVATE_KEY JWT_PUBLIC_KEY
 
+# MAIR-805: key sealing the TOTP secrets of Core (base64 of 32 random bytes), fresh on every run.
+if [ -z "${TOTP_ENCRYPTION_KEY:-}" ]; then
+    TOTP_ENCRYPTION_KEY="$(openssl rand -base64 32)" || return 1
+fi
+export TOTP_ENCRYPTION_KEY
+
 b64url() {
     openssl base64 -A | tr '+/' '-_' | tr -d '='
 }
