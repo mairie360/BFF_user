@@ -12,6 +12,10 @@ import {
     ForgotPasswordViewSchema,
     KeycloakLoginViewSchema,
     LoginTwoFactorViewSchema,
+    TwoFactorEnrolmentCompletedResponse,
+    TwoFactorEnrolmentResponse,
+    TwoFactorSetupConfirmViewSchema,
+    TwoFactorSetupTokenViewSchema,
     LoginViewSchema,
     LogoutResponse,
     LogoutViewSchema,
@@ -40,6 +44,8 @@ import {
     keycloakLoginUser,
     loginUser,
     loginUserTwoFactor,
+    confirmLoginEnrolment,
+    startLoginEnrolment,
     refreshSession,
     logoutSession,
     requestPasswordReset,
@@ -95,7 +101,7 @@ registry.registerPath({
             },
         },
         202: {
-            description: 'The account is protected by a second factor: no session is open. Send the `token` with a code to `POST /auth/login/2fa` within five minutes.',
+            description: 'No session is open. `2fa_required`: the account is protected by a second factor, send the `token` with a code to `POST /auth/login/2fa` within five minutes. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, enrol through `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`.',
             content: { 'application/json': { schema: TwoFactorRequiredResponse } },
         },
         412: {
@@ -269,7 +275,7 @@ registry.registerPath({
             content: { 'application/json': { schema: AuthSessionResponse } },
         },
         202: {
-            description: 'Password reset, but the account is protected by a second factor: no session is open (the mailbox is not a second factor). Send the `token` with a code to `POST /auth/login/2fa`.',
+            description: 'Password reset, but no session is open (the mailbox is not a second factor): `2fa_required` sends the `token` with a code to `POST /auth/login/2fa`, `2fa_setup_required` (mandatory policy, MAIR-808) to `POST /auth/2fa/setup`.',
             content: { 'application/json': { schema: TwoFactorRequiredResponse } },
         },
         400: {
@@ -437,6 +443,56 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
+    path: '/auth/2fa/setup',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Mandatory enrolment: starts the registration of the authenticator application',
+    description: 'When the instance makes the second factor mandatory, `POST /auth/login` (or `/auth/reset_password`) answers `202` '
+        + '`2fa_setup_required` for an account without a usable factor. Forwards that token to Core API, which answers the secret and '
+        + 'the `otpauth://` URI to register in the authenticator application. No session exists yet: finish with `POST /auth/2fa/confirm`. '
+        + 'Calling it again replaces the pending secret.',
+    request: { body: { required: true, content: { 'application/json': { schema: TwoFactorSetupTokenViewSchema } } } },
+    responses: {
+        200: { description: 'Secret to register.', content: { 'application/json': { schema: TwoFactorEnrolmentResponse } } },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt enrolment token.', content: { 'application/json': { schema: ErrorResponse } } },
+        409: { description: 'The account got a second factor meanwhile: sign in normally.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/2fa/confirm',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Mandatory enrolment: confirms with a first code and signs in',
+    description: 'Forwards the enrolment token and the first code of the authenticator application to Core API, which activates the '
+        + 'second factor and opens the session, delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` '
+        + 'cookies). The ten single-use backup codes are in the body, once: the front must make the agent keep them. The token is single use '
+        + 'and burnt after five wrong codes: restart from the password.',
+    request: { body: { required: true, content: { 'application/json': { schema: TwoFactorSetupConfirmViewSchema } } } },
+    responses: {
+        200: {
+            description: 'Enrolled and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: TwoFactorEnrolmentCompletedResponse } },
+        },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt enrolment token, or wrong code.', content: { 'application/json': { schema: ErrorResponse } } },
+        404: { description: '`POST /auth/2fa/setup` was not called with this token.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
     path: '/auth/keycloak',
     security: [],
     tags: ['Authentication'],
@@ -504,6 +560,13 @@ function firstConnectionToken(error: unknown): string | undefined {
  * HttpOnly cookies, never to the body or a header readable by the browser's JavaScript.
  */
 function sendSession(res: Response, coreResponse: AxiosResponse): Response {
+    openSession(res, coreResponse);
+
+    return res.status(coreResponse.status).json({ message: 'Logged in successfully' });
+}
+
+/** Sets the session cookies from a Core sign-in response, without answering (the caller adds its own body). */
+function openSession(res: Response, coreResponse: AxiosResponse): void {
     const authorizationHeader = coreResponse.headers?.authorization
         ?? coreResponse.headers?.Authorization;
 
@@ -511,8 +574,6 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
         throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
     }
     setRefreshTokenCookie(res, coreResponse.data.refresh_token);
-
-    return res.status(coreResponse.status).json({ message: 'Logged in successfully' });
 }
 
 /**
@@ -521,7 +582,8 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
  */
 function sendLoginOutcome(res: Response, coreResponse: AxiosResponse): Response {
     if (coreResponse.status === 202 && isTwoFactorRequired(coreResponse.data)) {
-        return res.status(202).json({ status: '2fa_required', token: coreResponse.data.token });
+        // `2fa_required` (second step) or `2fa_setup_required` (mandatory enrolment, MAIR-808): the front routes on it.
+        return res.status(202).json({ status: coreResponse.data.status, token: coreResponse.data.token });
     }
     return sendSession(res, coreResponse);
 }
@@ -571,6 +633,33 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             return sendSession(res, await loginUserTwoFactor(body, req));
         } catch (error) {
             throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
+        }
+    });
+
+    router.post('/2fa/setup', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(TwoFactorSetupTokenViewSchema, req.body, 'body');
+
+        try {
+            const { data } = await startLoginEnrolment(body, req);
+            return res.status(200).json({ secret: data.secret, otpauth_uri: data.otpauth_uri });
+        } catch (error) {
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 409, 429]);
+        }
+    });
+
+    router.post('/2fa/confirm', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(TwoFactorSetupConfirmViewSchema, req.body, 'body');
+
+        try {
+            const coreResponse = await confirmLoginEnrolment(body, req);
+            // The session goes to the cookies like a login; the one-time backup codes are the only secret of the body.
+            openSession(res, coreResponse);
+            return res.status(200).json({ message: 'Logged in successfully', backup_codes: coreResponse.data.backup_codes });
+        } catch (error) {
+            if (error instanceof HttpError) {
+                throw error;
+            }
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 404, 429]);
         }
     });
 

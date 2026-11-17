@@ -53,6 +53,8 @@ export const keycloakLogin = (keycloakLoginView: KeycloakLoginView, options?: Ax
 export const coreAuthClient = {
     login: coreApi.login,
     loginTwoFactor: coreApi.loginTwoFactor,
+    setupLoginTwoFactor: coreApi.setupLoginTwoFactor,
+    confirmLoginTwoFactor: coreApi.confirmLoginTwoFactor,
     keycloakLogin,
     forceChangePassword: coreApi.forceChangePassword,
     forgotPassword: coreApi.forgotPassword,
@@ -70,6 +72,12 @@ export const coreAdminUsersClient = {
     adminResetUserTwoFactor: coreApi.adminResetUserTwoFactor,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
+};
+
+// Instance policy of the second factor (MAIR-808).
+export const coreTwoFactorPolicyClient = {
+    getTwoFactorPolicy: coreApi.getTwoFactorPolicy,
+    updateTwoFactorPolicy: coreApi.updateTwoFactorPolicy,
 };
 
 // Temporary access to the Keycloak admin console (MAIR-609).

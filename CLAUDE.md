@@ -115,6 +115,15 @@ and the legacy `/me` resolve.
   and answers the same empty 200 for a known or unknown address (Core 400 / 429 kept); reset forwards
   `{ token (UUID), new_password, device_info }` and opens the session with `sendSession` like login (Core 400 / 401
   / 429 kept, 401 = token unknown, expired or already used). Both behind the `perIp` limiter.
+- **Second factor** (MAIR-805, MAIR-808): Core answers `202` `{ status, token }` to `/auth/login` and `/auth/reset_password`
+  when no session may open yet; `sendLoginOutcome` relays it as is (no cookie). `status: "2fa_required"` → `POST /auth/login/2fa`
+  `{ token, code }` (TOTP or backup code) opens the session like login (cookies only). `status: "2fa_setup_required"` (the
+  administrator made the factor mandatory and the agent has none) → public `POST /auth/2fa/setup { token }` (`{ secret,
+  otpauth_uri }`) then `POST /auth/2fa/confirm { token, code }`, which sets the cookies and returns the ten backup codes **once**
+  in the body (`{ message, backup_codes }`). Core's 503 (no `TOTP_ENCRYPTION_KEY`) is kept. `GET` / `PUT /admin/two-factor-policy`
+  (`requireAdmin`) relay the instance policy; `DELETE /admin/users/{id}/2fa` the administrator reset. The agent's own `/user/me/2fa`
+  routes are `BFF_Settings`'. The newman journey `Two-factor policy (MAIR-808)` makes the policy mandatory for a few requests only:
+  a mandatory policy answers every login of the instance `202`.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the

@@ -27,3 +27,19 @@ export const AdministrationGroupMemberSchema = registry.register('Administration
 export const AdministrationSessionSchema = registry.register('AdministrationSession', z.object({
   id: z.string(), device_info: z.string(), ip_address: z.string(), created_at: z.string(), expires_at: z.string(), revoked_at: z.string().nullable(),
 }));
+
+// Instance policy of the second factor (MAIR-808), as Core serves it.
+export const TwoFactorPolicySchema = registry.register('TwoFactorPolicy', z.object({
+  required: z.boolean().openapi({ description: 'Every agent must hold a second factor: an agent without one enrols at its next sign-in, before any session opens.', example: true }),
+  totp_allowed: z.boolean().openapi({ description: 'Authenticator application (TOTP) accepted.', example: true }),
+  passkey_allowed: z.boolean().openapi({ description: 'Passkeys accepted. Always false until the passkey feature ships (a PUT with true answers 400).', example: false }),
+  backup_codes_allowed: z.boolean().openapi({ description: 'Backup codes accepted at the second step.', example: true }),
+  updated_by: z.number().nullable().openapi({ description: 'Id of the administrator who last changed the policy, null for the initial one.', example: 1 }),
+  updated_at: z.string().openapi({ description: 'ISO 8601 date of the last change.', example: '2026-11-17T09:30:00Z' }),
+}));
+export const TwoFactorPolicyUpdateSchema = registry.register('TwoFactorPolicyUpdate', z.object({
+  required: z.boolean().openapi({ example: true }),
+  totp_allowed: z.boolean().openapi({ example: true }),
+  passkey_allowed: z.boolean().openapi({ example: false }),
+  backup_codes_allowed: z.boolean().openapi({ example: true }),
+}).strict());

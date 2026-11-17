@@ -1,4 +1,4 @@
-import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema } from './admin_schemas';
+import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -26,6 +26,7 @@ import {
     coreGroupsClient,
     coreKeycloakConsoleClient,
     coreSessionsClient,
+    coreTwoFactorPolicyClient,
     coreUsersClient,
 } from '../clients/coreClient';
 import { forwardCoreResponse, whitelist } from './admin_helpers';
@@ -833,6 +834,43 @@ router.post('/sessions/revoke', async (req: Request, res: Response) => {
         return forwardCoreResponse(res, response);
     } catch (error) {
         throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/two-factor-policy',
+    tags: ['Administration'],
+    summary: 'Reads the second-factor policy of the instance (MAIR-808)',
+    description: 'Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.',
+    responses: { ...coreResponses, 200: { description: 'The policy', content: { 'application/json': { schema: TwoFactorPolicySchema } } } },
+});
+
+router.get('/two-factor-policy', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreTwoFactorPolicyClient.getTwoFactorPolicy(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(TwoFactorPolicySchema, response.data));
+});
+
+registry.registerPath({
+    method: 'put',
+    path: '/admin/two-factor-policy',
+    tags: ['Administration'],
+    summary: 'Changes the second-factor policy of the instance (MAIR-808)',
+    description: 'Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a '
+        + 'usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay '
+        + 'allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.',
+    request: { body: jsonBodyRequest(TwoFactorPolicyUpdateSchema) },
+    responses: { ...coreResponses, 200: { description: 'The policy as saved', content: { 'application/json': { schema: TwoFactorPolicySchema } } } },
+});
+
+router.put('/two-factor-policy', async (req: Request, res: Response) => {
+    const body = parseRequest(TwoFactorPolicyUpdateSchema, req.body, 'body');
+
+    try {
+        const response = await coreTwoFactorPolicyClient.updateTwoFactorPolicy(body, asCaller('CORE_API', req));
+        return res.status(200).json(whitelist(TwoFactorPolicySchema, response.data));
+    } catch (error) {
+        throw upstreamError('CORE_API', error, READ_STATUSES);
     }
 });
 
