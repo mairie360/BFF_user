@@ -5,6 +5,7 @@ import express from 'express';
 import request from 'supertest';
 import {
     coreAdminUsersClient,
+    coreTwoFactorPolicyClient,
     coreGroupsClient,
     coreUsersClient,
 } from '../src/clients/coreClient';
@@ -28,6 +29,7 @@ jest.mock('../src/clients/coreClient', () => {
         coreAdminUsersClient: operations,
         coreGroupsClient: { ...operations, getGroupUsers: operations.getGroupMembers },
         coreSessionsClient: operations,
+        coreTwoFactorPolicyClient: operations,
         coreUsersClient: operations,
     };
 });
@@ -36,6 +38,8 @@ const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedListUsers = jest.mocked(coreAdminUsersClient.adminListUsers);
 const mockedDeleteUser = jest.mocked(coreAdminUsersClient.adminDeleteUser);
 const mockedResetUserPassword = jest.mocked(coreAdminUsersClient.adminResetUserPassword);
+const mockedGetPolicy = jest.mocked(coreTwoFactorPolicyClient.getTwoFactorPolicy);
+const mockedUpdatePolicy = jest.mocked(coreTwoFactorPolicyClient.updateTwoFactorPolicy);
 const mockedResetUserTwoFactor = jest.mocked(coreAdminUsersClient.adminResetUserTwoFactor);
 const mockedPatchGroup = jest.mocked(coreGroupsClient.patchGroup);
 const mockedGetGroupUsers = jest.mocked(coreGroupsClient.getGroupUsers);
@@ -481,5 +485,68 @@ describe('Administration routes', () => {
         expect(response.status).toBe(404);
         expect(response.body).toEqual({ error: { code: 'NOT_FOUND', message: 'Unknown group member', details: [] } });
         expect(jest.mocked(coreGroupsClient.removeUserFromGroup)).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-808 two-factor policy routes', () => {
+    const policy = { required: true, totp_allowed: true, passkey_allowed: false, backup_codes_allowed: true, updated_by: 1, updated_at: '2026-11-17T09:30:00Z' };
+    const update = { required: true, totp_allowed: true, passkey_allowed: false, backup_codes_allowed: true };
+    const admin = () => ({ Authorization: `Bearer ${tokenFor(1)}` });
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Admin' })));
+    });
+
+    it('reads the policy for an administrator, reduced to the contract fields', async () => {
+        mockedGetPolicy.mockResolvedValue(axiosResponse({ ...policy, internal: 'hidden' }));
+
+        const response = await request(app).get('/admin/two-factor-policy').set(admin());
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(policy);
+    });
+
+    it('changes the policy through Core and relays the saved one', async () => {
+        mockedUpdatePolicy.mockResolvedValue(axiosResponse(policy));
+
+        const response = await request(app).put('/admin/two-factor-policy').set(admin()).send(update);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(policy);
+        expect(mockedUpdatePolicy).toHaveBeenCalledWith(update, expect.anything());
+    });
+
+    it('refuses both routes to a non-administrator before any Core call', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
+        const headers = { Authorization: `Bearer ${tokenFor(2)}` };
+
+        expect((await request(app).get('/admin/two-factor-policy').set(headers)).status).toBe(403);
+        expect((await request(app).put('/admin/two-factor-policy').set(headers).send(update)).status).toBe(403);
+        expect(mockedGetPolicy).not.toHaveBeenCalled();
+        expect(mockedUpdatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('refuses an incomplete body and an unknown mode before any Core call', async () => {
+        const incomplete = await request(app).put('/admin/two-factor-policy').set(admin()).send({ required: true });
+        const unknown = await request(app).put('/admin/two-factor-policy').set(admin()).send({ ...update, sms_allowed: true });
+
+        expect(incomplete.status).toBe(400);
+        expect(unknown.status).toBe(400);
+        expect(mockedUpdatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('relays the 400 of Core (no mode left, passkeys not available yet)', async () => {
+        mockedUpdatePolicy.mockRejectedValue(coreError(400));
+
+        const response = await request(app).put('/admin/two-factor-policy').set(admin()).send({ ...update, passkey_allowed: true });
+
+        expect(response.status).toBe(400);
+    });
+
+    it('answers 502 when Core returns a policy that is not the contract', async () => {
+        mockedGetPolicy.mockResolvedValue(axiosResponse({ required: 'yes' } as never));
+
+        expect((await request(app).get('/admin/two-factor-policy').set(admin())).status).toBe(502);
     });
 });

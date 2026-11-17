@@ -120,7 +120,7 @@ export interface paths {
                         "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
-                /** @description The account is protected by a second factor: no session is open. Send the `token` with a code to `POST /auth/login/2fa` within five minutes. */
+                /** @description No session is open. `2fa_required`: the account is protected by a second factor, send the `token` with a code to `POST /auth/login/2fa` within five minutes. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, enrol through `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -437,7 +437,7 @@ export interface paths {
                         "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
-                /** @description Password reset, but the account is protected by a second factor: no session is open (the mailbox is not a second factor). Send the `token` with a code to `POST /auth/login/2fa`. */
+                /** @description Password reset, but no session is open (the mailbox is not a second factor): `2fa_required` sends the `token` with a code to `POST /auth/login/2fa`, `2fa_setup_required` (mandatory policy, MAIR-808) to `POST /auth/2fa/setup`. */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -720,6 +720,224 @@ export interface paths {
                 };
                 /** @description Unknown, expired or burnt login token, or wrong or already used code. */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/2fa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment: starts the registration of the authenticator application
+         * @description When the instance makes the second factor mandatory, `POST /auth/login` (or `/auth/reset_password`) answers `202` `2fa_setup_required` for an account without a usable factor. Forwards that token to Core API, which answers the secret and the `otpauth://` URI to register in the authenticator application. No session exists yet: finish with `POST /auth/2fa/confirm`. Calling it again replaces the pending secret.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupTokenView"];
+                };
+            };
+            responses: {
+                /** @description Secret to register. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorEnrolmentResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or burnt enrolment token. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account got a second factor meanwhile: sign in normally. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment: confirms with a first code and signs in
+         * @description Forwards the enrolment token and the first code of the authenticator application to Core API, which activates the second factor and opens the session, delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The ten single-use backup codes are in the body, once: the front must make the agent keep them. The token is single use and burnt after five wrong codes: restart from the password.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupConfirmView"];
+                };
+            };
+            responses: {
+                /** @description Enrolled and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorEnrolmentCompletedResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or burnt enrolment token, or wrong code. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description `POST /auth/2fa/setup` was not called with this token. */
+                404: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -4075,6 +4293,248 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/two-factor-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reads the second-factor policy of the instance (MAIR-808)
+         * @description Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The policy */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorPolicy"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        /**
+         * Changes the second-factor policy of the instance (MAIR-808)
+         * @description Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorPolicyUpdate"];
+                };
+            };
+            responses: {
+                /** @description The policy as saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorPolicy"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/keycloak/console-access": {
         parameters: {
             query?: never;
@@ -4359,6 +4819,25 @@ export interface components {
              */
             code: string;
         };
+        TwoFactorSetupTokenView: {
+            /**
+             * @description Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+        };
+        TwoFactorSetupConfirmView: {
+            /**
+             * @description The same enrolment token as `POST /auth/2fa/setup`.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description First six-digit code displayed by the authenticator application.
+             * @example 492039
+             */
+            code: string;
+        };
         KeycloakLoginView: {
             /**
              * @description Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).
@@ -4572,6 +5051,48 @@ export interface components {
             expires_at: string;
             revoked_at: string | null;
         };
+        TwoFactorPolicy: {
+            /**
+             * @description Every agent must hold a second factor: an agent without one enrols at its next sign-in, before any session opens.
+             * @example true
+             */
+            required: boolean;
+            /**
+             * @description Authenticator application (TOTP) accepted.
+             * @example true
+             */
+            totp_allowed: boolean;
+            /**
+             * @description Passkeys accepted. Always false until the passkey feature ships (a PUT with true answers 400).
+             * @example false
+             */
+            passkey_allowed: boolean;
+            /**
+             * @description Backup codes accepted at the second step.
+             * @example true
+             */
+            backup_codes_allowed: boolean;
+            /**
+             * @description Id of the administrator who last changed the policy, null for the initial one.
+             * @example 1
+             */
+            updated_by: number | null;
+            /**
+             * @description ISO 8601 date of the last change.
+             * @example 2026-11-17T09:30:00Z
+             */
+            updated_at: string;
+        };
+        TwoFactorPolicyUpdate: {
+            /** @example true */
+            required: boolean;
+            /** @example true */
+            totp_allowed: boolean;
+            /** @example false */
+            passkey_allowed: boolean;
+            /** @example true */
+            backup_codes_allowed: boolean;
+        };
         AdminUserIdParams: {
             userId: number;
         };
@@ -4709,15 +5230,39 @@ export interface components {
         };
         TwoFactorRequiredResponse: {
             /**
-             * @description The password was accepted but a second factor is required: no session is open.
+             * @description `2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases.
              * @enum {string}
              */
-            status: "2fa_required";
+            status: "2fa_required" | "2fa_setup_required";
             /**
-             * @description Login token to send to `POST /auth/login/2fa` with the code. Single use, valid 5 minutes.
+             * @description Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.
              * @example example-two-factor-token
              */
             token: string;
+        };
+        TwoFactorEnrolmentResponse: {
+            /**
+             * @description Base32 secret to type in the authenticator application.
+             * @example JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+             */
+            secret: string;
+            /**
+             * @description `otpauth://` URI to render as a QR code.
+             * @example otpauth://totp/Mairie360:camille@mairie.fr?secret=JBSWY3DPEHPK3PXP&issuer=Mairie360
+             */
+            otpauth_uri: string;
+        };
+        TwoFactorEnrolmentCompletedResponse: {
+            /** @example Logged in successfully */
+            message: string;
+            /**
+             * @description The ten single-use backup codes, shown once: the front must make the agent keep them.
+             * @example [
+             *       "a1b2-c3d4",
+             *       "e5f6-a7b8"
+             *     ]
+             */
+            backup_codes: string[];
         };
     };
     responses: never;

@@ -10,7 +10,11 @@ import type {
     RefreshResponseView,
     ResetPasswordResponseView,
     ResetPasswordView,
+    SetupCompletedView,
+    SetupConfirmView,
+    SetupTokenView,
     TwoFactorRequiredView,
+    TwoFactorSetupView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { KeycloakLoginView } from '../clients/coreClient';
@@ -32,13 +36,16 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
     );
 }
 
-/** Core's 202 of a protected account (MAIR-805): no session yet, the login token of the second step. */
+/**
+ * Core's 202 (MAIR-805, MAIR-808): no session yet. `2fa_required` carries the token of the second step of a protected
+ * account, `2fa_setup_required` the token of the enrolment the mandatory policy imposes.
+ */
 export function isTwoFactorRequired(value: unknown): value is TwoFactorRequiredView {
     return (
         typeof value === 'object'
         && value !== null
         && 'status' in value
-        && value.status === '2fa_required'
+        && (value.status === '2fa_required' || value.status === '2fa_setup_required')
         && 'token' in value
         && typeof value.token === 'string'
     );
@@ -57,6 +64,22 @@ export async function loginUserTwoFactor(
     client: AnonymousClient,
 ): Promise<AxiosResponse<LoginResponseView>> {
     return coreAuthClient.loginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Mandatory enrolment, step 1 (MAIR-808): the `2fa_setup_required` token yields the secret to register. */
+export async function startLoginEnrolment(
+    view: SetupTokenView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<TwoFactorSetupView>> {
+    return coreAuthClient.setupLoginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Mandatory enrolment, step 2 (MAIR-808): the first code activates the factor and opens the session. */
+export async function confirmLoginEnrolment(
+    view: SetupConfirmView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<SetupCompletedView>> {
+    return coreAuthClient.confirmLoginTwoFactor(view, asAnonymousClient('CORE_API', client));
 }
 
 /**

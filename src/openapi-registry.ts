@@ -62,9 +62,41 @@ export const LoginTwoFactorViewSchema = z.object({
 }).openapi('LoginTwoFactorView');
 
 export const TwoFactorRequiredResponse = z.object({
-    status: z.literal('2fa_required').openapi({ description: 'The password was accepted but a second factor is required: no session is open.' }),
-    token: z.string().openapi({ description: 'Login token to send to `POST /auth/login/2fa` with the code. Single use, valid 5 minutes.', example: 'example-two-factor-token' }),
+    status: z.enum(['2fa_required', '2fa_setup_required']).openapi({
+        description: '`2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. '
+            + '`2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, '
+            + 'send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases.',
+    }),
+    token: z.string().openapi({ description: 'Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.', example: 'example-two-factor-token' }),
 }).openapi('TwoFactorRequiredResponse');
+
+export const TwoFactorSetupTokenViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({
+        description: 'Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.',
+        example: 'example-two-factor-token',
+    }),
+}).openapi('TwoFactorSetupTokenView');
+
+export const TwoFactorSetupConfirmViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({
+        description: 'The same enrolment token as `POST /auth/2fa/setup`.',
+        example: 'example-two-factor-token',
+    }),
+    code: z.string().min(1).max(32).openapi({
+        description: 'First six-digit code displayed by the authenticator application.',
+        example: '492039',
+    }),
+}).openapi('TwoFactorSetupConfirmView');
+
+export const TwoFactorEnrolmentResponse = z.object({
+    secret: z.string().openapi({ description: 'Base32 secret to type in the authenticator application.', example: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' }),
+    otpauth_uri: z.string().openapi({ description: '`otpauth://` URI to render as a QR code.', example: 'otpauth://totp/Mairie360:camille@mairie.fr?secret=JBSWY3DPEHPK3PXP&issuer=Mairie360' }),
+}).openapi('TwoFactorEnrolmentResponse');
+
+export const TwoFactorEnrolmentCompletedResponse = z.object({
+    message: z.string().openapi({ example: 'Logged in successfully' }),
+    backup_codes: z.array(z.string()).openapi({ description: 'The ten single-use backup codes, shown once: the front must make the agent keep them.', example: ['a1b2-c3d4', 'e5f6-a7b8'] }),
+}).openapi('TwoFactorEnrolmentCompletedResponse');
 
 export const KeycloakLoginViewSchema = z.object({
     code: z.string().min(1).openapi({
@@ -208,6 +240,8 @@ export const UserIdParams = z.object({
 
 registry.register('LoginView', LoginViewSchema);
 registry.register('LoginTwoFactorView', LoginTwoFactorViewSchema);
+registry.register('TwoFactorSetupTokenView', TwoFactorSetupTokenViewSchema);
+registry.register('TwoFactorSetupConfirmView', TwoFactorSetupConfirmViewSchema);
 registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('ForgotPasswordView', ForgotPasswordViewSchema);

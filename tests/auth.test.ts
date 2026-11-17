@@ -6,7 +6,7 @@ import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
 import {
-    forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword,
+    confirmLoginEnrolment, forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword, startLoginEnrolment,
 } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
@@ -17,6 +17,8 @@ import { axiosResponse, loginResponse } from './support/core-fixtures';
 import { captureLogs } from './support/logs';
 
 jest.mock('../src/routes/core_helpers', () => ({
+    confirmLoginEnrolment: jest.fn(),
+    startLoginEnrolment: jest.fn(),
     forceChangeUserPassword: jest.fn(),
     isLoginResponseView: jest.fn((value: unknown) => (
         typeof value === 'object'
@@ -24,7 +26,7 @@ jest.mock('../src/routes/core_helpers', () => ({
         && 'refresh_token' in value
     )),
     isTwoFactorRequired: jest.fn((value: unknown) => (
-        typeof value === 'object' && value !== null && (value as { status?: unknown }).status === '2fa_required'
+        typeof value === 'object' && value !== null && ['2fa_required', '2fa_setup_required'].includes((value as { status?: string }).status ?? '')
     )),
     keycloakLoginUser: jest.fn(),
     loginUser: jest.fn(),
@@ -38,6 +40,8 @@ jest.mock('../src/routes/core_helpers', () => ({
 
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedLoginTwoFactor = jest.mocked(loginUserTwoFactor);
+const mockedStartEnrolment = jest.mocked(startLoginEnrolment);
+const mockedConfirmEnrolment = jest.mocked(confirmLoginEnrolment);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedLogoutWithRefreshToken = jest.mocked(logoutWithRefreshToken);
 const mockedLogoutSession = jest.mocked(logoutSession);
@@ -1262,5 +1266,98 @@ describe('MAIR-805 second factor', () => {
 
         expect(response.status).toBe(400);
         expect(mockedLoginTwoFactor).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-808 mandatory second factor', () => {
+    const SETUP_TOKEN = 'example-two-factor-token';
+    const setupRequired = { status: '2fa_setup_required', token: SETUP_TOKEN };
+    const RESET = { token: '11111111-2222-4333-8444-555555555555', new_password: 'Updated-456!', device_info: 'Firefox' };
+    const enrolment = { secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://totp/Mairie360:a@b.fr?secret=JBSWY3DPEHPK3PXP' };
+    const codes = ['aaaa-bbbb', 'cccc-dddd'];
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('relays the enrolment 202 of login and reset_password with its own status, no cookie', async () => {
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, internal: 'hidden' }, 202));
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(setupRequired, 202));
+
+        const login = await request(app).post('/auth/login').send(credentials);
+        const reset = await request(app).post('/auth/reset_password').send(RESET);
+
+        for (const response of [login, reset]) {
+            expect(response.status).toBe(202);
+            expect(response.body).toEqual(setupRequired);
+            expect(response.headers['set-cookie']).toBeUndefined();
+            expect(response.headers.authorization).toBeUndefined();
+        }
+    });
+
+    it('starts the enrolment: only the secret and the URI come back', async () => {
+        mockedStartEnrolment.mockResolvedValue(axiosResponse({ ...enrolment, internal: 'hidden' }, 200));
+
+        const response = await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(enrolment);
+        expect(mockedStartEnrolment).toHaveBeenCalledWith({ token: SETUP_TOKEN }, expect.anything());
+    });
+
+    it('confirms the enrolment: cookies for the session, the backup codes (once) in the body, no token', async () => {
+        mockedConfirmEnrolment.mockResolvedValue(axiosResponse({ ...loginResponse(), backup_codes: codes }, 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '492039' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully', backup_codes: codes });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedConfirmEnrolment).toHaveBeenCalledWith({ token: SETUP_TOKEN, code: '492039' }, expect.anything());
+    });
+
+    it('answers 502 and sets no cookie when Core confirms without a Bearer token', async () => {
+        mockedConfirmEnrolment.mockResolvedValue(axiosResponse({ ...loginResponse(), backup_codes: codes }, 200));
+
+        const response = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '492039' });
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([400, 401, 409, 429])('keeps the Core %i of the enrolment start', async (status) => {
+        mockedStartEnrolment.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN });
+
+        expect(response.status).toBe(status);
+    });
+
+    it.each([400, 401, 404, 429])('keeps the Core %i of the enrolment confirmation', async (status) => {
+        mockedConfirmEnrolment.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '000000' });
+
+        expect(response.status).toBe(status);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 503 when Core has no encryption key, on both routes', async () => {
+        mockedStartEnrolment.mockRejectedValue(coreError(503));
+        mockedConfirmEnrolment.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN })).status).toBe(503);
+        expect((await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '1' })).status).toBe(503);
+    });
+
+    it('refuses malformed bodies before any Core call', async () => {
+        const setup = await request(app).post('/auth/2fa/setup').send({});
+        const confirm = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN });
+
+        expect(setup.status).toBe(400);
+        expect(confirm.status).toBe(400);
+        expect(mockedStartEnrolment).not.toHaveBeenCalled();
+        expect(mockedConfirmEnrolment).not.toHaveBeenCalled();
     });
 });

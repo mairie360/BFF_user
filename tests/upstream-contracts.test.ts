@@ -22,6 +22,10 @@ const pathname = (url: string) => new URL(url, 'http://upstream').pathname;
 const CONSUMED = [
   { operationId: 'login', method: 'post', url: coreApiUrls.getLoginUrl() },
   { operationId: 'loginTwoFactor', method: 'post', url: coreApiUrls.getLoginTwoFactorUrl() },
+  { operationId: 'setupLoginTwoFactor', method: 'post', url: coreApiUrls.getSetupLoginTwoFactorUrl() },
+  { operationId: 'confirmLoginTwoFactor', method: 'post', url: coreApiUrls.getConfirmLoginTwoFactorUrl() },
+  { operationId: 'getTwoFactorPolicy', method: 'get', url: coreApiUrls.getGetTwoFactorPolicyUrl() },
+  { operationId: 'updateTwoFactorPolicy', method: 'put', url: coreApiUrls.getUpdateTwoFactorPolicyUrl() },
   { operationId: 'forceChangePassword', method: 'post', url: coreApiUrls.getForceChangePasswordUrl() },
   { operationId: 'forgotPassword', method: 'post', url: coreApiUrls.getForgotPasswordUrl() },
   { operationId: 'resetPassword', method: 'post', url: coreApiUrls.getResetPasswordUrl() },

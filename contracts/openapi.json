@@ -123,6 +123,44 @@
           "code"
         ]
       },
+      "TwoFactorSetupTokenView": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: \"2fa_setup_required\"`. Single use, valid 5 minutes.",
+            "example": "example-two-factor-token"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "TwoFactorSetupConfirmView": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "The same enrolment token as `POST /auth/2fa/setup`.",
+            "example": "example-two-factor-token"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "description": "First six-digit code displayed by the authenticator application.",
+            "example": "492039"
+          }
+        },
+        "required": [
+          "token",
+          "code"
+        ]
+      },
       "KeycloakLoginView": {
         "type": "object",
         "properties": {
@@ -631,6 +669,80 @@
           "revoked_at"
         ]
       },
+      "TwoFactorPolicy": {
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean",
+            "description": "Every agent must hold a second factor: an agent without one enrols at its next sign-in, before any session opens.",
+            "example": true
+          },
+          "totp_allowed": {
+            "type": "boolean",
+            "description": "Authenticator application (TOTP) accepted.",
+            "example": true
+          },
+          "passkey_allowed": {
+            "type": "boolean",
+            "description": "Passkeys accepted. Always false until the passkey feature ships (a PUT with true answers 400).",
+            "example": false
+          },
+          "backup_codes_allowed": {
+            "type": "boolean",
+            "description": "Backup codes accepted at the second step.",
+            "example": true
+          },
+          "updated_by": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Id of the administrator who last changed the policy, null for the initial one.",
+            "example": 1
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "ISO 8601 date of the last change.",
+            "example": "2026-11-17T09:30:00Z"
+          }
+        },
+        "required": [
+          "required",
+          "totp_allowed",
+          "passkey_allowed",
+          "backup_codes_allowed",
+          "updated_by",
+          "updated_at"
+        ]
+      },
+      "TwoFactorPolicyUpdate": {
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean",
+            "example": true
+          },
+          "totp_allowed": {
+            "type": "boolean",
+            "example": true
+          },
+          "passkey_allowed": {
+            "type": "boolean",
+            "example": false
+          },
+          "backup_codes_allowed": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "required",
+          "totp_allowed",
+          "passkey_allowed",
+          "backup_codes_allowed"
+        ],
+        "additionalProperties": false
+      },
       "AdminUserIdParams": {
         "type": "object",
         "properties": {
@@ -1136,19 +1248,63 @@
           "status": {
             "type": "string",
             "enum": [
-              "2fa_required"
+              "2fa_required",
+              "2fa_setup_required"
             ],
-            "description": "The password was accepted but a second factor is required: no session is open."
+            "description": "`2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases."
           },
           "token": {
             "type": "string",
-            "description": "Login token to send to `POST /auth/login/2fa` with the code. Single use, valid 5 minutes.",
+            "description": "Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.",
             "example": "example-two-factor-token"
           }
         },
         "required": [
           "status",
           "token"
+        ]
+      },
+      "TwoFactorEnrolmentResponse": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "Base32 secret to type in the authenticator application.",
+            "example": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+          },
+          "otpauth_uri": {
+            "type": "string",
+            "description": "`otpauth://` URI to render as a QR code.",
+            "example": "otpauth://totp/Mairie360:camille@mairie.fr?secret=JBSWY3DPEHPK3PXP&issuer=Mairie360"
+          }
+        },
+        "required": [
+          "secret",
+          "otpauth_uri"
+        ]
+      },
+      "TwoFactorEnrolmentCompletedResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Logged in successfully"
+          },
+          "backup_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ten single-use backup codes, shown once: the front must make the agent keep them.",
+            "example": [
+              "a1b2-c3d4",
+              "e5f6-a7b8"
+            ]
+          }
+        },
+        "required": [
+          "message",
+          "backup_codes"
         ]
       }
     },
@@ -1238,7 +1394,7 @@
             }
           },
           "202": {
-            "description": "The account is protected by a second factor: no session is open. Send the `token` with a code to `POST /auth/login/2fa` within five minutes.",
+            "description": "No session is open. `2fa_required`: the account is protected by a second factor, send the `token` with a code to `POST /auth/login/2fa` within five minutes. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, enrol through `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1561,7 +1717,7 @@
             }
           },
           "202": {
-            "description": "Password reset, but the account is protected by a second factor: no session is open (the mailbox is not a second factor). Send the `token` with a code to `POST /auth/login/2fa`.",
+            "description": "Password reset, but no session is open (the mailbox is not a second factor): `2fa_required` sends the `token` with a code to `POST /auth/login/2fa`, `2fa_setup_required` (mandatory policy, MAIR-808) to `POST /auth/2fa/setup`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1850,6 +2006,234 @@
           },
           "401": {
             "description": "Unknown, expired or burnt login token, or wrong or already used code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/2fa/setup": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Mandatory enrolment: starts the registration of the authenticator application",
+        "description": "When the instance makes the second factor mandatory, `POST /auth/login` (or `/auth/reset_password`) answers `202` `2fa_setup_required` for an account without a usable factor. Forwards that token to Core API, which answers the secret and the `otpauth://` URI to register in the authenticator application. No session exists yet: finish with `POST /auth/2fa/confirm`. Calling it again replaces the pending secret.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorSetupTokenView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Secret to register.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorEnrolmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired or burnt enrolment token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account got a second factor meanwhile: sign in normally.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/2fa/confirm": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Mandatory enrolment: confirms with a first code and signs in",
+        "description": "Forwards the enrolment token and the first code of the authenticator application to Core API, which activates the second factor and opens the session, delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The ten single-use backup codes are in the body, once: the front must make the agent keep them. The token is single use and burnt after five wrong codes: restart from the password.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorSetupConfirmView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enrolled and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorEnrolmentCompletedResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired or burnt enrolment token, or wrong code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`POST /auth/2fa/setup` was not called with this token.",
             "content": {
               "application/json": {
                 "schema": {
@@ -5384,6 +5768,242 @@
           },
           "409": {
             "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/two-factor-policy": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Reads the second-factor policy of the instance (MAIR-808)",
+        "description": "Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.",
+        "responses": {
+          "200": {
+            "description": "The policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorPolicy"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Changes the second-factor policy of the instance (MAIR-808)",
+        "description": "Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorPolicyUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The policy as saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorPolicy"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
