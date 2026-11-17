@@ -323,7 +323,7 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Four scenarios: `crud`
 runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
 so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
 rate; `policy` (MAIR-808, MAIR-810) runs once, alone, after the others, the operations that need a mandatory policy
