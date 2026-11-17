@@ -61,6 +61,32 @@ export const LoginTwoFactorViewSchema = z.object({
     }),
 }).openapi('LoginTwoFactorView');
 
+export const PasskeyLoginOptionsResponse = z.object({
+    id: z.string().openapi({
+        description: 'Identifier of the ceremony: send it back, with the browser answer, to `POST /auth/passkey`. Single use, valid two minutes.',
+        example: 'example-two-factor-token',
+    }),
+    options: z.record(z.string(), z.unknown()).openapi({
+        description: 'WebAuthn `PublicKeyCredentialRequestOptions` for `navigator.credentials.get` (discoverable: no account is named, user verification required).',
+        example: { publicKey: { challenge: 'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c', rpId: 'mairie360-eip.fr', userVerification: 'required' }, mediation: 'conditional' },
+    }),
+}).openapi('PasskeyLoginOptionsResponse');
+
+export const PasskeyLoginViewSchema = z.object({
+    id: z.string().min(1).max(512).openapi({
+        description: 'The `id` returned by `POST /auth/passkey/options`.',
+        example: 'example-two-factor-token',
+    }),
+    credential: z.record(z.string(), z.unknown()).openapi({
+        description: 'The `PublicKeyCredential` returned by `navigator.credentials.get`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.',
+        example: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { authenticatorData: 'SZYN5Y', clientDataJSON: 'eyJ0eXBl', signature: 'MEUCIQ', userHandle: 'bWFpcmll' } },
+    }),
+    device_info: z.string().max(512).openapi({
+        description: 'Device used to sign in (an empty string is accepted, as for the password login).',
+        example: 'Firefox',
+    }),
+}).openapi('PasskeyLoginView');
+
 export const TwoFactorRequiredResponse = z.object({
     status: z.enum(['2fa_required', '2fa_setup_required']).openapi({
         description: '`2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. '
@@ -240,6 +266,7 @@ export const UserIdParams = z.object({
 
 registry.register('LoginView', LoginViewSchema);
 registry.register('LoginTwoFactorView', LoginTwoFactorViewSchema);
+registry.register('PasskeyLoginView', PasskeyLoginViewSchema);
 registry.register('TwoFactorSetupTokenView', TwoFactorSetupTokenViewSchema);
 registry.register('TwoFactorSetupConfirmView', TwoFactorSetupConfirmViewSchema);
 registry.register('KeycloakLoginView', KeycloakLoginViewSchema);

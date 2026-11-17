@@ -124,6 +124,12 @@ and the legacy `/me` resolve.
   (`requireAdmin`) relay the instance policy; `DELETE /admin/users/{id}/2fa` the administrator reset. The agent's own `/user/me/2fa`
   routes are `BFF_Settings`'. The newman journey `Two-factor policy (MAIR-808)` makes the policy mandatory for a few requests only:
   a mandatory policy answers every login of the instance `202`.
+- **Passkey sign-in** (MAIR-810): public `POST /auth/passkey/options` (relays Core's discoverable challenge `{ id, options }`) then
+  `POST /auth/passkey { id, credential, device_info }`, which forwards the browser answer as is and opens the session like
+  `/auth/login` (cookies only). A passkey is a complete sign-in: no `202`, no second step. Core's 403 (policy does not allow passkeys),
+  429 and every 401 are kept, its 503 (no WebAuthn relying party) too so the front can fall back to the password. Managing the
+  passkeys of the account is `BFF_Settings`'. The newman journey `Passkeys (MAIR-810)` cannot sign (no authenticator in the
+  sandbox): it replays the challenge, the refusals and the policy gate, and needs `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` on Core.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the

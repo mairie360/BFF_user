@@ -5584,63 +5584,6 @@
           "response": []
         },
         {
-          "name": "MAIR-808 Passkeys cannot be allowed yet",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_admin}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/admin/two-factor-policy",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "two-factor-policy"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"required\": true,\n  \"totp_allowed\": true,\n  \"passkey_allowed\": true,\n  \"backup_codes_allowed\": true\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 400\", function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});",
-                  "pm.test(\"Body is the error envelope\", function () {",
-                  "    const body = pm.response.json();",
-                  "    pm.expect(body.error, 'error').to.be.an('object');",
-                  "    pm.expect(body.error.code).to.be.a('string');",
-                  "    pm.expect(body.error.message).to.be.a('string');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
           "name": "MAIR-808 The administrator makes the second factor mandatory",
           "request": {
             "method": "PUT",
@@ -6359,6 +6302,431 @@
                 "exec": [
                   "pm.test(\"Status is 204\", function () {",
                   "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Passkeys (MAIR-810)",
+      "item": [
+        {
+          "name": "MAIR-810 Passkeys are refused while the administrator does not allow them",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 The administrator allows passkeys",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/two-factor-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "two-factor-policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"required\": false,\n  \"totp_allowed\": true,\n  \"passkey_allowed\": true,\n  \"backup_codes_allowed\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Passkeys are allowed', () => { pm.expect(pm.response.json().passkey_allowed).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 The sign-in challenge names no account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('Only the ceremony and the options', () => { pm.expect(Object.keys(body).sort()).to.eql(['id', 'options']); pm.expect(body.id).to.be.a('string').and.not.empty; });",
+                  "pm.test('Discoverable, user verification required', () => { pm.expect(body.options.publicKey.rpId).to.eql('localhost'); pm.expect(body.options.publicKey.userVerification).to.eql('required'); pm.expect(body.options.publicKey.allowCredentials || []).to.be.empty; });",
+                  "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });",
+                  "pm.environment.set('pk_ceremony', body.id);"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A sign-in without credential is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{pk_ceremony}}\",\n  \"device_info\": \"newman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A forged answer is refused with 401 and opens no session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{pk_ceremony}}\",\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"authenticatorData\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\",\n      \"signature\": \"AAAA\",\n      \"userHandle\": null\n    },\n    \"extensions\": {}\n  },\n  \"device_info\": \"newman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});",
+                  "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 The challenge cannot be replayed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{pk_ceremony}}\",\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"authenticatorData\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\",\n      \"signature\": \"AAAA\",\n      \"userHandle\": null\n    },\n    \"extensions\": {}\n  },\n  \"device_info\": \"newman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});",
+                  "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 The administrator stops allowing passkeys",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/two-factor-policy",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "two-factor-policy"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"required\": false,\n  \"totp_allowed\": true,\n  \"passkey_allowed\": false,\n  \"backup_codes_allowed\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Passkeys are refused again', () => { pm.expect(pm.response.json().passkey_allowed).to.eql(false); });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 The challenge is refused again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
                   "});"
                 ]
               }
