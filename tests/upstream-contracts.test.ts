@@ -22,6 +22,8 @@ const pathname = (url: string) => new URL(url, 'http://upstream').pathname;
 const CONSUMED = [
   { operationId: 'login', method: 'post', url: coreApiUrls.getLoginUrl() },
   { operationId: 'loginTwoFactor', method: 'post', url: coreApiUrls.getLoginTwoFactorUrl() },
+  { operationId: 'passkeyLoginOptions', method: 'post', url: coreApiUrls.getPasskeyLoginOptionsUrl() },
+  { operationId: 'passkeyLogin', method: 'post', url: coreApiUrls.getPasskeyLoginUrl() },
   { operationId: 'setupLoginTwoFactor', method: 'post', url: coreApiUrls.getSetupLoginTwoFactorUrl() },
   { operationId: 'confirmLoginTwoFactor', method: 'post', url: coreApiUrls.getConfirmLoginTwoFactorUrl() },
   { operationId: 'getTwoFactorPolicy', method: 'get', url: coreApiUrls.getGetTwoFactorPolicyUrl() },

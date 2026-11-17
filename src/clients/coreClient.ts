@@ -53,6 +53,8 @@ export const keycloakLogin = (keycloakLoginView: KeycloakLoginView, options?: Ax
 export const coreAuthClient = {
     login: coreApi.login,
     loginTwoFactor: coreApi.loginTwoFactor,
+    passkeyLoginOptions: coreApi.passkeyLoginOptions,
+    passkeyLogin: coreApi.passkeyLogin,
     setupLoginTwoFactor: coreApi.setupLoginTwoFactor,
     confirmLoginTwoFactor: coreApi.confirmLoginTwoFactor,
     keycloakLogin,

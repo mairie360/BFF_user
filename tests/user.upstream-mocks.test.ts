@@ -28,6 +28,7 @@ const CORE = {
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
   groups: '/api/v1/groups/', group: '/api/v1/groups/{groupId}/',
   sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout', authLogout: '/api/v1/auth/logout',
+  passkeyOptions: '/api/v1/auth/passkey/options', passkey: '/api/v1/auth/passkey',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -168,6 +169,70 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(502);
       expectBffContract('post', '/auth/login', response);
       expect(response.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  describe('MAIR-810 passkey sign-in', () => {
+    const answer = {
+      id: 'example-two-factor-token',
+      credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { signature: 'MEUCIQ', userHandle: 'bWFpcmll' } },
+      device_info: 'Firefox',
+    };
+
+    test('relays the anonymous challenge', async () => {
+      coreApi.on('post', CORE.passkeyOptions, { body: { id: answer.id, options: { publicKey: { challenge: 'q1w2e3', rpId: 'mairie360-eip.fr', userVerification: 'required' } } } });
+
+      const response = await request(app).post('/auth/passkey/options').send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBe(answer.id);
+      expect(response.body.options.publicKey.userVerification).toBe('required');
+      expectBffContract('post', '/auth/passkey/options', response);
+      expect(coreApi.calls(CORE.passkeyOptions)[0].headers.authorization).toBeUndefined();
+    });
+
+    test('forwards the browser answer as is, anonymously, and only delivers the tokens in HttpOnly cookies', async () => {
+      coreApi.on('post', CORE.passkey, { body: loginResponse(), headers: { Authorization: 'Bearer core.jwt.token' } });
+
+      const response = await request(app).post('/auth/passkey').send({ ...answer, role: 'Admin' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Logged in successfully' });
+      expect(response.headers.authorization).toBeUndefined();
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly.*SameSite=Strict/);
+      expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly`));
+      const [call] = coreApi.calls(CORE.passkey);
+      expect(call.body).toEqual(answer);
+      expect(call.headers.authorization).toBeUndefined();
+      expectBffContract('post', '/auth/passkey', response);
+    });
+
+    test.each([401, 403, 429])('keeps the Core %i of the sign-in, with no cookie', async (status) => {
+      coreApi.on('post', CORE.passkey, coreError(status, 'refused'));
+
+      const response = await request(app).post('/auth/passkey').send(answer);
+
+      expect(response.status).toBe(status);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expectBffContract('post', '/auth/passkey', response);
+    });
+
+    test('answers 503 on both routes when Core has no WebAuthn configuration', async () => {
+      coreApi.on('post', CORE.passkeyOptions, coreError(503, 'Passkeys are not configured.'));
+      coreApi.on('post', CORE.passkey, coreError(503, 'Passkeys are not configured.'));
+
+      const options = await request(app).post('/auth/passkey/options').send({});
+      const login = await request(app).post('/auth/passkey').send(answer);
+
+      expect([options.status, login.status]).toEqual([503, 503]);
+      expect(JSON.stringify([options.body, login.body])).not.toContain('not configured.');
+    });
+
+    test('rejects a body without credential before calling Core API', async () => {
+      const response = await request(app).post('/auth/passkey').send({ id: answer.id, device_info: 'Firefox' });
+
+      expect(response.status).toBe(400);
+      expect(coreApi.requests).toHaveLength(0);
     });
   });
 

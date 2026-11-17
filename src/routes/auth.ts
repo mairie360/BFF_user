@@ -12,6 +12,8 @@ import {
     ForgotPasswordViewSchema,
     KeycloakLoginViewSchema,
     LoginTwoFactorViewSchema,
+    PasskeyLoginOptionsResponse,
+    PasskeyLoginViewSchema,
     TwoFactorEnrolmentCompletedResponse,
     TwoFactorEnrolmentResponse,
     TwoFactorSetupConfirmViewSchema,
@@ -44,6 +46,8 @@ import {
     keycloakLoginUser,
     loginUser,
     loginUserTwoFactor,
+    finishPasskeyLogin,
+    startPasskeyLogin,
     confirmLoginEnrolment,
     startLoginEnrolment,
     refreshSession,
@@ -443,6 +447,51 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
+    path: '/auth/passkey/options',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Passkey sign-in: gets the challenge (MAIR-810)',
+    description: 'Starts a discoverable passkey sign-in on Core API: the browser offers the passkeys it holds for the site, so nobody '
+        + 'types an e-mail. Returns the WebAuthn options and the `id` of the ceremony (single use, two minutes), to send back with the '
+        + 'browser answer to `POST /auth/passkey`.',
+    responses: {
+        200: { description: 'Challenge created.', content: { 'application/json': { schema: PasskeyLoginOptionsResponse } } },
+        403: { description: 'The administrator does not accept passkeys (two-factor policy).', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front falls back to the password.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Passkey sign-in: sends the browser answer (MAIR-810)',
+    description: 'Forwards the signed challenge to Core API, which identifies the account by the passkey and verifies it. The session is '
+        + 'then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey is a complete '
+        + 'sign-in: no second factor is asked, a mandatory policy is satisfied. Every refusal is the same `401`.',
+    request: { body: { required: true, content: { 'application/json': { schema: PasskeyLoginViewSchema } } } },
+    responses: {
+        200: {
+            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
+        },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'The passkey is refused: unknown, expired or replayed challenge, unknown passkey, bad signature, cloned passkey, archived account.', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'The administrator does not accept passkeys (two-factor policy).', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
     path: '/auth/2fa/setup',
     security: [],
     tags: ['Authentication'],
@@ -588,6 +637,13 @@ function sendLoginOutcome(res: Response, coreResponse: AxiosResponse): Response 
     return sendSession(res, coreResponse);
 }
 
+/** Core answers 503 when it has no WebAuthn relying party: kept, so the front falls back to the password. */
+function passkeysUnavailable(error: unknown): HttpError | undefined {
+    return axios.isAxiosError(error) && error.response?.status === 503
+        ? new HttpError(503, 'Passkeys are not configured')
+        : undefined;
+}
+
 /** Core answers 503 when it has no TOTP encryption key: kept, so the front can tell it from a Core outage. */
 function twoFactorUnavailable(error: unknown): HttpError | undefined {
     return axios.isAxiosError(error) && error.response?.status === 503
@@ -633,6 +689,28 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             return sendSession(res, await loginUserTwoFactor(body, req));
         } catch (error) {
             throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
+        }
+    });
+
+    router.post('/passkey/options', limiters.perIp, async (req: Request, res: Response) => {
+        try {
+            const { data } = await startPasskeyLogin(req);
+            return res.status(200).json({ id: data.id, options: data.options });
+        } catch (error) {
+            throw passkeysUnavailable(error) ?? upstreamError('CORE_API', error, [403, 429]);
+        }
+    });
+
+    router.post('/passkey', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(PasskeyLoginViewSchema, req.body, 'body');
+
+        try {
+            return sendSession(res, await finishPasskeyLogin(body as never, req));
+        } catch (error) {
+            if (error instanceof HttpError) {
+                throw error;
+            }
+            throw passkeysUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 403, 429]);
         }
     });
 

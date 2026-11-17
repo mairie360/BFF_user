@@ -124,6 +124,12 @@ and the legacy `/me` resolve.
   (`requireAdmin`) relay the instance policy; `DELETE /admin/users/{id}/2fa` the administrator reset. The agent's own `/user/me/2fa`
   routes are `BFF_Settings`'. The newman journey `Two-factor policy (MAIR-808)` makes the policy mandatory for a few requests only:
   a mandatory policy answers every login of the instance `202`.
+- **Passkey sign-in** (MAIR-810): public `POST /auth/passkey/options` (relays Core's discoverable challenge `{ id, options }`) then
+  `POST /auth/passkey { id, credential, device_info }`, which forwards the browser answer as is and opens the session like
+  `/auth/login` (cookies only). A passkey is a complete sign-in: no `202`, no second step. Core's 403 (policy does not allow passkeys),
+  429 and every 401 are kept, its 503 (no WebAuthn relying party) too so the front can fall back to the password. Managing the
+  passkeys of the account is `BFF_Settings`'. The newman journey `Passkeys (MAIR-810)` cannot sign (no authenticator in the
+  sandbox): it replays the challenge, the refusals and the policy gate, and needs `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` on Core.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
@@ -317,10 +323,13 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Four scenarios: `crud`
 runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
 so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
-rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
+rate; `policy` (MAIR-808, MAIR-810) runs once, alone, after the others, the operations that need a mandatory policy
+(every login answers 202 meanwhile) or allowed passkeys: the policy, the enrolment, the second step and the passkey sign-in
+(`policyCoverage`, `isPolicy` in `load-test.js`; they restore the optional policy, and k6 can only send a forged passkey
+answer, refused with the single 401). The perf stack's Core gets `TOTP_ENCRYPTION_KEY` and the WebAuthn relying party. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
 seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
 members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
 signed by `performance_test.sh` into the token file mounted at `/tokens.json`), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.

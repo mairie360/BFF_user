@@ -6,7 +6,7 @@ import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
 import {
-    confirmLoginEnrolment, forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword, startLoginEnrolment,
+    confirmLoginEnrolment, forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword, startLoginEnrolment, startPasskeyLogin, finishPasskeyLogin,
 } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
@@ -19,6 +19,8 @@ import { captureLogs } from './support/logs';
 jest.mock('../src/routes/core_helpers', () => ({
     confirmLoginEnrolment: jest.fn(),
     startLoginEnrolment: jest.fn(),
+    startPasskeyLogin: jest.fn(),
+    finishPasskeyLogin: jest.fn(),
     forceChangeUserPassword: jest.fn(),
     isLoginResponseView: jest.fn((value: unknown) => (
         typeof value === 'object'
@@ -38,6 +40,8 @@ jest.mock('../src/routes/core_helpers', () => ({
     resetUserPassword: jest.fn(),
 }));
 
+const mockedStartPasskey = jest.mocked(startPasskeyLogin);
+const mockedFinishPasskey = jest.mocked(finishPasskeyLogin);
 const mockedLoginUser = jest.mocked(loginUser);
 const mockedLoginTwoFactor = jest.mocked(loginUserTwoFactor);
 const mockedStartEnrolment = jest.mocked(startLoginEnrolment);
@@ -1359,5 +1363,83 @@ describe('MAIR-808 mandatory second factor', () => {
         expect(confirm.status).toBe(400);
         expect(mockedStartEnrolment).not.toHaveBeenCalled();
         expect(mockedConfirmEnrolment).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-810 passkey sign-in', () => {
+    const CEREMONY = 'example-two-factor-token';
+    const options = { publicKey: { challenge: 'q1w2e3', rpId: 'mairie360-eip.fr', userVerification: 'required' } };
+    const answer = {
+        id: CEREMONY,
+        credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { signature: 'MEUCIQ' } },
+        device_info: 'Firefox',
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('relays the challenge and only its two fields', async () => {
+        mockedStartPasskey.mockResolvedValue(axiosResponse({ id: CEREMONY, options, internal: 'hidden' }, 200));
+
+        const response = await request(app).post('/auth/passkey/options').send({});
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ id: CEREMONY, options });
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('opens the session in HttpOnly cookies only, like the password login', async () => {
+        mockedFinishPasskey.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/passkey').send(answer);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers.authorization).toBeUndefined();
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedFinishPasskey).toHaveBeenCalledWith(answer, expect.anything());
+    });
+
+    it('answers 502 and sets no cookie when Core signs in without a Bearer token', async () => {
+        mockedFinishPasskey.mockResolvedValue(axiosResponse(loginResponse(), 200));
+
+        const response = await request(app).post('/auth/passkey').send(answer);
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([403, 429])('keeps the Core %i of the challenge', async (status) => {
+        mockedStartPasskey.mockRejectedValue(coreError(status));
+
+        expect((await request(app).post('/auth/passkey/options').send({})).status).toBe(status);
+    });
+
+    it.each([400, 401, 403, 429])('keeps the Core %i of the sign-in, with no cookie', async (status) => {
+        mockedFinishPasskey.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/passkey').send(answer);
+
+        expect(response.status).toBe(status);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 503 when Core has no WebAuthn configuration, on both routes', async () => {
+        mockedStartPasskey.mockRejectedValue(coreError(503));
+        mockedFinishPasskey.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/passkey/options').send({})).status).toBe(503);
+        expect((await request(app).post('/auth/passkey').send(answer)).status).toBe(503);
+    });
+
+    it('refuses malformed bodies before any Core call', async () => {
+        const noCredential = await request(app).post('/auth/passkey').send({ id: CEREMONY, device_info: 'x' });
+        const noId = await request(app).post('/auth/passkey').send({ credential: answer.credential, device_info: 'x' });
+
+        expect(noCredential.status).toBe(400);
+        expect(noId.status).toBe(400);
+        expect(mockedFinishPasskey).not.toHaveBeenCalled();
     });
 });

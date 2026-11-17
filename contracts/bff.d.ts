@@ -773,6 +773,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey sign-in: gets the challenge (MAIR-810)
+         * @description Starts a discoverable passkey sign-in on Core API: the browser offers the passkeys it holds for the site, so nobody types an e-mail. Returns the WebAuthn options and the `id` of the ceremony (single use, two minutes), to send back with the browser answer to `POST /auth/passkey`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Challenge created. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyLoginOptionsResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front falls back to the password. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey sign-in: sends the browser answer (MAIR-810)
+         * @description Forwards the signed challenge to Core API, which identifies the account by the passkey and verifies it. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey is a complete sign-in: no second factor is asked, a mandatory policy is satisfied. Every refusal is the same `401`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyLoginView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The passkey is refused: unknown, expired or replayed challenge, unknown passkey, bad signature, cloned passkey, archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/2fa/setup": {
         parameters: {
             query?: never;
@@ -4819,6 +5015,35 @@ export interface components {
              */
             code: string;
         };
+        PasskeyLoginView: {
+            /**
+             * @description The `id` returned by `POST /auth/passkey/options`.
+             * @example example-two-factor-token
+             */
+            id: string;
+            /**
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.get`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "authenticatorData": "SZYN5Y",
+             *         "clientDataJSON": "eyJ0eXBl",
+             *         "signature": "MEUCIQ",
+             *         "userHandle": "bWFpcmll"
+             *       }
+             *     }
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Device used to sign in (an empty string is accepted, as for the password login).
+             * @example Firefox
+             */
+            device_info: string;
+        };
         TwoFactorSetupTokenView: {
             /**
              * @description Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.
@@ -5063,7 +5288,7 @@ export interface components {
              */
             totp_allowed: boolean;
             /**
-             * @description Passkeys accepted. Always false until the passkey feature ships (a PUT with true answers 400).
+             * @description Passkeys accepted. A PUT with true answers 400 while the instance has no WebAuthn configuration (MAIR-810).
              * @example false
              */
             passkey_allowed: boolean;
@@ -5239,6 +5464,27 @@ export interface components {
              * @example example-two-factor-token
              */
             token: string;
+        };
+        PasskeyLoginOptionsResponse: {
+            /**
+             * @description Identifier of the ceremony: send it back, with the browser answer, to `POST /auth/passkey`. Single use, valid two minutes.
+             * @example example-two-factor-token
+             */
+            id: string;
+            /**
+             * @description WebAuthn `PublicKeyCredentialRequestOptions` for `navigator.credentials.get` (discoverable: no account is named, user verification required).
+             * @example {
+             *       "publicKey": {
+             *         "challenge": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c",
+             *         "rpId": "mairie360-eip.fr",
+             *         "userVerification": "required"
+             *       },
+             *       "mediation": "conditional"
+             *     }
+             */
+            options: {
+                [key: string]: unknown;
+            };
         };
         TwoFactorEnrolmentResponse: {
             /**

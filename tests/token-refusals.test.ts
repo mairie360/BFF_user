@@ -23,7 +23,7 @@ const contract = JSON.parse(readFileSync(join(__dirname, '..', 'contracts', 'ope
 // Public on purpose: no session exists yet (sign-in, first password, refresh of an expired JWT, SSO) or the
 // route must always clear the cookies (logout), and the probes.
 const PUBLIC_OPERATIONS = [
-    'GET /health', 'GET /check_apis', 'POST /auth/login', 'POST /auth/login/2fa', 'POST /auth/2fa/setup', 'POST /auth/2fa/confirm', 'POST /auth/force_change_password', 'POST /auth/refresh',
+    'GET /health', 'GET /check_apis', 'POST /auth/login', 'POST /auth/login/2fa', 'POST /auth/passkey', 'POST /auth/passkey/options', 'POST /auth/2fa/setup', 'POST /auth/2fa/confirm', 'POST /auth/force_change_password', 'POST /auth/refresh',
     'POST /auth/logout', 'POST /auth/keycloak', 'POST /auth/forgot_password', 'POST /auth/reset_password',
 ];
 

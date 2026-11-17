@@ -7,6 +7,8 @@ import type {
     LoginResponseView,
     LoginTwoFactorView,
     LoginView,
+    PasskeyLoginOptionsView,
+    PasskeyLoginView,
     RefreshResponseView,
     ResetPasswordResponseView,
     ResetPasswordView,
@@ -64,6 +66,19 @@ export async function loginUserTwoFactor(
     client: AnonymousClient,
 ): Promise<AxiosResponse<LoginResponseView>> {
     return coreAuthClient.loginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey sign-in, step 1 (MAIR-810): a discoverable challenge, no account named. */
+export async function startPasskeyLogin(client: AnonymousClient): Promise<AxiosResponse<PasskeyLoginOptionsView>> {
+    return coreAuthClient.passkeyLoginOptions(asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey sign-in, step 2 (MAIR-810): the signed challenge opens the session, answered like a login. */
+export async function finishPasskeyLogin(
+    view: PasskeyLoginView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.passkeyLogin(view, asAnonymousClient('CORE_API', client));
 }
 
 /** Mandatory enrolment, step 1 (MAIR-808): the `2fa_setup_required` token yields the secret to register. */
