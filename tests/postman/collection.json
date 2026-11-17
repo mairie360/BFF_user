@@ -785,6 +785,57 @@
           "response": []
         },
         {
+          "name": "MAIR-757 A first password of 11 characters is refused, the token stays usable",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/force_change_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "force_change_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{first_connection_token}}\",\n  \"new_password\": \"Velo-2026-x\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"The error envelope points at new_password\", function () {",
+                  "    const { error } = pm.response.json();",
+                  "    pm.expect(error.code).to.eql('BAD_REQUEST');",
+                  "    pm.expect(error.details.map((d) => d.path)).to.include('body.new_password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "Set the first password with the token",
           "request": {
             "method": "POST",

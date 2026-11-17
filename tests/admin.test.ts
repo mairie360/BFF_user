@@ -361,6 +361,9 @@ describe('Administration routes', () => {
     it.each([
         ['post', '/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
         ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
+        // MAIR-757: Core API's policy needs 12 characters.
+        ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Velo-2026-x' }],
+        ['patch', '/admin/users/7/password', { new_password: 'Velo-2026-x' }],
         ['patch', '/admin/users/7', {}],
         // MAIR-480: Core's phone characters, an upper-case ISO 3166-1 alpha-2 country.
         ['patch', '/admin/users/7', { phone_number: '06+12345678' }],

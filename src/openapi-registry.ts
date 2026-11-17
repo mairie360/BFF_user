@@ -73,11 +73,15 @@ export const KeycloakLoginViewSchema = z.object({
     }),
 }).openapi('KeycloakLoginView');
 
-// Same password policy as the admin routes (AdminUserCreateBody, AdminUserPasswordResetBody).
+// Same password policy as the admin routes (AdminUserCreateBody, AdminUserPasswordResetBody): the length rule of Core
+// API's CNIL 2022 policy (MAIR-757); Core also refuses common passwords and the account's e-mail or names, with a 400.
+/** Minimum password length of Core API's policy (MAIR-757, CNIL 2022). */
+export const PASSWORD_MIN_LENGTH = 12;
+
 export const ForceChangePasswordViewSchema = z.object({
-    new_password: z.string().min(8).max(255).openapi({
-        description: 'New password of the user (8 to 255 characters).',
-        example: 'NouveauMotDePasse123',
+    new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({
+        description: 'New password of the user: 12 to 255 characters, not a commonly used password, not containing the account\'s e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).',
+        example: 'Riviere-Velo-Mairie-2026',
     }),
     token: z.string().min(1).openapi({
         description: 'One-time token of the forced password change (412 answer of /auth/login).',
@@ -100,9 +104,9 @@ export const ResetPasswordViewSchema = z.object({
         description: 'One-time reset token, the `token` query parameter of the link of the reset e-mail (a UUID).',
         example: '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35',
     }),
-    new_password: z.string().min(8).max(255).openapi({
-        description: 'New password of the user (8 to 255 characters).',
-        example: 'NouveauMotDePasse123',
+    new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({
+        description: 'New password of the user: 12 to 255 characters, not a commonly used password, not containing the account\'s e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).',
+        example: 'Riviere-Velo-Mairie-2026',
     }),
     device_info: z.string().max(512).openapi({
         description: 'Description of the device, kept on the session the reset opens (at most 512 characters).',
