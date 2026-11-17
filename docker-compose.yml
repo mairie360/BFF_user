@@ -50,7 +50,7 @@ x-service: &service-template
 services:
   postgres:
     image: ghcr.io/mairie360/database:${UPSTREAM_TAG:-dev}
-    pull_policy: always
+    pull_policy: ${UPSTREAM_PULL_POLICY:-always}
     restart: always
     container_name: mairie360-db-bff-user
     environment:
@@ -71,7 +71,7 @@ services:
 
   liquibase:
     image: ghcr.io/mairie360/liquibase-migrations:${UPSTREAM_TAG:-dev}
-    pull_policy: always
+    pull_policy: ${UPSTREAM_PULL_POLICY:-always}
     container_name: mairie360-liquibase-bff-user
     depends_on:
       postgres:
@@ -121,7 +121,7 @@ services:
   core:
     container_name: core-bff-user-developpement
     image: ghcr.io/mairie360/core-api:${UPSTREAM_TAG:-dev}
-    pull_policy: always
+    pull_policy: ${UPSTREAM_PULL_POLICY:-always}
     ports:
       - "3000:3000"
     networks:
