@@ -704,6 +704,9 @@ describe('BFF User with a contract-driven Core API mock', () => {
         route: 'GET /admin/sessions/history', upstream: called('GET', coreApiUrls.getHistoryUrl()), template: CORE.sessionsHistory,
         reply: { body: historyResult([session('s-1', { revoked_at: '2026-09-16T08:00:00Z' })]) }, status: 200, responseBody: historyResult([session('s-1', { revoked_at: '2026-09-16T08:00:00Z' })]),
       },
+      // MAIR-537: the two routes of the table that used to be tested with a mocked client only.
+      { route: 'PATCH /admin/users/7/password', body: { new_password: 'MotDePasse123' }, upstream: called('PATCH', coreApiUrls.getAdminResetUserPasswordUrl(7)), template: '/api/v1/admin/users/{userId}/password', reply: { status: 204 }, status: 204 },
+      { route: 'PATCH /admin/groups/5', body: { name: 'Culture' }, upstream: called('PATCH', coreApiUrls.getPatchGroupUrl(5)), template: CORE.group, reply: { body: group(5) }, status: 200, responseBody: { group: group(5) } },
       { route: 'POST /admin/sessions/revoke', body: { refresh_token: 'opaque-refresh-token' }, upstream: called('POST', coreApiUrls.getRevokeUrl()), template: CORE.sessionsRevoke, reply: { status: 200 }, status: 200 },
     ];
 
@@ -769,6 +772,87 @@ describe('BFF User with a contract-driven Core API mock', () => {
       // A dropped connection never replays a write (one attempt). An idempotent GET is retried once by design
       // (`retry: true` of callUpstream): exactly two attempts, so a third one or the loss of the retry shows.
       expect(coreApi.calls(template, method)).toHaveLength(method === 'GET' ? 2 : 1);
+    });
+
+    // MAIR-537: adding / removing a group member reads the members first, then writes: two Core calls through the
+    // contract mock (a Core error on either one ends in the documented status, a write is never replayed).
+    describe('MAIR-537 group members through the contract mock', () => {
+      const MEMBERS = '/api/v1/groups/{groupId}/users/';
+      const MEMBER = '/api/v1/groups/{groupId}/users/{userId}/';
+      const members = (users: number[]) => ({ users });
+      const as = (call: request.Test) => call.set('Authorization', `Bearer ${SESSION}`);
+
+      it('POST /admin/groups/5/users adds a user that is not a member yet (201) after reading the members', async () => {
+        coreApi.on('get', MEMBERS, { body: members([1]) });
+        coreApi.on('post', MEMBERS, { status: 200 });
+
+        const response = await as(request(app).post('/admin/groups/5/users')).send({ user_id: 7 });
+
+        expect(response.status).toBe(201);
+        expect(response.body).toEqual({ created: true });
+        expectBffContract('post', '/admin/groups/5/users', response);
+        expect(upstreamSequence()).toEqual([
+          called('GET', coreApiUrls.getGetMeUrl()),
+          called('GET', coreApiUrls.getGetGroupMembersUrl(5, { limit: 500 })).split('?')[0],
+          called('POST', coreApiUrls.getAddUserToGroupUrl(5)),
+        ]);
+      });
+
+      it('POST /admin/groups/5/users does not write when the user already belongs to the group (200, created false)', async () => {
+        coreApi.on('get', MEMBERS, { body: members([1, 7]) });
+
+        const response = await as(request(app).post('/admin/groups/5/users')).send({ user_id: 7 });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ created: false });
+        expect(coreApi.calls(MEMBERS, 'POST')).toHaveLength(0);
+      });
+
+      it('DELETE /admin/groups/5/users/7 removes a member (204) after reading the members', async () => {
+        coreApi.on('get', MEMBERS, { body: members([1, 7]) });
+        coreApi.on('delete', MEMBER, { status: 204 });
+
+        const response = await as(request(app).delete('/admin/groups/5/users/7'));
+
+        expect(response.status).toBe(204);
+        expect(coreApi.calls(MEMBER, 'DELETE')).toHaveLength(1);
+        expect(coreApi.requests[1].headers.authorization).toBe(`Bearer ${SESSION}`);
+      });
+
+      it('DELETE /admin/groups/5/users/7 answers 404 for a user who is not a member, without deleting anything', async () => {
+        coreApi.on('get', MEMBERS, { body: members([1]) });
+
+        const response = await as(request(app).delete('/admin/groups/5/users/7'));
+
+        expect(response.status).toBe(404);
+        expect(response.body.error.message).toBe('Unknown group member');
+        expect(coreApi.calls(MEMBER, 'DELETE')).toHaveLength(0);
+      });
+
+      it.each([
+        ['POST', '/admin/groups/5/users', 'post', MEMBERS],
+        ['DELETE', '/admin/groups/5/users/7', 'delete', MEMBER],
+      ] as const)('%s %s maps a Core 500 on the write to a documented 502 and never replays it', async (method, pathname, verb, template) => {
+        coreApi.on('get', MEMBERS, { body: members(verb === 'post' ? [1] : [1, 7]) });
+        coreApi.on(verb, template, coreError(500, 'An error occurred while accessing the table group_members.'));
+
+        const response = await as(request(app)[verb](pathname)).send({ user_id: 7 });
+
+        expect(response.status).toBe(502);
+        expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'Upstream service error', details: [] } });
+        expect(JSON.stringify(response.body)).not.toContain('group_members');
+        expect(coreApi.calls(template, verb.toUpperCase())).toHaveLength(1);
+      });
+
+      it.each([['post', '/admin/groups/5/users'], ['delete', '/admin/groups/5/users/7']] as const)(
+        '%s %s answers 404 when Core does not know the group', async (verb, pathname) => {
+          coreApi.on('get', MEMBERS, coreError(404, 'Group not found'));
+
+          const response = await as(request(app)[verb](pathname)).send({ user_id: 7 });
+
+          expect(response.status).toBe(404);
+          expect(coreApi.calls(MEMBERS, 'GET')).toHaveLength(1);
+        });
     });
 
     test('POST /admin/sessions/refresh is no longer served and never reaches Core API', async () => {
