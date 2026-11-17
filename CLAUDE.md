@@ -326,7 +326,10 @@ public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `regis
 `contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
 runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
 so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
-rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
+rate; `policy` (MAIR-808, MAIR-810) runs once, alone, after the others, the operations that need a mandatory policy
+(every login answers 202 meanwhile) or allowed passkeys: the policy, the enrolment, the second step and the passkey sign-in
+(`policyCoverage`, `isPolicy` in `load-test.js`; they restore the optional policy, and k6 can only send a forged passkey
+answer, refused with the single 401). The perf stack's Core gets `TOTP_ENCRYPTION_KEY` and the WebAuthn relying party. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
 seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
 members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
 signed by `performance_test.sh` into the token file mounted at `/tokens.json`), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.

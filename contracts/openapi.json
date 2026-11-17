@@ -723,7 +723,7 @@
           },
           "passkey_allowed": {
             "type": "boolean",
-            "description": "Passkeys accepted. Always false until the passkey feature ships (a PUT with true answers 400).",
+            "description": "Passkeys accepted. A PUT with true answers 400 while the instance has no WebAuthn configuration (MAIR-810).",
             "example": false
           },
           "backup_codes_allowed": {
