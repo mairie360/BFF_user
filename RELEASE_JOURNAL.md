@@ -1,16 +1,17 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "f538027220ea0a35c942db159c776f5883315819", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-17 17:01 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
+<!-- release-journal-state {"dev": "92a4d0a256f7a078505cd4efe088af5afa538c14", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-17 17:04 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.2.0 | `c6eda65` | 2026-11-13 00:45 UTC |
 | staging | — | `c6eda65` | 2026-11-13 00:31 UTC |
-| dev | — | `f538027` | 2026-11-17 17:01 UTC |
+| dev | — | `92a4d0a` | 2026-11-17 17:04 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.2.0)
 
+- test: MAIR-537 Test upstream error mapping on every write route of the BFFs ([#328](https://github.com/mairie360/BFF_user/pull/328))
 - test: MAIR-538 Add cross-cutting timeout, 413 and token-refusal tests to the BFFs and the template ([#326](https://github.com/mairie360/BFF_user/pull/326))
 - feat: MAIR-998 Test stacks follow the moving upstream tag of the stage (#317) ([#317](https://github.com/mairie360/BFF_user/pull/317))
 - chore(deps): pin actions/checkout action to 3d3c42e (#319) ([#319](https://github.com/mairie360/BFF_user/pull/319))
@@ -25,6 +26,7 @@
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+- test: MAIR-537 Test upstream error mapping on every write route of the BFFs ([#328](https://github.com/mairie360/BFF_user/pull/328))
 - test: MAIR-538 Add cross-cutting timeout, 413 and token-refusal tests to the BFFs and the template ([#326](https://github.com/mairie360/BFF_user/pull/326))
 - feat: MAIR-998 Test stacks follow the moving upstream tag of the stage (#317) ([#317](https://github.com/mairie360/BFF_user/pull/317))
 - chore(deps): pin actions/checkout action to 3d3c42e (#319) ([#319](https://github.com/mairie360/BFF_user/pull/319))
@@ -48,6 +50,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-17 17:04 UTC | dev | — | `92a4d0a` | [run](https://github.com/mairie360/BFF_user/actions/runs/44131434092) |
 | 2026-11-17 17:01 UTC | dev | — | `f538027` | [run](https://github.com/mairie360/BFF_user/actions/runs/44131417776) |
 | 2026-11-17 11:55 UTC | dev | — | `2f759ff` | [run](https://github.com/mairie360/BFF_user/actions/runs/44076471460) |
 | 2026-11-17 11:43 UTC | dev | — | `32e4097` | [run](https://github.com/mairie360/BFF_user/actions/runs/44075926973) |
