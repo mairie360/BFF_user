@@ -50,6 +50,22 @@ export const LoginViewSchema = z.object({
     }),
 }).openapi('LoginView');
 
+export const LoginTwoFactorViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({
+        description: 'Login token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_required"`. Single use, valid 5 minutes.',
+        example: 'example-two-factor-token',
+    }),
+    code: z.string().min(1).max(32).openapi({
+        description: 'Six-digit code of the authenticator application, or a backup code (`xxxx-xxxx`).',
+        example: '492039',
+    }),
+}).openapi('LoginTwoFactorView');
+
+export const TwoFactorRequiredResponse = z.object({
+    status: z.literal('2fa_required').openapi({ description: 'The password was accepted but a second factor is required: no session is open.' }),
+    token: z.string().openapi({ description: 'Login token to send to `POST /auth/login/2fa` with the code. Single use, valid 5 minutes.', example: 'example-two-factor-token' }),
+}).openapi('TwoFactorRequiredResponse');
+
 export const KeycloakLoginViewSchema = z.object({
     code: z.string().min(1).openapi({
         description: 'Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).',
@@ -145,7 +161,7 @@ export const AuthSessionResponse = z.object({
 export const RefreshViewSchema = z.object({
     refresh_token: z.string().min(1).optional().openapi({
         description: 'Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.',
-        example: '8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE',
+        example: 'example-two-factor-token',
     }),
 }).openapi('RefreshView');
 
@@ -191,6 +207,7 @@ export const UserIdParams = z.object({
 }).openapi('UserIdParams');
 
 registry.register('LoginView', LoginViewSchema);
+registry.register('LoginTwoFactorView', LoginTwoFactorViewSchema);
 registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('ForgotPasswordView', ForgotPasswordViewSchema);

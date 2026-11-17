@@ -11,6 +11,7 @@ import {
     ForceChangePasswordViewSchema,
     ForgotPasswordViewSchema,
     KeycloakLoginViewSchema,
+    LoginTwoFactorViewSchema,
     LoginViewSchema,
     LogoutResponse,
     LogoutViewSchema,
@@ -18,6 +19,7 @@ import {
     RefreshViewSchema,
     registry,
     ResetPasswordViewSchema,
+    TwoFactorRequiredResponse,
 } from '../openapi-registry';
 import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
 import { logger } from '../logger';
@@ -34,8 +36,10 @@ import type { AuthRateLimiters } from '../middleware/rateLimit';
 import {
     forceChangeUserPassword,
     isLoginResponseView,
+    isTwoFactorRequired,
     keycloakLoginUser,
     loginUser,
+    loginUserTwoFactor,
     refreshSession,
     logoutSession,
     requestPasswordReset,
@@ -89,6 +93,10 @@ registry.registerPath({
                     schema: ErrorResponse,
                 },
             },
+        },
+        202: {
+            description: 'The account is protected by a second factor: no session is open. Send the `token` with a code to `POST /auth/login/2fa` within five minutes.',
+            content: { 'application/json': { schema: TwoFactorRequiredResponse } },
         },
         412: {
             description: 'First sign-in: the password must be changed',
@@ -260,6 +268,10 @@ registry.registerPath({
             headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
             content: { 'application/json': { schema: AuthSessionResponse } },
         },
+        202: {
+            description: 'Password reset, but the account is protected by a second factor: no session is open (the mailbox is not a second factor). Send the `token` with a code to `POST /auth/login/2fa`.',
+            content: { 'application/json': { schema: TwoFactorRequiredResponse } },
+        },
         400: {
             description: 'Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character)',
             content: { 'application/json': { schema: ErrorResponse } },
@@ -397,6 +409,34 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
+    path: '/auth/login/2fa',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Completes the sign-in of a protected account (second factor)',
+    description: 'Second step of `POST /auth/login` (or `POST /auth/reset_password`) when they answered `202` '
+        + '`2fa_required`: forwards the login token and the code (TOTP or backup code) to Core API. The session is then '
+        + 'delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The token is '
+        + 'single use and burnt after five wrong codes: restart from the password.',
+    request: {
+        body: { required: true, content: { 'application/json': { schema: LoginTwoFactorViewSchema } } },
+    },
+    responses: {
+        200: {
+            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
+        },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt login token, or wrong or already used code.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
     path: '/auth/keycloak',
     security: [],
     tags: ['Authentication'],
@@ -475,6 +515,24 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
     return res.status(coreResponse.status).json({ message: 'Logged in successfully' });
 }
 
+/**
+ * Answer of a sign-in that may need a second step: Core's 202 `2fa_required` (no session, MAIR-805) is relayed as
+ * `{ status, token }` (the login token only opens `POST /auth/login/2fa`), anything else opens the session.
+ */
+function sendLoginOutcome(res: Response, coreResponse: AxiosResponse): Response {
+    if (coreResponse.status === 202 && isTwoFactorRequired(coreResponse.data)) {
+        return res.status(202).json({ status: '2fa_required', token: coreResponse.data.token });
+    }
+    return sendSession(res, coreResponse);
+}
+
+/** Core answers 503 when it has no TOTP encryption key: kept, so the front can tell it from a Core outage. */
+function twoFactorUnavailable(error: unknown): HttpError | undefined {
+    return axios.isAxiosError(error) && error.response?.status === 503
+        ? new HttpError(503, 'Two-factor authentication is not configured')
+        : undefined;
+}
+
 /** Refresh token of the caller: the body field, else the HttpOnly `refreshToken` cookie set at sign-in. */
 function refreshTokenOf(req: Request, fromBody: string | undefined): string | undefined {
     return fromBody ?? readCookie(req, REFRESH_TOKEN_COOKIE);
@@ -493,7 +551,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         const body = parseRequest(LoginViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await loginUser(body, req));
+            return sendLoginOutcome(res, await loginUser(body, req));
         } catch (error) {
             // First sign-in: Core answers 412 with the one-time token of the password change. It is a regular
             // answer the front needs, not an error: only the token is relayed.
@@ -502,7 +560,17 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
                 return res.status(412).json({ token });
             }
             // Core API rate-limits sign-ins too (MAIR-425): its 429 is relayed, like the BFF's own limiter.
-            throw upstreamError('CORE_API', error, [400, 401, 429]);
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
+        }
+    });
+
+    router.post('/login/2fa', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(LoginTwoFactorViewSchema, req.body, 'body');
+
+        try {
+            return sendSession(res, await loginUserTwoFactor(body, req));
+        } catch (error) {
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 
@@ -549,9 +617,9 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
         try {
             // Core consumes the token, saves the password and opens a session answered like a login.
-            return sendSession(res, await resetUserPassword(body, req));
+            return sendLoginOutcome(res, await resetUserPassword(body, req));
         } catch (error) {
-            throw upstreamError('CORE_API', error, [400, 401, 429]);
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 

@@ -5,10 +5,12 @@ import type {
     ForceChangePasswordView,
     ForgotPasswordView,
     LoginResponseView,
+    LoginTwoFactorView,
     LoginView,
     RefreshResponseView,
     ResetPasswordResponseView,
     ResetPasswordView,
+    TwoFactorRequiredView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { KeycloakLoginView } from '../clients/coreClient';
@@ -30,8 +32,31 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
     );
 }
 
-export async function loginUser(loginView: LoginView, client: AnonymousClient): Promise<AxiosResponse<LoginResponseView>> {
+/** Core's 202 of a protected account (MAIR-805): no session yet, the login token of the second step. */
+export function isTwoFactorRequired(value: unknown): value is TwoFactorRequiredView {
+    return (
+        typeof value === 'object'
+        && value !== null
+        && 'status' in value
+        && value.status === '2fa_required'
+        && 'token' in value
+        && typeof value.token === 'string'
+    );
+}
+
+export async function loginUser(
+    loginView: LoginView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView | TwoFactorRequiredView>> {
     return coreAuthClient.login(loginView, asAnonymousClient('CORE_API', client));
+}
+
+/** Second step of a protected account's login: the login token plus a TOTP or backup code opens the session. */
+export async function loginUserTwoFactor(
+    view: LoginTwoFactorView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.loginTwoFactor(view, asAnonymousClient('CORE_API', client));
 }
 
 /**
@@ -90,7 +115,7 @@ export async function requestPasswordReset(forgotPasswordView: ForgotPasswordVie
 export async function resetUserPassword(
     resetPasswordView: ResetPasswordView,
     client: AnonymousClient,
-): Promise<AxiosResponse<ResetPasswordResponseView>> {
+): Promise<AxiosResponse<ResetPasswordResponseView | TwoFactorRequiredView>> {
     return coreAuthClient.resetPassword(resetPasswordView, asAnonymousClient('CORE_API', client));
 }
 

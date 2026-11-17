@@ -52,6 +52,7 @@ export const keycloakLogin = (keycloakLoginView: KeycloakLoginView, options?: Ax
 // `getCoreAPIMairie360`.
 export const coreAuthClient = {
     login: coreApi.login,
+    loginTwoFactor: coreApi.loginTwoFactor,
     keycloakLogin,
     forceChangePassword: coreApi.forceChangePassword,
     forgotPassword: coreApi.forgotPassword,
@@ -66,6 +67,7 @@ export const coreAdminUsersClient = {
     adminPatchUser: coreApi.adminPatchUser,
     adminDeleteUser: coreApi.adminDeleteUser,
     adminResetUserPassword: coreApi.adminResetUserPassword,
+    adminResetUserTwoFactor: coreApi.adminResetUserTwoFactor,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
 };
