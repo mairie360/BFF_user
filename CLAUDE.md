@@ -67,6 +67,11 @@ consume. There is **no fallback bearer**: routes forward only the caller's sessi
 is exempt from its JWT middleware, so login/force_change_password go anonymous; `/api/v1/sessions/refresh` is also served outside it). There is no public
 self-registration: accounts are created by administrators through `/admin/users`.
 
+One exception: `GET /admin/projects-without-group` (groups tab of the administration) reads BFF_Project through
+`src/clients/projectBffClient.ts` (`@mairie360/bff-project-openapi`, `PROJECT_BFF_URL` + optional `PROJECT_BFF_PORT`,
+read per call, 503 when missing, not required at startup). It forwards the caller's session after `requireAdmin`; the
+test stacks run `project-api` and `bff-project` images for it.
+
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
 `PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,

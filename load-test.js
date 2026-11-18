@@ -401,6 +401,10 @@ const handlers = {
       'remove role 204': (r) => r.status === 204,
     }),
 
+  // --- Admin: projects without a group (read through BFF_Project) ---
+  'GET /admin/projects-without-group': ({ request, data }) =>
+    check(request({ headers: data.admin }), { 'projects without group 200': (r) => r.status === 200 }),
+
   // --- Admin: roles ---
   'GET /admin/roles': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'roles 200': (r) => r.status === 200 }),

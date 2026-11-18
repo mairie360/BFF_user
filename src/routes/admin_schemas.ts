@@ -43,3 +43,14 @@ export const TwoFactorPolicyUpdateSchema = registry.register('TwoFactorPolicyUpd
   passkey_allowed: z.boolean().openapi({ example: false }),
   backup_codes_allowed: z.boolean().openapi({ example: true }),
 }).strict());
+
+// A project of BFF_Project left without a group (created before groups were required, or its group was deleted).
+export const AdministrationProjectWithoutGroupSchema = registry.register('AdministrationProjectWithoutGroup', z.object({
+    id: z.string().openapi({ description: 'Id of the project in BFF_Project', example: 'project-9' }),
+    title: z.string().openapi({ example: 'LED street lighting' }),
+    createdAt: z.string().nullable().openapi({ description: 'Creation date (ISO 8601), `null` when unknown', example: '2026-03-03T09:12:00+00:00' }),
+}));
+export const AdministrationProjectsWithoutGroupSchema = registry.register('AdministrationProjectsWithoutGroup', z.object({
+    total: z.number().int().nonnegative(),
+    projects: z.array(AdministrationProjectWithoutGroupSchema).openapi({ description: 'Newest first; empty when every project has a group' }),
+}));

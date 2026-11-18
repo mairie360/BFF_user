@@ -59,6 +59,8 @@ Les valeurs ci-dessous sont des exemples locaux ou des comportements expliciteme
 | `PORT` | 4000 | Port de cet exemple local. |
 | `CORE_API_URL` | http://core-api:3000 | **Obligatoire**, sans valeur par défaut. Adresse de Core (schéma facultatif, `http` par défaut), relue à chaque appel : le serveur ne démarre pas sans elle, et une route qui appelle Core répond 503 si elle disparaît. |
 | `CORE_API_PORT` | 3000 | Port ajouté si l’adresse ne contient pas de port. |
+| `PROJECT_BFF_URL` | http://bff-project:4001 | Adresse de BFF_Project, relue à chaque appel par `GET /admin/projects-without-group` seulement : facultative au démarrage, cette route répond 503 sans elle. |
+| `PROJECT_BFF_PORT` | 4001 | Port ajouté quand l’adresse n’en a pas. |
 | `JWT_PUBLIC_KEY` | — | **Obligatoire** pour vérifier les jetons EdDSA de Core (MAIR-680 ; pendant la transition HS256, `JWT_SECRET` seul permet aussi au serveur de démarrer) : clé publique Ed25519 de Core (PEM ; plusieurs blocs pendant une rotation, retours à la ligne échappés en `\n` acceptés). Les jetons de session sont vérifiés localement avec elle (EdDSA, `kid`, `iss`, `aud`) ; le serveur ne démarre pas sans elle (503 sur `/admin/*` si elle disparaît). |
 | `JWT_SECRET` | — | Transition HS256 uniquement : tant qu’il est défini, les jetons HS256 signés avec lui sont encore acceptés. À retirer une fois `JWT_PUBLIC_KEY` déployée partout. |
 | `COOKIE_DOMAIN` | — | Domaine partagé des cookies; omettre pour un cookie limité à l’hôte. |
@@ -97,6 +99,7 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | PATCH | `/admin/users/{userId}/password` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | POST | `/admin/users/{userId}/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | DELETE | `/admin/users/{userId}/roles/{roleId}` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| GET | `/admin/projects-without-group` | — | 200, 401, 403, 429, 500, 502, 503 |
 | GET | `/admin/roles` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | PUT | `/admin/roles/{roleId}` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |

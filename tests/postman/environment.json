@@ -21,6 +21,12 @@
       "enabled": true
     },
     {
+      "key": "bffProjectUrl",
+      "value": "http://localhost:4001",
+      "type": "default",
+      "enabled": true
+    },
+    {
       "key": "admin_user_id",
       "value": "1",
       "type": "default",

@@ -1,4 +1,4 @@
-import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
+import { AdministrationProjectsWithoutGroupSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -30,6 +30,7 @@ import {
     coreUsersClient,
 } from '../clients/coreClient';
 import { forwardCoreResponse, whitelist } from './admin_helpers';
+import { projectBff } from '../clients/projectBffClient';
 
 const router = Router();
 
@@ -914,6 +915,34 @@ router.post('/keycloak/console-access', async (req: Request, res: Response) => {
         // A 429 is relayed with its Retry-After by the lib.
         throw upstreamError('CORE_API', error, [401, 403]);
     }
+});
+
+// Projects left without a group (created before groups were required, or their group was deleted in Core API), for the
+// groups tab. BFF_Project lists them for the Admin and Maire roles; the admin guard above already restricts the route.
+registry.registerPath({
+    method: 'get',
+    path: '/admin/projects-without-group',
+    tags: ['Administration'],
+    summary: 'List the projects without a group through BFF_Project',
+    responses: {
+        200: { description: 'The projects without a group', content: { 'application/json': { schema: AdministrationProjectsWithoutGroupSchema } } },
+        401: { description: 'Not authenticated', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'Access denied', content: { 'application/json': { schema: ErrorResponse } } },
+        500: { description: 'Unexpected server error; the cause is only logged', content: { 'application/json': { schema: ErrorResponse } } },
+        429: { description: 'Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds)', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API or BFF_Project unavailable, failed or answered an undeclared error', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+router.get('/projects-without-group', async (req: Request, res: Response) => {
+    const { data } = await callUpstream(
+        'PROJECT_BFF',
+        () => projectBff.getProjectGroupsProjectsWithoutGroup(asCaller('PROJECT_BFF', req)),
+        { declared: [401, 403], retry: true },
+    );
+    const projects = data.projects.map(({ id, title, createdAt }) => ({ id, title, createdAt: createdAt ?? null }));
+    res.status(200).json({ total: projects.length, projects });
 });
 
 export default router;

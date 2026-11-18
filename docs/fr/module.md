@@ -15,6 +15,7 @@ Domaine fonctionnel: Identité et administration.
 - Connexion, changement de mot de passe de première connexion, mot de passe oublié (e-mail de réinitialisation, puis réinitialisation avec le jeton reçu, qui connecte l’utilisateur) et déconnexion (pas d’inscription publique: les administrateurs créent les comptes).
 - Consultation de la session avec identité, groupes et rôles via `/me` et `/session/me`.
 - Gestion des utilisateurs, rôles, groupes, membres et opérations de session sous `/admin`.
+- Liste des projets restés sans groupe (`/admin/projects-without-group`, lue dans BFF_Project) pour l’onglet Groupes.
 - Un lien à usage unique qui ouvre aux administrateurs, pour un temps limité, la console d’administration Keycloak (`/admin/keycloak/console-access`).
 
 ## Parcours type
@@ -31,7 +32,7 @@ Ce dépôt contient le serveur BFF et son contrat. Les web services associés po
 
 ## Données et état actuel
 
-Core API fournit l’identité, les sessions, les utilisateurs, les rôles et les groupes : le BFF n’accède ni à une base de données ni à Redis, et toute lecture ou écriture passe par Core API, première connexion comprise.
+Core API fournit l’identité, les sessions, les utilisateurs, les rôles et les groupes : le BFF n’accède ni à une base de données ni à Redis, et toute lecture ou écriture passe par Core API, première connexion comprise. Seule exception : la liste des projets sans groupe, lue dans BFF_Project.
 
 ## Périmètre et limites
 

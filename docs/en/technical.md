@@ -59,6 +59,8 @@ Values below are local examples or explicitly described behavior, not production
 | `PORT` | 4000 | Port used by this local example. |
 | `CORE_API_URL` | http://core-api:3000 | **Required**, no default. Core address (scheme optional, `http` by default), read on every call: the server does not start without it, and a route calling Core answers 503 if it disappears. |
 | `CORE_API_PORT` | 3000 | Port appended when the address has none. |
+| `PROJECT_BFF_URL` | http://bff-project:4001 | BFF_Project address, read on every call by `GET /admin/projects-without-group` only: optional at startup, that route answers 503 without it. |
+| `PROJECT_BFF_PORT` | 4001 | Port appended when the address has none. |
 | `JWT_PUBLIC_KEY` | — | **Required** to verify Core's EdDSA tokens (MAIR-680; during the HS256 transition, `JWT_SECRET` alone also lets the server start): Core's Ed25519 public key (PEM; several blocks during a rotation, `\n`-escaped line breaks accepted). Session tokens are verified locally with it (EdDSA, `kid`, `iss`, `aud`); the server does not start without it (503 on `/admin/*` if it disappears). |
 | `JWT_SECRET` | — | HS256 transition only: while it is set, HS256 tokens signed with it are still accepted. Remove it once `JWT_PUBLIC_KEY` is deployed everywhere. |
 | `COOKIE_DOMAIN` | — | Shared cookie domain; omit for a host-only cookie. |
@@ -97,6 +99,7 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | PATCH | `/admin/users/{userId}/password` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | POST | `/admin/users/{userId}/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | DELETE | `/admin/users/{userId}/roles/{roleId}` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| GET | `/admin/projects-without-group` | — | 200, 401, 403, 429, 500, 502, 503 |
 | GET | `/admin/roles` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | PUT | `/admin/roles/{roleId}` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
