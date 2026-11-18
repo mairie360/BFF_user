@@ -437,7 +437,7 @@ registry.registerPath({
             content: { 'application/json': { schema: AuthSessionResponse } },
         },
         400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
-        401: { description: 'Unknown, expired or burnt login token, or wrong or replayed code. A backup code that was already spent is told apart: two refusals are told apart by `error.details`: `body.code` (message `Backup code already used.`, the login token stays valid, it still counts as a failed attempt and five burn it, so the agent can type another backup code) and `body.token` (message `Invalid or expired login token.`: the login session is over, restart from the password). A wrong code has no detail.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt login token, or wrong or replayed code. A backup code that was already spent is told apart: two refusals are told apart by `error.details`: `body.code` (message `Backup code already used.`: it still counts as a failed attempt and five burn the token, so the agent can type another backup code only while the login token is still valid; the fifth failed attempt, or an expired token, answers `body.token` instead) and `body.token` (message `Invalid or expired login token.`: the login session is over, restart from the password). A wrong code has no detail.', content: { 'application/json': { schema: ErrorResponse } } },
         429: tooManyAttempts,
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
         502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
@@ -652,10 +652,11 @@ function twoFactorUnavailable(error: unknown): HttpError | undefined {
 }
 
 /** Plain-text 401 bodies of Core's second step that the front must tell apart from a wrong code. */
-const SECOND_STEP_REFUSALS: Record<string, { message: string; path: string }> = {
-    'Backup code already used.': { message: 'Backup code already used.', path: 'body.code' },
-    'Invalid or expired login token.': { message: 'Invalid or expired login token.', path: 'body.token' },
-};
+// A Map, not an object: an upstream body such as `toString` must not match an inherited property.
+const SECOND_STEP_REFUSALS: ReadonlyMap<string, { message: string; path: string }> = new Map([
+    ['Backup code already used.', { message: 'Backup code already used.', path: 'body.code' }],
+    ['Invalid or expired login token.', { message: 'Invalid or expired login token.', path: 'body.token' }],
+]);
 
 /**
  * Core answers three different 401 on the second step: a wrong code (the login token stays usable), a backup code that
@@ -665,7 +666,7 @@ const SECOND_STEP_REFUSALS: Record<string, { message: string; path: string }> = 
  */
 function secondStepRefusal(error: unknown): HttpError | undefined {
     if (!axios.isAxiosError(error) || error.response?.status !== 401 || typeof error.response.data !== 'string') return undefined;
-    const refusal = SECOND_STEP_REFUSALS[error.response.data];
+    const refusal = SECOND_STEP_REFUSALS.get(error.response.data);
     return refusal === undefined ? undefined : new HttpError(401, refusal.message, { details: [refusal] });
 }
 
