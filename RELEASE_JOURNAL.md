@@ -1,16 +1,17 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "dcd91d2e80eba4ad04b3dd37ade7b511e7abffe3", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-18 12:29 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
+<!-- release-journal-state {"dev": "c1f64d47ecf3f1b55b9541bd16b9e4ab527b5b40", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-18 14:38 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.2.0 | `c6eda65` | 2026-11-13 00:45 UTC |
 | staging | — | `c6eda65` | 2026-11-13 00:31 UTC |
-| dev | — | `dcd91d2` | 2026-11-18 12:29 UTC |
+| dev | — | `c1f64d4` | 2026-11-18 14:38 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.2.0)
 
+- fix: MAIR-806 Login second step: tell a spent backup code apart ([#335](https://github.com/mairie360/BFF_user/pull/335))
 - feat: MAIR-683 Link a group to a project (#339) ([#339](https://github.com/mairie360/BFF_user/pull/339))
 - fix: MAIR-682 [Audit 23/10] All BFFs: graceful shutdown on SIGTERM (B7) (#333) ([#333](https://github.com/mairie360/BFF_user/pull/333))
 - feat: MAIR-810 Passkeys managed by Core ([#329](https://github.com/mairie360/BFF_user/pull/329))
@@ -31,6 +32,7 @@
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+- fix: MAIR-806 Login second step: tell a spent backup code apart ([#335](https://github.com/mairie360/BFF_user/pull/335))
 - feat: MAIR-683 Link a group to a project (#339) ([#339](https://github.com/mairie360/BFF_user/pull/339))
 - fix: MAIR-682 [Audit 23/10] All BFFs: graceful shutdown on SIGTERM (B7) (#333) ([#333](https://github.com/mairie360/BFF_user/pull/333))
 - feat: MAIR-810 Passkeys managed by Core ([#329](https://github.com/mairie360/BFF_user/pull/329))
@@ -60,6 +62,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-18 14:38 UTC | dev | — | `c1f64d4` | [run](https://github.com/mairie360/BFF_user/actions/runs/44323057462) |
 | 2026-11-18 12:29 UTC | dev | — | `dcd91d2` | [run](https://github.com/mairie360/BFF_user/actions/runs/44303737222) |
 | 2026-11-18 01:01 UTC | dev | — | `2b2a2d0` | [run](https://github.com/mairie360/BFF_user/actions/runs/44211936911) |
 | 2026-11-17 23:57 UTC | dev | — | `8574431` | [run](https://github.com/mairie360/BFF_user/actions/runs/44203376842) |
