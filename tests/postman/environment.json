@@ -117,6 +117,12 @@
       "enabled": true
     },
     {
+      "key": "jwt_maire",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
       "key": "jwt_forged",
       "value": "",
       "type": "default",

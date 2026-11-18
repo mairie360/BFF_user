@@ -51,7 +51,10 @@ function expectBffContract(response: request.Response) {
   expect(match?.template).toBeDefined();
   const { documented, schema } = bffContract.responseSchema(match!, response.status);
   expect({ status: response.status, documented }).toEqual({ status: response.status, documented: true });
-  if (schema && response.type === 'application/json') expect(bffContract.validate(schema, response.body)).toEqual([]);
+  if (schema) {
+    expect(response.type).toBe('application/json');
+    expect(bffContract.validate(schema, response.body)).toEqual([]);
+  }
 }
 
 describe('MAIR-683 projects without a group for the administration', () => {
@@ -73,7 +76,28 @@ describe('MAIR-683 projects without a group for the administration', () => {
     expect(projectBff.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
   });
 
-  test('mair_683 a caller without the admin role gets 403 and BFF_Project is never called', async () => {
+  test('mair_683 a mayor reaches BFF_Project with the caller session forwarded', async () => {
+    coreApi.on('get', ME, { body: meResponse({ role: 'Maire' }) });
+    projectBff.on('get', WITHOUT_GROUP, { body: { projects: [{ id: 'project-9', title: 'LED street lighting', createdAt: null }] } });
+
+    const response = await request(app).get('/admin/projects-without-group').set('Authorization', `Bearer ${SESSION}`);
+
+    expect(response.status).toBe(200);
+    expectBffContract(response);
+    expect(response.body.total).toBe(1);
+    expect(projectBff.requests).toHaveLength(1);
+    expect(projectBff.requests[0].headers.authorization).toBe(`Bearer ${SESSION}`);
+  });
+
+  test('mair_683 a mayor still gets 403 on the other administration routes', async () => {
+    coreApi.on('get', ME, { body: meResponse({ role: 'Maire' }) });
+
+    const response = await request(app).get('/admin/roles').set('Authorization', `Bearer ${SESSION}`);
+
+    expect(response.status).toBe(403);
+  });
+
+  test('mair_683 a caller without the admin or mayor role gets 403 and BFF_Project is never called', async () => {
     coreApi.on('get', ME, { body: meResponse({ role: 'User' }) });
 
     const response = await request(app).get('/admin/projects-without-group').set('Authorization', `Bearer ${SESSION}`);

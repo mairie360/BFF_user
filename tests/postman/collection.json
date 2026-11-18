@@ -2706,7 +2706,86 @@
                   "    const project = body.projects.find((p) => p.id === pm.environment.get('orphan_project_id'));",
                   "    pm.expect(project, \"orphan project\").to.be.an(\"object\");",
                   "    pm.expect(project.title).to.eql('Newman orphan project ' + pm.environment.get('run_id'));",
-                  "    pm.expect(project).to.have.property('createdAt');",
+                  "    pm.expect(project.createdAt === null || (typeof project.createdAt === 'string' && !Number.isNaN(Date.parse(project.createdAt))), 'createdAt is an ISO 8601 date or null').to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "mair_683 A mayor lists the projects without a group too",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_maire}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/projects-without-group",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "projects-without-group"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200]);",
+                  "});",
+                  "pm.test(\"The seeded project without a group is listed\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.total).to.eql(body.projects.length);",
+                  "    pm.expect(body.projects.map((p) => p.id)).to.include('project-900');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "mair_683 A mayor still cannot read the other administration routes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_maire}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/roles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "roles"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([403]);",
                   "});"
                 ]
               }
