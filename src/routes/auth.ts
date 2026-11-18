@@ -504,7 +504,7 @@ registry.registerPath({
     responses: {
         200: { description: 'Secret to register.', content: { 'application/json': { schema: TwoFactorEnrolmentResponse } } },
         400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
-        401: { description: 'Unknown, expired or burnt enrolment token.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password.', content: { 'application/json': { schema: ErrorResponse } } },
         409: { description: 'The account got a second factor meanwhile: sign in normally.', content: { 'application/json': { schema: ErrorResponse } } },
         429: tooManyAttempts,
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
@@ -531,7 +531,7 @@ registry.registerPath({
             content: { 'application/json': { schema: TwoFactorEnrolmentCompletedResponse } },
         },
         400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
-        401: { description: 'Unknown, expired or burnt enrolment token, or wrong code.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password).', content: { 'application/json': { schema: ErrorResponse } } },
         404: { description: '`POST /auth/2fa/setup` was not called with this token.', content: { 'application/json': { schema: ErrorResponse } } },
         429: tooManyAttempts,
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
@@ -674,6 +674,8 @@ function twoFactorUnavailable(error: unknown): HttpError | undefined {
 const SECOND_STEP_REFUSALS: ReadonlyMap<string, { message: string; path: string }> = new Map([
     ['Backup code already used.', { message: 'Backup code already used.', path: 'body.code' }],
     ['Invalid or expired login token.', { message: 'Invalid or expired login token.', path: 'body.token' }],
+    // Mandatory enrolment (MAIR-809): the enrolment token is over, as opposed to a wrong first code.
+    ['Invalid or expired enrolment token.', { message: 'Invalid or expired enrolment token.', path: 'body.token' }],
 ]);
 
 /**
@@ -758,7 +760,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             const { data } = await startLoginEnrolment(body, req);
             return res.status(200).json({ secret: data.secret, otpauth_uri: data.otpauth_uri });
         } catch (error) {
-            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 409, 429]);
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 409, 429]);
         }
     });
 
@@ -774,7 +776,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             if (error instanceof HttpError) {
                 throw error;
             }
-            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 404, 429]);
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 404, 429]);
         }
     });
 

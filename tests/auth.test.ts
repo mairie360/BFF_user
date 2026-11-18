@@ -1367,6 +1367,25 @@ describe('MAIR-808 mandatory second factor', () => {
         expect(response.body).toEqual(setupRequired);
     });
 
+    it('MAIR-809 tells an enrolment token that is over apart from a wrong first code, on both enrolment routes', async () => {
+        const over = {
+            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired enrolment token.', details: [{ path: 'body.token', message: 'Invalid or expired enrolment token.' }] },
+        };
+        mockedStartEnrolment.mockRejectedValue(coreError(401, 'Invalid or expired enrolment token.'));
+        mockedConfirmEnrolment.mockRejectedValue(coreError(401, 'Invalid or expired enrolment token.'));
+
+        const start = await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN });
+        const confirm = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '492039' });
+        expect([start.status, start.body]).toEqual([401, over]);
+        expect([confirm.status, confirm.body]).toEqual([401, over]);
+
+        mockedConfirmEnrolment.mockRejectedValue(coreError(401, 'Invalid verification code.'));
+        const wrong = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '000000' });
+        expect(wrong.status).toBe(401);
+        expect(wrong.body.error.details).toEqual([]);
+        expect(wrong.headers['set-cookie']).toBeUndefined();
+    });
+
     it('starts the enrolment: only the secret and the URI come back', async () => {
         mockedStartEnrolment.mockResolvedValue(axiosResponse({ ...enrolment, internal: 'hidden' }, 200));
 
