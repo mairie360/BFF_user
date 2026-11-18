@@ -1340,6 +1340,33 @@ describe('MAIR-808 mandatory second factor', () => {
         }
     });
 
+    it('MAIR-809 relays the policy of the enrolment, only its three booleans, and nothing of it on the second step', async () => {
+        const policy = { totp_allowed: true, passkey_allowed: false, backup_codes_allowed: false };
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, policy: { ...policy, internal: 'hidden' } }, 202));
+        mockedResetUserPassword.mockResolvedValue(axiosResponse({ ...setupRequired, policy }, 202));
+
+        const login = await request(app).post('/auth/login').send(credentials);
+        const reset = await request(app).post('/auth/reset_password').send(RESET);
+
+        for (const response of [login, reset]) {
+            expect(response.status).toBe(202);
+            expect(response.body).toEqual({ ...setupRequired, policy });
+        }
+
+        mockedLoginUser.mockResolvedValue(axiosResponse({ status: '2fa_required', token: SETUP_TOKEN, policy }, 202));
+        const second = await request(app).post('/auth/login').send(credentials);
+        expect(second.body).toEqual({ status: '2fa_required', token: SETUP_TOKEN });
+    });
+
+    it('MAIR-809 drops an incomplete policy instead of guessing the missing modes', async () => {
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, policy: { totp_allowed: true } }, 202));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual(setupRequired);
+    });
+
     it('starts the enrolment: only the secret and the URI come back', async () => {
         mockedStartEnrolment.mockResolvedValue(axiosResponse({ ...enrolment, internal: 'hidden' }, 200));
 

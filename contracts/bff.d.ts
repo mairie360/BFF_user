@@ -5573,6 +5573,24 @@ export interface components {
              * @example example-two-factor-token
              */
             token: string;
+            /** @description Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it. */
+            policy?: {
+                /**
+                 * @description The authenticator application is an accepted mode.
+                 * @example true
+                 */
+                totp_allowed: boolean;
+                /**
+                 * @description Passkeys are an accepted mode.
+                 * @example false
+                 */
+                passkey_allowed: boolean;
+                /**
+                 * @description Backup codes are accepted at login: when `false`, none must be shown.
+                 * @example true
+                 */
+                backup_codes_allowed: boolean;
+            };
         };
         PasskeyLoginOptionsResponse: {
             /**

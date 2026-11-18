@@ -6364,7 +6364,7 @@
                   "});",
                   "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });",
                   "const body = pm.response.json();",
-                  "pm.test('Only the enrolment is announced', () => { pm.expect(body).to.eql({ status: '2fa_setup_required', token: body.token }); pm.expect(body.token).to.be.a('string').and.not.empty; });",
+                  "pm.test('The enrolment is announced with the policy the agent must follow', () => { pm.expect(body).to.eql({ status: '2fa_setup_required', token: body.token, policy: { totp_allowed: true, passkey_allowed: false, backup_codes_allowed: true } }); pm.expect(body.token).to.be.a('string').and.not.empty; });",
                   "pm.environment.set('pol_token', body.token);"
                 ]
               }
@@ -6848,7 +6848,8 @@
                   "    pm.response.to.have.status(202);",
                   "});",
                   "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });",
-                  "pm.test('Second step announced', () => { pm.expect(pm.response.json().status).to.eql('2fa_required'); });"
+                  "pm.test('Second step announced', () => { pm.expect(pm.response.json().status).to.eql('2fa_required'); });",
+                  "pm.test('MAIR-809 The second step carries no policy', () => { pm.expect(pm.response.json()).to.not.have.property('policy'); });"
                 ]
               }
             }

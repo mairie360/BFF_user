@@ -626,13 +626,31 @@ function openSession(res: Response, coreResponse: AxiosResponse): void {
 }
 
 /**
+ * What the administrator allows, carried by Core's `2fa_setup_required` (MAIR-809): the agent has no session and cannot read
+ * the policy, so the front takes it from here. Only the three booleans are relayed; a Core that does not send them (older
+ * image) gives `undefined` and the front falls back to what it can do without them.
+ */
+function setupPolicyOf(value: unknown): { totp_allowed: boolean; passkey_allowed: boolean; backup_codes_allowed: boolean } | undefined {
+    const policy = typeof value === 'object' && value !== null && 'policy' in value ? value.policy : undefined;
+    if (typeof policy !== 'object' || policy === null) {
+        return undefined;
+    }
+    const { totp_allowed, passkey_allowed, backup_codes_allowed } = policy as Record<string, unknown>;
+    return typeof totp_allowed === 'boolean' && typeof passkey_allowed === 'boolean' && typeof backup_codes_allowed === 'boolean'
+        ? { totp_allowed, passkey_allowed, backup_codes_allowed }
+        : undefined;
+}
+
+/**
  * Answer of a sign-in that may need a second step: Core's 202 `2fa_required` (no session, MAIR-805) is relayed as
  * `{ status, token }` (the login token only opens `POST /auth/login/2fa`), anything else opens the session.
  */
 function sendLoginOutcome(res: Response, coreResponse: AxiosResponse): Response {
     if (coreResponse.status === 202 && isTwoFactorRequired(coreResponse.data)) {
         // `2fa_required` (second step) or `2fa_setup_required` (mandatory enrolment, MAIR-808): the front routes on it.
-        return res.status(202).json({ status: coreResponse.data.status, token: coreResponse.data.token });
+        const { status, token } = coreResponse.data;
+        const policy = status === '2fa_setup_required' ? setupPolicyOf(coreResponse.data) : undefined;
+        return res.status(202).json(policy ? { status, token, policy } : { status, token });
     }
     return sendSession(res, coreResponse);
 }
