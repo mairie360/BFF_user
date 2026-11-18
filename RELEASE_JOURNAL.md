@@ -1,16 +1,17 @@
 # Journal des releases — BFF_user
 
-<!-- release-journal-state {"dev": "c1f64d47ecf3f1b55b9541bd16b9e4ab527b5b40", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-18 14:38 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
+<!-- release-journal-state {"dev": "99f7c14eaa8d9921dc3678588ff397e5f61b01de", "prod": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "prod_tag": "v1.2.0", "staging": "c6eda654f4dcb8ecb2a85bf5d76625cea6257ff7", "updated": {"dev": "2026-11-18 16:13 UTC", "prod": "2026-11-13 00:45 UTC", "staging": "2026-11-13 00:31 UTC"}} -->
 > Tenu à jour par la CI (`mairie360/CICD`, action `release/release-journal`) à chaque passage en dev, staging et prod. Ne pas modifier à la main : le fichier est réécrit au passage suivant.
 
 | Environnement | Version | Commit | Mis à jour |
 | --- | --- | --- | --- |
 | prod | v1.2.0 | `c6eda65` | 2026-11-13 00:45 UTC |
 | staging | — | `c6eda65` | 2026-11-13 00:31 UTC |
-| dev | — | `c1f64d4` | 2026-11-18 14:38 UTC |
+| dev | — | `99f7c14` | 2026-11-18 16:13 UTC |
 
 ## Ajouté sur main depuis la dernière release prod (v1.2.0)
 
+- feat: MAIR-809 Administrator and Login: two-factor policy and secure-your-account screen (front) ([#338](https://github.com/mairie360/BFF_user/pull/338))
 - fix: MAIR-806 Login second step: tell a spent backup code apart ([#335](https://github.com/mairie360/BFF_user/pull/335))
 - feat: MAIR-683 Link a group to a project (#339) ([#339](https://github.com/mairie360/BFF_user/pull/339))
 - fix: MAIR-682 [Audit 23/10] All BFFs: graceful shutdown on SIGTERM (B7) (#333) ([#333](https://github.com/mairie360/BFF_user/pull/333))
@@ -32,6 +33,7 @@
 
 ## Différence dev → staging (en dev, pas encore en staging)
 
+- feat: MAIR-809 Administrator and Login: two-factor policy and secure-your-account screen (front) ([#338](https://github.com/mairie360/BFF_user/pull/338))
 - fix: MAIR-806 Login second step: tell a spent backup code apart ([#335](https://github.com/mairie360/BFF_user/pull/335))
 - feat: MAIR-683 Link a group to a project (#339) ([#339](https://github.com/mairie360/BFF_user/pull/339))
 - fix: MAIR-682 [Audit 23/10] All BFFs: graceful shutdown on SIGTERM (B7) (#333) ([#333](https://github.com/mairie360/BFF_user/pull/333))
@@ -62,6 +64,7 @@ _Rien._
 <!-- release-journal-history:start -->
 | Date | Environnement | Version | Commit | Run |
 | --- | --- | --- | --- | --- |
+| 2026-11-18 16:13 UTC | dev | — | `99f7c14` | [run](https://github.com/mairie360/BFF_user/actions/runs/44339935883) |
 | 2026-11-18 14:38 UTC | dev | — | `c1f64d4` | [run](https://github.com/mairie360/BFF_user/actions/runs/44323057462) |
 | 2026-11-18 12:29 UTC | dev | — | `dcd91d2` | [run](https://github.com/mairie360/BFF_user/actions/runs/44303737222) |
 | 2026-11-18 01:01 UTC | dev | — | `2b2a2d0` | [run](https://github.com/mairie360/BFF_user/actions/runs/44211936911) |
@@ -111,5 +114,4 @@ _Rien._
 | 2026-10-20 13:04 UTC | dev | — | `699a1ef` | [run](https://github.com/mairie360/BFF_user/actions/runs/39426669559) |
 | 2026-10-20 13:02 UTC | dev | — | `848097d` | [run](https://github.com/mairie360/BFF_user/actions/runs/39426619527) |
 | 2026-10-19 20:26 UTC | dev | — | `b6d118c` | [run](https://github.com/mairie360/BFF_user/actions/runs/39318019880) |
-| 2026-10-19 20:15 UTC | dev | — | `05cc9d3` | [run](https://github.com/mairie360/BFF_user/actions/runs/39316541683) |
 <!-- release-journal-history:end -->
