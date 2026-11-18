@@ -504,7 +504,7 @@ registry.registerPath({
     responses: {
         200: { description: 'Secret to register.', content: { 'application/json': { schema: TwoFactorEnrolmentResponse } } },
         400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
-        401: { description: 'Unknown, expired or burnt enrolment token.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password.', content: { 'application/json': { schema: ErrorResponse } } },
         409: { description: 'The account got a second factor meanwhile: sign in normally.', content: { 'application/json': { schema: ErrorResponse } } },
         429: tooManyAttempts,
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
@@ -531,7 +531,7 @@ registry.registerPath({
             content: { 'application/json': { schema: TwoFactorEnrolmentCompletedResponse } },
         },
         400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
-        401: { description: 'Unknown, expired or burnt enrolment token, or wrong code.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password).', content: { 'application/json': { schema: ErrorResponse } } },
         404: { description: '`POST /auth/2fa/setup` was not called with this token.', content: { 'application/json': { schema: ErrorResponse } } },
         429: tooManyAttempts,
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
@@ -626,13 +626,31 @@ function openSession(res: Response, coreResponse: AxiosResponse): void {
 }
 
 /**
+ * What the administrator allows, carried by Core's `2fa_setup_required` (MAIR-809): the agent has no session and cannot read
+ * the policy, so the front takes it from here. Only the three booleans are relayed; a Core that does not send them (older
+ * image) gives `undefined` and the front falls back to what it can do without them.
+ */
+function setupPolicyOf(value: unknown): { totp_allowed: boolean; passkey_allowed: boolean; backup_codes_allowed: boolean } | undefined {
+    const policy = typeof value === 'object' && value !== null && 'policy' in value ? value.policy : undefined;
+    if (typeof policy !== 'object' || policy === null) {
+        return undefined;
+    }
+    const { totp_allowed, passkey_allowed, backup_codes_allowed } = policy as Record<string, unknown>;
+    return typeof totp_allowed === 'boolean' && typeof passkey_allowed === 'boolean' && typeof backup_codes_allowed === 'boolean'
+        ? { totp_allowed, passkey_allowed, backup_codes_allowed }
+        : undefined;
+}
+
+/**
  * Answer of a sign-in that may need a second step: Core's 202 `2fa_required` (no session, MAIR-805) is relayed as
  * `{ status, token }` (the login token only opens `POST /auth/login/2fa`), anything else opens the session.
  */
 function sendLoginOutcome(res: Response, coreResponse: AxiosResponse): Response {
     if (coreResponse.status === 202 && isTwoFactorRequired(coreResponse.data)) {
         // `2fa_required` (second step) or `2fa_setup_required` (mandatory enrolment, MAIR-808): the front routes on it.
-        return res.status(202).json({ status: coreResponse.data.status, token: coreResponse.data.token });
+        const { status, token } = coreResponse.data;
+        const policy = status === '2fa_setup_required' ? setupPolicyOf(coreResponse.data) : undefined;
+        return res.status(202).json(policy ? { status, token, policy } : { status, token });
     }
     return sendSession(res, coreResponse);
 }
@@ -656,6 +674,8 @@ function twoFactorUnavailable(error: unknown): HttpError | undefined {
 const SECOND_STEP_REFUSALS: ReadonlyMap<string, { message: string; path: string }> = new Map([
     ['Backup code already used.', { message: 'Backup code already used.', path: 'body.code' }],
     ['Invalid or expired login token.', { message: 'Invalid or expired login token.', path: 'body.token' }],
+    // Mandatory enrolment (MAIR-809): the enrolment token is over, as opposed to a wrong first code.
+    ['Invalid or expired enrolment token.', { message: 'Invalid or expired enrolment token.', path: 'body.token' }],
 ]);
 
 /**
@@ -740,7 +760,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             const { data } = await startLoginEnrolment(body, req);
             return res.status(200).json({ secret: data.secret, otpauth_uri: data.otpauth_uri });
         } catch (error) {
-            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 409, 429]);
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 409, 429]);
         }
     });
 
@@ -756,7 +776,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
             if (error instanceof HttpError) {
                 throw error;
             }
-            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 404, 429]);
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 404, 429]);
         }
     });
 

@@ -1013,7 +1013,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Unknown, expired or burnt enrolment token. */
+                /** @description Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password. */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1123,7 +1123,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Unknown, expired or burnt enrolment token, or wrong code. */
+                /** @description Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password). */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -5573,6 +5573,24 @@ export interface components {
              * @example example-two-factor-token
              */
             token: string;
+            /** @description Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it. */
+            policy?: {
+                /**
+                 * @description The authenticator application is an accepted mode.
+                 * @example true
+                 */
+                totp_allowed: boolean;
+                /**
+                 * @description Passkeys are an accepted mode.
+                 * @example false
+                 */
+                passkey_allowed: boolean;
+                /**
+                 * @description Backup codes are accepted at login: when `false`, none must be shown.
+                 * @example true
+                 */
+                backup_codes_allowed: boolean;
+            };
         };
         PasskeyLoginOptionsResponse: {
             /**

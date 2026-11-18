@@ -1343,6 +1343,32 @@
             "type": "string",
             "description": "Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.",
             "example": "example-two-factor-token"
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "totp_allowed": {
+                "type": "boolean",
+                "description": "The authenticator application is an accepted mode.",
+                "example": true
+              },
+              "passkey_allowed": {
+                "type": "boolean",
+                "description": "Passkeys are an accepted mode.",
+                "example": false
+              },
+              "backup_codes_allowed": {
+                "type": "boolean",
+                "description": "Backup codes are accepted at login: when `false`, none must be shown.",
+                "example": true
+              }
+            },
+            "required": [
+              "totp_allowed",
+              "passkey_allowed",
+              "backup_codes_allowed"
+            ],
+            "description": "Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it."
           }
         },
         "required": [
@@ -2416,7 +2442,7 @@
             }
           },
           "401": {
-            "description": "Unknown, expired or burnt enrolment token.",
+            "description": "Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2534,7 +2560,7 @@
             }
           },
           "401": {
-            "description": "Unknown, expired or burnt enrolment token, or wrong code.",
+            "description": "Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password).",
             "content": {
               "application/json": {
                 "schema": {
