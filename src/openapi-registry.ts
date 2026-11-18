@@ -94,6 +94,13 @@ export const TwoFactorRequiredResponse = z.object({
             + 'send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases.',
     }),
     token: z.string().openapi({ description: 'Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.', example: 'example-two-factor-token' }),
+    policy: z.object({
+        totp_allowed: z.boolean().openapi({ description: 'The authenticator application is an accepted mode.', example: true }),
+        passkey_allowed: z.boolean().openapi({ description: 'Passkeys are an accepted mode.', example: false }),
+        backup_codes_allowed: z.boolean().openapi({ description: 'Backup codes are accepted at login: when `false`, none must be shown.', example: true }),
+    }).optional().openapi({
+        description: 'Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it.',
+    }),
 }).openapi('TwoFactorRequiredResponse');
 
 export const TwoFactorSetupTokenViewSchema = z.object({
