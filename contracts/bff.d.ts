@@ -718,7 +718,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Unknown, expired or burnt login token, or wrong or already used code. */
+                /** @description Unknown, expired or burnt login token, or wrong or replayed code. A backup code that was already spent is told apart: two refusals are told apart by `error.details`: `body.code` (message `Backup code already used.`, the login token stays valid, it still counts as a failed attempt and five burn it, so the agent can type another backup code) and `body.token` (message `Invalid or expired login token.`: the login session is over, restart from the password). A wrong code has no detail. */
                 401: {
                     headers: {
                         [name: string]: unknown;

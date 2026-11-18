@@ -1255,6 +1255,35 @@ describe('MAIR-805 second factor', () => {
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 
+    it('MAIR-806 tells a spent backup code apart from a wrong code, on a 401 that keeps the login token usable', async () => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(401, 'Backup code already used.'));
+
+        const spent = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: 'k3m9-x7pq' });
+
+        expect(spent.status).toBe(401);
+        expect(spent.body).toEqual({
+            error: { code: 'UNAUTHORIZED', message: 'Backup code already used.', details: [{ path: 'body.code', message: 'Backup code already used.' }] },
+        });
+        expect(spent.headers['set-cookie']).toBeUndefined();
+
+        mockedLoginTwoFactor.mockRejectedValue(coreError(401, 'Invalid verification code.'));
+        const wrong = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+        expect(wrong.status).toBe(401);
+        expect(wrong.body.error.details).toEqual([]);
+        expect(wrong.body.error.message).not.toBe('Backup code already used.');
+    });
+
+    it('MAIR-806 tells an unknown, expired or burnt login token apart from a wrong code', async () => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(401, 'Invalid or expired login token.'));
+
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+
+        expect(response.status).toBe(401);
+        expect(response.body).toEqual({
+            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired login token.', details: [{ path: 'body.token', message: 'Invalid or expired login token.' }] },
+        });
+    });
+
     it('answers 503 when Core has no encryption key, on the three routes', async () => {
         mockedLoginTwoFactor.mockRejectedValue(coreError(503));
         mockedLoginUser.mockRejectedValue(coreError(503));
