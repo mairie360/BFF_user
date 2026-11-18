@@ -1,4 +1,4 @@
-import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
+import { AdministrationProjectsWithoutGroupSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -30,6 +30,7 @@ import {
     coreUsersClient,
 } from '../clients/coreClient';
 import { forwardCoreResponse, whitelist } from './admin_helpers';
+import { projectBff } from '../clients/projectBffClient';
 
 const router = Router();
 
@@ -277,8 +278,8 @@ const coreWriteResponses = {
 const READ_STATUSES = [400, 401, 403, 404] as const;
 const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
 
-// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (not an administrator).
-async function requireAdmin(req: Request): Promise<void> {
+// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (none of the `allowed` roles).
+async function requireRole(req: Request, allowed: readonly string[], refusal: string): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
     const token = bearerToken(req);
     if (token === undefined) {
@@ -310,16 +311,49 @@ async function requireAdmin(req: Request): Promise<void> {
     const caller = asCaller('CORE_API', req);
     const { data: { roles } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
-    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && role.trim().toLowerCase() === 'admin')) {
-        throw new HttpError(403, 'Administrator role required');
+    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && allowed.includes(role.trim().toLowerCase()))) {
+        throw new HttpError(403, refusal);
     }
 }
 
-// Every /admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
+const requireAdmin = (req: Request) => requireRole(req, ['admin'], 'Administrator role required');
+
+// Every /admin route requires a role checked locally (the admin role, except the projects without a group below) as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
 // The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
 // Administration answers are session-bound: never cached by a proxy or the browser.
 router.use(noStore);
+
+// Projects left without a group (created before groups were required, or their group was deleted in Core API), for the
+// groups tab. Like BFF_Project, it accepts the Admin and Maire roles, while every other /admin route stays Admin only:
+// mounted before the admin guard below, with its own role check.
+registry.registerPath({
+    method: 'get',
+    path: '/admin/projects-without-group',
+    tags: ['Administration'],
+    summary: 'List the projects without a group through BFF_Project',
+    responses: {
+        200: { description: 'The projects without a group', content: { 'application/json': { schema: AdministrationProjectsWithoutGroupSchema } } },
+        401: { description: 'Not authenticated', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'Access denied', content: { 'application/json': { schema: ErrorResponse } } },
+        429: { description: 'Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds)', content: { 'application/json': { schema: ErrorResponse } } },
+        500: { description: 'Unexpected server error; the cause is only logged', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API or BFF_Project unavailable, failed or answered an undeclared error', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+router.get('/projects-without-group', async (req: Request, res: Response) => {
+    await requireRole(req, ['admin', 'maire'], 'Administrator or mayor role required');
+    const { data } = await callUpstream(
+        'PROJECT_BFF',
+        () => projectBff.getProjectGroupsProjectsWithoutGroup(asCaller('PROJECT_BFF', req)),
+        { declared: [401, 403], retry: true },
+    );
+    const projects = data.projects.map(({ id, title, createdAt }) => ({ id, title, createdAt: createdAt ?? null }));
+    res.status(200).json({ total: projects.length, projects });
+});
+
 router.use(async (req: Request, _res: Response, next: NextFunction) => {
     await requireAdmin(req);
     next();

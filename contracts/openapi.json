@@ -782,6 +782,53 @@
         ],
         "additionalProperties": false
       },
+      "AdministrationProjectWithoutGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the project in BFF_Project",
+            "example": "project-9"
+          },
+          "title": {
+            "type": "string",
+            "example": "LED street lighting"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Creation date (ISO 8601), `null` when unknown",
+            "example": "2026-03-03T09:12:00+00:00"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "createdAt"
+        ]
+      },
+      "AdministrationProjectsWithoutGroup": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationProjectWithoutGroup"
+            },
+            "description": "Newest first; empty when every project has a group"
+          }
+        },
+        "required": [
+          "total",
+          "projects"
+        ]
+      },
       "AdminUserIdParams": {
         "type": "object",
         "properties": {
@@ -2761,6 +2808,86 @@
           },
           "503": {
             "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/projects-without-group": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List the projects without a group through BFF_Project",
+        "responses": {
+          "200": {
+            "description": "The projects without a group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministrationProjectsWithoutGroup"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API or BFF_Project unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
             "content": {
               "application/json": {
                 "schema": {

@@ -401,6 +401,17 @@ const handlers = {
       'remove role 204': (r) => r.status === 204,
     }),
 
+  // --- Admin: projects without a group (read through BFF_Project) ---
+  'GET /admin/projects-without-group': ({ request, data }) =>
+    check(request({ headers: data.admin }), {
+      'projects without group 200': (r) => r.status === 200,
+      // init-test.sql seeds project 900 without a group.
+      'seeded project without group listed': (r) => {
+        const body = json(r) || {};
+        return Array.isArray(body.projects) && body.total === body.projects.length && body.projects.some((p) => p.id === 'project-900');
+      },
+    }),
+
   // --- Admin: roles ---
   'GET /admin/roles': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'roles 200': (r) => r.status === 200 }),
