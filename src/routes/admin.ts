@@ -12,6 +12,8 @@ import {
     upstreamError,
     validationError,
     verifySessionToken,
+    canonicalRole,
+    isAdminRole,
 } from '@mairie360/bffs-lib';
 import axios from 'axios';
 import { NextFunction, Request, Response, Router } from 'express';
@@ -278,8 +280,9 @@ const coreWriteResponses = {
 const READ_STATUSES = [400, 401, 403, 404] as const;
 const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
 
-// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (none of the `allowed` roles).
-async function requireRole(req: Request, allowed: readonly string[], refusal: string): Promise<void> {
+// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (none of the roles is allowed).
+// Roles are recognised with the lib's rule (`isAdminRole`, `canonicalRole`): "Administrateur" and `ROLE_ADMIN` are administrators.
+async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, refusal: string): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
     const token = bearerToken(req);
     if (token === undefined) {
@@ -311,12 +314,12 @@ async function requireRole(req: Request, allowed: readonly string[], refusal: st
     const caller = asCaller('CORE_API', req);
     const { data: { roles } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
-    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && allowed.includes(role.trim().toLowerCase()))) {
+    if (!Array.isArray(roles) || !roles.some(isAllowed)) {
         throw new HttpError(403, refusal);
     }
 }
 
-const requireAdmin = (req: Request) => requireRole(req, ['admin'], 'Administrator role required');
+const requireAdmin = (req: Request) => requireRole(req, isAdminRole, 'Administrator role required');
 
 // Every /admin route requires a role checked locally (the admin role, except the projects without a group below) as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
@@ -344,7 +347,7 @@ registry.registerPath({
 });
 
 router.get('/projects-without-group', async (req: Request, res: Response) => {
-    await requireRole(req, ['admin', 'maire'], 'Administrator or mayor role required');
+    await requireRole(req, (role) => isAdminRole(role) || canonicalRole(role) === 'Maire', 'Administrator or mayor role required');
     const { data } = await callUpstream(
         'PROJECT_BFF',
         () => projectBff.getProjectGroupsProjectsWithoutGroup(asCaller('PROJECT_BFF', req)),
