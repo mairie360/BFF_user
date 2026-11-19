@@ -92,7 +92,7 @@ const WEBAUTHN_CREDENTIAL_EXAMPLE = { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: '
 export const PasskeyRegisterOptionsResponse = z.object({
     options: z.record(z.string(), z.unknown()).openapi({
         description: 'WebAuthn `PublicKeyCredentialCreationOptions` for `navigator.credentials.create` (discoverable credential and user verification required, no `authenticatorAttachment`: every password manager is accepted).',
-        example: { publicKey: { challenge: 'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c', rp: { id: 'mairie360-eip.fr', name: 'Mairie 360' }, authenticatorSelection: { residentKey: 'required', userVerification: 'required' } } },
+        example: { publicKey: { challenge: 'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c', rp: { id: 'mairie360-eip.fr', name: 'Mairie 360' }, user: { id: 'bWFpcmll', name: 'camille@mairie360.test', displayName: 'Camille Trois' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { residentKey: 'required', userVerification: 'required' } } },
     }),
 }).openapi('PasskeyRegisterOptionsResponse');
 

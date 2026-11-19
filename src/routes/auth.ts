@@ -62,6 +62,7 @@ import {
     resetUserPassword,
     logoutWithRefreshToken,
 } from './core_helpers';
+import { whitelist } from './admin_helpers';
 
 const tooManyAttempts = {
     description: `Too many failed attempts from this client (or for this account); retry after the \`Retry-After\` delay. Body: \`{ "error": { "code": "TOO_MANY_REQUESTS", "message": "${RATE_LIMIT_MESSAGE}", "details": [] } }\`.`,
@@ -515,7 +516,7 @@ registry.registerPath({
         429: tooManyAttempts,
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
         502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
-        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front offers the authenticator application only.', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), the front offers the authenticator application only. When CORE_API_URL is not set Core is out of reach and the authenticator application is unavailable too.', content: { 'application/json': { schema: ErrorResponse } } },
     },
 });
 
@@ -715,14 +716,14 @@ function setupPolicyOf(value: unknown): { totp_allowed: boolean; passkey_allowed
  * Answer of a sign-in that may need a second step: Core's 202 `2fa_required` (no session, MAIR-805) is relayed as
  * `{ status, token }` (the login token only opens `POST /auth/login/2fa`), anything else opens the session.
  */
-function sendLoginOutcome(res: Response, coreResponse: AxiosResponse): Response {
+function sendLoginOutcome(res: Response, coreResponse: AxiosResponse, withPasskeyOffer = false): Response {
     if (coreResponse.status === 202 && isTwoFactorRequired(coreResponse.data)) {
         // `2fa_required` (second step) or `2fa_setup_required` (mandatory enrolment, MAIR-808): the front routes on it.
         const { status, token } = coreResponse.data;
         const policy = status === '2fa_setup_required' ? setupPolicyOf(coreResponse.data) : undefined;
         return res.status(202).json(policy ? { status, token, policy } : { status, token });
     }
-    return sendSession(res, coreResponse, true);
+    return sendSession(res, coreResponse, withPasskeyOffer);
 }
 
 /** Core answers 503 when it has no TOTP encryption key: kept, so the front can tell it from a Core outage. */
@@ -771,7 +772,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         const body = parseRequest(LoginViewSchema, req.body, 'body');
 
         try {
-            return sendLoginOutcome(res, await loginUser(body, req));
+            return sendLoginOutcome(res, await loginUser(body, req), true);
         } catch (error) {
             // First sign-in: Core answers 412 with the one-time token of the password change. It is a regular
             // answer the front needs, not an error: only the token is relayed.
@@ -846,12 +847,14 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
     router.post('/passkey/setup/options', limiters.perIp, async (req: Request, res: Response) => {
         const body = parseRequest(TwoFactorSetupTokenViewSchema, req.body, 'body');
 
+        let data: unknown;
         try {
-            const { data } = await startPasskeyEnrolment(body, req);
-            return res.status(200).json({ options: data.options });
+            ({ data } = await startPasskeyEnrolment(body, req));
         } catch (error) {
             throw passkeysUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 403, 409, 429]);
         }
+        // A Core answer without `options` is a 502, not an empty 200 the Login screen cannot use.
+        return res.status(200).json(whitelist(PasskeyRegisterOptionsResponse, data));
     });
 
     router.post('/passkey/setup', limiters.perIp, async (req: Request, res: Response) => {

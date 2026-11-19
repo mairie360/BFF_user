@@ -130,12 +130,14 @@ registry.registerPath({
 });
 
 router.post('/me/passkeys/options', async (req: Request, res: Response) => {
+    let data: unknown;
     try {
-        const { data } = await startPasskeyRegistration(asCaller('CORE_API', req));
-        return res.status(200).json({ options: data.options });
+        ({ data } = await startPasskeyRegistration(asCaller('CORE_API', req)));
     } catch (error) {
         throw passkeysUnavailable(error) ?? upstreamError('CORE_API', error, [401, 403, 429]);
     }
+    // A Core answer without `options` is a 502, not an empty 200 the Login screen cannot use.
+    return res.status(200).json(whitelist(PasskeyRegisterOptionsResponse, data));
 });
 
 router.post('/me/passkeys', async (req: Request, res: Response) => {

@@ -1069,7 +1069,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front offers the authenticator application only. */
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), the front offers the authenticator application only. When CORE_API_URL is not set Core is out of reach and the authenticator application is unavailable too. */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -6138,6 +6138,21 @@ export interface components {
              *           "id": "mairie360-eip.fr",
              *           "name": "Mairie 360"
              *         },
+             *         "user": {
+             *           "id": "bWFpcmll",
+             *           "name": "camille@mairie360.test",
+             *           "displayName": "Camille Trois"
+             *         },
+             *         "pubKeyCredParams": [
+             *           {
+             *             "type": "public-key",
+             *             "alg": -7
+             *           },
+             *           {
+             *             "type": "public-key",
+             *             "alg": -257
+             *           }
+             *         ],
              *         "authenticatorSelection": {
              *           "residentKey": "required",
              *           "userVerification": "required"

@@ -255,6 +255,14 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expectBffContract('post', '/user/me/passkeys/options', response);
     });
 
+    test('with the session: a Core challenge without options is a 502, not an empty 200', async () => {
+      coreApi.on('post', CORE.myPasskeyOptions, { body: {} as never, outOfContract: true });
+
+      const response = await request(app).post('/user/me/passkeys/options').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(502);
+    });
+
     test('with the session: stores the passkey under its label and returns the manager name Core deduced', async () => {
       coreApi.on('post', CORE.myPasskeys, { status: 201, body: { ...stored, secret: 'never relayed' } });
 

@@ -1633,6 +1633,24 @@ describe('MAIR-810 passkey offer after a password sign-in', () => {
         expect(second.body).toEqual({ message: 'Logged in successfully', passkey_offer: { allowed: true, registered: true } });
     });
 
+    it('never adds the offer to the answer of a password reset (its contract holds the message only)', async () => {
+        mockedResetUserPassword.mockResolvedValue(withOffer({ allowed: true, registered: false }));
+
+        const response = await request(app).post('/auth/reset_password').send({ token: '11111111-2222-4333-8444-555555555555', new_password: 'Updated-456!', device_info: 'Firefox' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+    });
+
+    it('answers 502 when the enrolment challenge of Core carries no options', async () => {
+        mockedStartPasskeyEnrolment.mockResolvedValue(axiosResponse({}, 200));
+
+        const response = await request(app).post('/auth/passkey/setup/options').send({ token: 'example-two-factor-token' });
+
+        expect(response.status).toBe(502);
+        expect(response.body.error).toBeDefined();
+    });
+
     it('leaves the answer as it was when Core sends no valid offer (older Core)', async () => {
         for (const offer of [undefined, null, 'yes', { allowed: 'yes', registered: false }, { allowed: true }]) {
             mockedLoginUser.mockResolvedValue(withOffer(offer));
