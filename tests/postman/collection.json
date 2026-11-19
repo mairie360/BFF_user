@@ -5190,7 +5190,7 @@
                   "});",
                   "const cookies = pm.response.headers.all().filter((h) => h.key.toLowerCase() === 'set-cookie').map((h) => h.value);",
                   "pm.test('accessToken and refreshToken cookies, HttpOnly', () => { ['accessToken', 'refreshToken'].forEach((n) => { const c = cookies.find((v) => v.startsWith(n + '=')); pm.expect(c, n).to.be.a('string'); pm.expect(c).to.include('HttpOnly'); }); });",
-                  "pm.test('Nothing in the body or a header', () => { pm.expect(pm.response.json()).to.eql({ message: 'Logged in successfully' }); pm.expect(pm.response.headers.has('Authorization')).to.be.false; });"
+                  "pm.test('Nothing in the body or a header', () => { const { message, passkey_offer, ...rest } = pm.response.json(); pm.expect(message).to.eql('Logged in successfully'); pm.expect(rest, 'no token in the body').to.eql({}); if (passkey_offer !== undefined) { pm.expect(passkey_offer).to.have.all.keys('allowed', 'registered'); } pm.expect(pm.response.headers.has('Authorization')).to.be.false; });"
                 ]
               }
             }
@@ -6636,6 +6636,60 @@
           "response": []
         },
         {
+          "name": "MAIR-810 The enrolment by passkey is refused while the policy does not allow passkeys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/setup/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "setup",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{pol_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "MAIR-808 A wrong first code answers 401 and opens no session",
           "request": {
             "method": "POST",
@@ -7312,6 +7366,451 @@
                   "    pm.expect(body.error.message).to.be.a('string');",
                   "});",
                   "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A signed-in agent gets the creation challenge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/me/passkeys/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "me",
+                "passkeys",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test('Only the options, a discoverable credential with user verification', () => {",
+                  "    pm.expect(Object.keys(body)).to.eql(['options']);",
+                  "    const selection = body.options.publicKey.authenticatorSelection;",
+                  "    pm.expect(selection.residentKey).to.eql('required');",
+                  "    pm.expect(selection.userVerification).to.eql('required');",
+                  "    pm.expect(selection.authenticatorAttachment, 'any password manager').to.be.undefined;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 The creation challenge needs a session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/me/passkeys/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "me",
+                "passkeys",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A forged creation answer is refused and stores nothing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/me/passkeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "me",
+                "passkeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"newman\",\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"attestationObject\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\"\n    },\n    \"extensions\": {}\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A creation without label is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/me/passkeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "me",
+                "passkeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"attestationObject\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\"\n    },\n    \"extensions\": {}\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A creation without session is refused",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/me/passkeys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "me",
+                "passkeys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"newman\",\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"attestationObject\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\"\n    },\n    \"extensions\": {}\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 An unknown enrolment token gets no creation challenge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/setup/options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "setup",
+                "options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"newman-unknown-token\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 An unknown enrolment token creates no passkey and opens no session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/setup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "setup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"newman-unknown-token\",\n  \"label\": \"newman\",\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"attestationObject\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\"\n    },\n    \"extensions\": {}\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});",
+                  "pm.test('No cookie is set', () => { pm.expect(pm.response.headers.has('Set-Cookie')).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-810 A passkey enrolment without token is rejected",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/passkey/setup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "passkey",
+                "setup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"newman\",\n  \"credential\": {\n    \"id\": \"AAAA\",\n    \"rawId\": \"AAAA\",\n    \"type\": \"public-key\",\n    \"response\": {\n      \"attestationObject\": \"AAAA\",\n      \"clientDataJSON\": \"AAAA\"\n    },\n    \"extensions\": {}\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test('Body is the error envelope', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.error, 'error').to.be.an('object');",
+                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.message).to.be.a('string');",
+                  "});"
                 ]
               }
             }

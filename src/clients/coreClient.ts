@@ -55,6 +55,8 @@ export const coreAuthClient = {
     loginTwoFactor: coreApi.loginTwoFactor,
     passkeyLoginOptions: coreApi.passkeyLoginOptions,
     passkeyLogin: coreApi.passkeyLogin,
+    passkeySetupOptions: coreApi.passkeySetupOptions,
+    passkeySetup: coreApi.passkeySetup,
     setupLoginTwoFactor: coreApi.setupLoginTwoFactor,
     confirmLoginTwoFactor: coreApi.confirmLoginTwoFactor,
     keycloakLogin,
@@ -74,6 +76,12 @@ export const coreAdminUsersClient = {
     adminResetUserTwoFactor: coreApi.adminResetUserTwoFactor,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
+};
+
+// Passkeys of the signed-in agent (MAIR-810): the creation, relayed for the Login screen.
+export const corePasskeysClient = {
+    passkeyRegisterOptions: coreApi.passkeyRegisterOptions,
+    registerPasskey: coreApi.registerPasskey,
 };
 
 // Instance policy of the second factor (MAIR-808).

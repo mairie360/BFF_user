@@ -133,8 +133,19 @@ and the legacy `/me` resolve.
   `POST /auth/passkey { id, credential, device_info }`, which forwards the browser answer as is and opens the session like
   `/auth/login` (cookies only). A passkey is a complete sign-in: no `202`, no second step. Core's 403 (policy does not allow passkeys),
   429 and every 401 are kept, its 503 (no WebAuthn relying party) too so the front can fall back to the password. Managing the
-  passkeys of the account is `BFF_Settings`'. The newman journey `Passkeys (MAIR-810)` cannot sign (no authenticator in the
+  passkeys of the account is `BFF_Settings`'. The Login screen also creates a passkey through this BFF (answers `{ options }`, then
+  the registration): `POST /user/me/passkeys/options` and `POST /user/me/passkeys { label, credential }` with the session of the agent
+  (`201` with `provider`, the name of the passkey manager Core deduced, `null` when unknown: the front offers it as the name), and, for
+  the mandatory enrolment of an agent that has no session yet, the public `POST /auth/passkey/setup/options { token }` and
+  `POST /auth/passkey/setup { token, label, credential }` (the passkey satisfies the policy and the session opens in cookies like a
+  login, no backup codes). Same refusals as the sign-in (403 policy, 409 already protected or credential already registered, 429, 503
+  kept), `src/routes/passkey_errors.ts` keeps the 503. `POST /auth/login` and `/auth/login/2fa` answer `passkey_offer { allowed,
+  registered }` next to `message` when Core sends it (Login decides whether to propose a passkey); it is never on a passkey sign-in.
+  The newman journey `Passkeys (MAIR-810)` cannot sign (no authenticator in the
   sandbox): it replays the challenge, the refusals and the policy gate, and needs `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` on Core.
+  `tests/e2e/passkey-journey.mjs` (service `passkey-journey` of the integration compose, profile `journey`, run by
+  `integration_test.sh` once newman passed) signs with a software authenticator (node:crypto): creation with the session and
+  with the enrolment token, passkey sign-in, replayed challenge and cloned counter refused, deletion.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
