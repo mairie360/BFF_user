@@ -1643,7 +1643,7 @@ describe('MAIR-810 passkey offer after a password sign-in', () => {
     });
 
     it('answers 502 when the enrolment challenge of Core carries no options', async () => {
-        mockedStartPasskeyEnrolment.mockResolvedValue(axiosResponse({}, 200));
+        mockedStartPasskeyEnrolment.mockResolvedValue(axiosResponse({}, 200) as never);
 
         const response = await request(app).post('/auth/passkey/setup/options').send({ token: 'example-two-factor-token' });
 
