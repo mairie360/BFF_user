@@ -24,7 +24,7 @@ import { createCoverage } from '/coverage.js';
 //   depend on `state`.
 // - `policy` (1 iteration, alone, after everything else): the operations that need the two-factor policy to be
 //   mandatory (MAIR-808: every login of the instance answers 202 meanwhile) or passkeys to be allowed
-//   (MAIR-810), and that restore the optional policy. Run by `policyCoverage`, so they stay out of `crud`.
+//  , and that restore the optional policy. Run by `policyCoverage`, so they stay out of `crud`.
 // - `me_rush`: `GET /me` as seeded agents at a fixed arrival rate (MAIR-474), failing if k6 has to
 //   drop iterations because the BFF (and Core behind it) no longer keeps up.
 // Every operation gets a p(95) threshold, whose budget depends on its family (`budgetOf`).
@@ -116,7 +116,7 @@ function json(response) {
 // The operations of the `policy` scenario: a mandatory policy answers every login of the instance 202, so they
 // cannot share the stage with the others.
 const isPolicy = (path) =>
-  path.startsWith('/admin/two-factor-policy') || path.startsWith('/auth/2fa/') || path === '/auth/login/2fa' || path.startsWith('/auth/passkey');
+  path.startsWith('/admin/two-factor-policy') || path.startsWith('/auth/2fa/') || path === '/auth/login/2fa' || path.startsWith('/auth/passkey') || path.startsWith('/user/me/passkeys');
 const OPTIONAL_POLICY = { required: false, totp_allowed: true, passkey_allowed: false, backup_codes_allowed: true };
 
 function specSubset(spec, keep) {
@@ -198,6 +198,24 @@ const FORGED_SIGN_IN = {
   response: { authenticatorData: 'AAAA', clientDataJSON: 'AAAA', signature: 'AAAA', userHandle: null }, extensions: {},
 };
 
+// Same for a registration (`navigator.credentials.create`).
+const FORGED_REGISTRATION = {
+  id: 'AAAA', rawId: 'AAAA', type: 'public-key',
+  response: { attestationObject: 'AAAA', clientDataJSON: 'AAAA' }, extensions: {},
+};
+const PASSKEYS_ALLOWED = Object.assign({}, OPTIONAL_POLICY, { passkey_allowed: true });
+const PASSKEYS_MANDATORY = Object.assign({}, PASSKEYS_ALLOWED, { required: true });
+
+/** Runs `fn(token)` with an enrolment token of an account without factor, under a mandatory policy that allows passkeys. */
+function withPasskeyEnrolment(data, fn) {
+  const account = freshAccount(data);
+  try {
+    return withPolicy(data, PASSKEYS_MANDATORY, () => fn(loginOf(account).json('token')));
+  } finally {
+    dropAccount(account, data);
+  }
+}
+
 const policyHandlers = {
   'GET /admin/two-factor-policy': ({ request, data }) =>
     check(request({ headers: data.admin }), {
@@ -255,6 +273,34 @@ const policyHandlers = {
       return check(
         request({ body: { id: ceremony, credential: FORGED_SIGN_IN, device_info: 'k6' }, params: { responseCallback: http.expectedStatuses(401) } }),
         { 'forged passkey 401, no cookie': (r) => r.status === 401 && !r.cookies.accessToken },
+      );
+    }),
+  // Creation of a passkey, with the enrolment token (no session yet) or with the session of the agent. Nothing here can
+  // create a real credential: the challenge is the success, the forged answer the refusal (Core's, and the jest mocks').
+  'POST /auth/passkey/setup/options': ({ request, data }) =>
+    withPasskeyEnrolment(data, (token) =>
+      check(request({ body: { token } }), {
+        'passkey enrolment options 200': (r) => r.status === 200 && r.json('options.publicKey.authenticatorSelection.residentKey') === 'required',
+      })),
+  'POST /auth/passkey/setup': ({ request, data }) =>
+    withPasskeyEnrolment(data, (token) => {
+      fixture('POST', policyCoverage.url('POST /auth/passkey/setup/options'), { token }, {});
+      return check(
+        request({ body: { token, label: 'k6', credential: FORGED_REGISTRATION }, params: { responseCallback: http.expectedStatuses(400) } }),
+        { 'forged passkey creation 400, no cookie': (r) => r.status === 400 && !r.cookies.accessToken },
+      );
+    }),
+  'POST /user/me/passkeys/options': ({ request, data }) =>
+    withPolicy(data, PASSKEYS_ALLOWED, () =>
+      check(request({ headers: data.admin, body: {} }), {
+        'passkey creation options 200': (r) => r.status === 200 && !!r.json('options.publicKey.challenge'),
+      })),
+  'POST /user/me/passkeys': ({ request, data }) =>
+    withPolicy(data, PASSKEYS_ALLOWED, () => {
+      fixture('POST', policyCoverage.url('POST /user/me/passkeys/options'), {}, data.admin);
+      return check(
+        request({ headers: data.admin, body: { label: 'k6', credential: FORGED_REGISTRATION }, params: { responseCallback: http.expectedStatuses(400) } }),
+        { 'forged passkey creation 400': (r) => r.status === 400 },
       );
     }),
 };

@@ -6,7 +6,7 @@ import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
 import {
-    confirmLoginEnrolment, forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword, startLoginEnrolment, startPasskeyLogin, finishPasskeyLogin,
+    confirmLoginEnrolment, finishPasskeyEnrolment, startPasskeyEnrolment, forceChangeUserPassword, keycloakLoginUser, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword, startLoginEnrolment, startPasskeyLogin, finishPasskeyLogin,
 } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
@@ -21,6 +21,8 @@ jest.mock('../src/routes/core_helpers', () => ({
     startLoginEnrolment: jest.fn(),
     startPasskeyLogin: jest.fn(),
     finishPasskeyLogin: jest.fn(),
+    startPasskeyEnrolment: jest.fn(),
+    finishPasskeyEnrolment: jest.fn(),
     forceChangeUserPassword: jest.fn(),
     isLoginResponseView: jest.fn((value: unknown) => (
         typeof value === 'object'
@@ -40,6 +42,8 @@ jest.mock('../src/routes/core_helpers', () => ({
     resetUserPassword: jest.fn(),
 }));
 
+const mockedStartPasskeyEnrolment = jest.mocked(startPasskeyEnrolment);
+const mockedFinishPasskeyEnrolment = jest.mocked(finishPasskeyEnrolment);
 const mockedStartPasskey = jest.mocked(startPasskeyLogin);
 const mockedFinishPasskey = jest.mocked(finishPasskeyLogin);
 const mockedLoginUser = jest.mocked(loginUser);
@@ -1359,7 +1363,8 @@ describe('MAIR-808 mandatory second factor', () => {
     });
 
     it('MAIR-809 drops an incomplete policy instead of guessing the missing modes', async () => {
-        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, policy: { totp_allowed: true } }, 202));
+        // Core always sends the three booleans: the incomplete policy is what an older Core could send.
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, policy: { totp_allowed: true } }, 202) as never);
 
         const response = await request(app).post('/auth/login').send(credentials);
 
@@ -1528,5 +1533,125 @@ describe('MAIR-810 passkey sign-in', () => {
         expect(noCredential.status).toBe(400);
         expect(noId.status).toBe(400);
         expect(mockedFinishPasskey).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('MAIR-810 passkey creation with the enrolment token', () => {
+    const TOKEN = 'example-two-factor-token';
+    const options = { publicKey: { challenge: 'q1w2e3', authenticatorSelection: { residentKey: 'required', userVerification: 'required' } } };
+    const answer = {
+        token: TOKEN,
+        label: 'Google Password Manager',
+        credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { attestationObject: 'o2Nmb' } },
+    };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('relays the token for the challenge and answers its options only', async () => {
+        mockedStartPasskeyEnrolment.mockResolvedValue(axiosResponse({ options, internal: 'hidden' }, 200));
+
+        const response = await request(app).post('/auth/passkey/setup/options').send({ token: TOKEN });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ options });
+        expect(mockedStartPasskeyEnrolment).toHaveBeenCalledWith({ token: TOKEN }, expect.anything());
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('opens the session in HttpOnly cookies and tells nothing else (no backup codes, no token)', async () => {
+        mockedFinishPasskeyEnrolment.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/passkey/setup').send(answer);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedFinishPasskeyEnrolment).toHaveBeenCalledWith(answer, expect.anything());
+    });
+
+    it('answers 502 and sets no cookie when Core spends the token without a Bearer token', async () => {
+        mockedFinishPasskeyEnrolment.mockResolvedValue(axiosResponse(loginResponse(), 200));
+
+        const response = await request(app).post('/auth/passkey/setup').send(answer);
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([400, 401, 403, 409, 429])('keeps the Core %i, on both routes, with no cookie', async (status) => {
+        mockedStartPasskeyEnrolment.mockRejectedValue(coreError(status));
+        mockedFinishPasskeyEnrolment.mockRejectedValue(coreError(status));
+
+        const options = await request(app).post('/auth/passkey/setup/options').send({ token: TOKEN });
+        const setup = await request(app).post('/auth/passkey/setup').send(answer);
+
+        expect(options.status).toBe(status);
+        expect(setup.status).toBe(status);
+        expect(setup.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 503 when Core has no WebAuthn configuration, so the screen offers the authenticator application only', async () => {
+        mockedStartPasskeyEnrolment.mockRejectedValue(coreError(503));
+        mockedFinishPasskeyEnrolment.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/passkey/setup/options').send({ token: TOKEN })).status).toBe(503);
+        expect((await request(app).post('/auth/passkey/setup').send(answer)).status).toBe(503);
+    });
+
+    it('refuses malformed bodies before any Core call', async () => {
+        const noToken = await request(app).post('/auth/passkey/setup/options').send({});
+        const noLabel = await request(app).post('/auth/passkey/setup').send({ token: TOKEN, credential: answer.credential });
+        const longLabel = await request(app).post('/auth/passkey/setup').send({ ...answer, label: 'x'.repeat(101) });
+        const noCredential = await request(app).post('/auth/passkey/setup').send({ token: TOKEN, label: 'x' });
+
+        expect([noToken.status, noLabel.status, longLabel.status, noCredential.status]).toEqual([400, 400, 400, 400]);
+        expect(mockedStartPasskeyEnrolment).not.toHaveBeenCalled();
+        expect(mockedFinishPasskeyEnrolment).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-810 passkey offer after a password sign-in', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    const withOffer = (offer: unknown) => axiosResponse({ ...loginResponse(), passkey_offer: offer }, 200, { authorization: 'Bearer header.payload.signature' }) as never;
+    const credentials = { email: 'camille@mairie.fr', password: 'MotDePasse123', device_info: 'Firefox' };
+
+    it('relays the two booleans to the Login screen after the password login and after its second step', async () => {
+        mockedLoginUser.mockResolvedValue(withOffer({ allowed: true, registered: false, extra: 'hidden' }));
+        mockedLoginTwoFactor.mockResolvedValue(withOffer({ allowed: true, registered: true }));
+
+        const password = await request(app).post('/auth/login').send(credentials);
+        const second = await request(app).post('/auth/login/2fa').send({ token: 'example-two-factor-token', code: '492039' });
+
+        expect(password.body).toEqual({ message: 'Logged in successfully', passkey_offer: { allowed: true, registered: false } });
+        expect(second.body).toEqual({ message: 'Logged in successfully', passkey_offer: { allowed: true, registered: true } });
+    });
+
+    it('leaves the answer as it was when Core sends no valid offer (older Core)', async () => {
+        for (const offer of [undefined, null, 'yes', { allowed: 'yes', registered: false }, { allowed: true }]) {
+            mockedLoginUser.mockResolvedValue(withOffer(offer));
+
+            const response = await request(app).post('/auth/login').send(credentials);
+
+            expect(response.body).toEqual({ message: 'Logged in successfully' });
+        }
+    });
+
+    it('never adds the offer to a sign-in by passkey', async () => {
+        mockedFinishPasskey.mockResolvedValue(withOffer({ allowed: true, registered: true }));
+
+        const response = await request(app).post('/auth/passkey').send({
+            id: 'example-two-factor-token',
+            credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: {} },
+            device_info: 'Firefox',
+        });
+
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
     });
 });

@@ -162,6 +162,74 @@
           "device_info"
         ]
       },
+      "PasskeyRegisterView": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.",
+            "example": "Google Password Manager"
+          },
+          "credential": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.",
+            "example": {
+              "id": "k3m9x7p2",
+              "rawId": "k3m9x7p2",
+              "type": "public-key",
+              "response": {
+                "attestationObject": "o2NmbXRkbm9uZQ",
+                "clientDataJSON": "eyJ0eXBl"
+              }
+            }
+          }
+        },
+        "required": [
+          "label",
+          "credential"
+        ]
+      },
+      "PasskeySetupView": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "description": "Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: \"2fa_setup_required\"`. Single use, valid 5 minutes.",
+            "example": "example-two-factor-token"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.",
+            "example": "Google Password Manager"
+          },
+          "credential": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.",
+            "example": {
+              "id": "k3m9x7p2",
+              "rawId": "k3m9x7p2",
+              "type": "public-key",
+              "response": {
+                "attestationObject": "o2NmbXRkbm9uZQ",
+                "clientDataJSON": "eyJ0eXBl"
+              }
+            }
+          }
+        },
+        "required": [
+          "token",
+          "label",
+          "credential"
+        ]
+      },
       "TwoFactorSetupTokenView": {
         "type": "object",
         "properties": {
@@ -1328,6 +1396,41 @@
           "roles"
         ]
       },
+      "LoginSessionResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Logged in successfully"
+          },
+          "passkey_offer": {
+            "$ref": "#/components/schemas/PasskeyOffer"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "PasskeyOffer": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean",
+            "description": "The instance accepts passkeys (Core has a WebAuthn relying party and the policy allows them).",
+            "example": true
+          },
+          "registered": {
+            "type": "boolean",
+            "description": "The account already has at least one passkey.",
+            "example": false
+          }
+        },
+        "required": [
+          "allowed",
+          "registered"
+        ],
+        "description": "Only after a password sign-in on a Core that sends it: whether the Login screen proposes to create a passkey. Absent after a sign-in by passkey, and from an older Core."
+      },
       "TwoFactorRequiredResponse": {
         "type": "object",
         "properties": {
@@ -1403,6 +1506,32 @@
           "options"
         ]
       },
+      "PasskeyRegisterOptionsResponse": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "WebAuthn `PublicKeyCredentialCreationOptions` for `navigator.credentials.create` (discoverable credential and user verification required, no `authenticatorAttachment`: every password manager is accepted).",
+            "example": {
+              "publicKey": {
+                "challenge": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c",
+                "rp": {
+                  "id": "mairie360-eip.fr",
+                  "name": "Mairie 360"
+                },
+                "authenticatorSelection": {
+                  "residentKey": "required",
+                  "userVerification": "required"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "options"
+        ]
+      },
       "TwoFactorEnrolmentResponse": {
         "type": "object",
         "properties": {
@@ -1444,6 +1573,46 @@
         "required": [
           "message",
           "backup_codes"
+        ]
+      },
+      "PasskeyResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 7
+          },
+          "label": {
+            "type": "string",
+            "example": "Google Password Manager"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the passkey manager deduced by Core from the authenticator (iCloud Keychain, Google Password Manager, ...); `null` when unknown: the agent types a name.",
+            "example": "Google Password Manager"
+          },
+          "created_at": {
+            "type": "string",
+            "example": "2026-11-19T09:12:00Z"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` until the passkey signs in.",
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "provider",
+          "created_at",
+          "last_used_at"
         ]
       }
     },
@@ -1527,7 +1696,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthSessionResponse"
+                  "$ref": "#/components/schemas/LoginSessionResponse"
                 }
               }
             }
@@ -2128,7 +2297,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthSessionResponse"
+                  "$ref": "#/components/schemas/LoginSessionResponse"
                 }
               }
             }
@@ -2210,7 +2379,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Passkey sign-in: gets the challenge (MAIR-810)",
+        "summary": "Passkey sign-in: gets the challenge",
         "description": "Starts a discoverable passkey sign-in on Core API: the browser offers the passkeys it holds for the site, so nobody types an e-mail. Returns the WebAuthn options and the `id` of the ceremony (single use, two minutes), to send back with the browser answer to `POST /auth/passkey`.",
         "responses": {
           "200": {
@@ -2290,7 +2459,7 @@
         "tags": [
           "Authentication"
         ],
-        "summary": "Passkey sign-in: sends the browser answer (MAIR-810)",
+        "summary": "Passkey sign-in: sends the browser answer",
         "description": "Forwards the signed challenge to Core API, which identifies the account by the passkey and verifies it. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey is a complete sign-in: no second factor is asked, a mandatory policy is satisfied. Every refusal is the same `401`.",
         "requestBody": {
           "required": true,
@@ -2343,6 +2512,254 @@
           },
           "403": {
             "description": "The administrator does not accept passkeys (two-factor policy).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/passkey/setup/options": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Mandatory enrolment by passkey: gets the challenge",
+        "description": "For an agent who got `202` `2fa_setup_required` (no session yet) and whom the policy lets enrol with a passkey: forwards the enrolment token to Core API, which answers the WebAuthn creation options (discoverable credential and user verification required, any password manager accepted). The token stays valid (five minutes) until the passkey is created. Same refusals as `POST /auth/passkey/setup`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TwoFactorSetupTokenView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Challenge created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyRegisterOptionsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired, spent or burnt enrolment token, or archived account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The administrator does not accept passkeys (two-factor policy).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account already has an active second factor: the token is of no use.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ \"error\": { \"code\": \"TOO_MANY_REQUESTS\", \"message\": \"Too many attempts, please try again later\", \"details\": [] } }`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front offers the authenticator application only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/passkey/setup": {
+      "post": {
+        "security": [],
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Mandatory enrolment by passkey: sends the browser answer",
+        "description": "Forwards the enrolment token, the label and the browser answer to Core API, which stores the passkey, spends the token and opens the session like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey satisfies the mandatory policy by itself: no backup codes are issued. A refused answer counts like a wrong code and the token is burnt at the fifth.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeySetupView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Passkey created and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.",
+            "headers": {
+              "Set-Cookie": {
+                "description": "HttpOnly `accessToken` and `refreshToken` cookies",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data, or an answer Core refuses (the same token can try again until it is burnt).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unknown, expired, spent or burnt enrolment token, or archived account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The administrator does not accept passkeys (two-factor policy).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account already has an active second factor, or this credential is already registered.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2834,6 +3251,214 @@
           },
           "503": {
             "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me/passkeys/options": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Passkey creation by a signed-in agent: gets the challenge",
+        "description": "Forwards the caller's `Authorization: Bearer` header to Core API `POST /api/v1/user/me/passkeys/options/`, which answers the WebAuthn creation options (discoverable credential and user verification required, no `authenticatorAttachment`, passkeys already registered excluded). Used by the Login screen right after the password sign-in (`passkey_offer.allowed`). The management of the list (rename, delete) is Settings'.",
+        "responses": {
+          "200": {
+            "description": "Challenge created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyRegisterOptionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The administrator does not accept passkeys (two-factor policy).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (Core API rate limit); retry after the `Retry-After` delay.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me/passkeys": {
+      "post": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Passkey creation by a signed-in agent: sends the browser answer",
+        "description": "Forwards the label and the browser answer to Core API `POST /api/v1/user/me/passkeys/`, with the caller's session. Core stores the passkey and sends the agent a security e-mail. The answer carries the `provider` (name of the passkey manager deduced by Core, `null` when unknown) the front offers as the name of the passkey.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyRegisterView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Passkey registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data, or a browser answer Core refuses (challenge replayed, wrong origin, user verification missing).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing `Authorization: Bearer` header, or invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The administrator does not accept passkeys (two-factor policy).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This credential is already registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (Core API rate limit); retry after the `Retry-After` delay.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.",
             "content": {
               "application/json": {
                 "schema": {
