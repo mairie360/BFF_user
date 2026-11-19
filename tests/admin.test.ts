@@ -140,6 +140,40 @@ describe('Administration routes', () => {
         expect(response.status).toBe(200);
     });
 
+    // One role rule for every BFF (bffs-lib); the check used to be a strict `trim().toLowerCase() === 'admin'`.
+    it.each([
+        ['Administrateur'],
+        ['ROLE_ADMIN'],
+        [' role-admin '],
+        ['administrator'],
+    ])('MAIR-689 accepts %p as the administrator role', async (name) => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: name, roles: [name] })));
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
+
+        const response = await request(app)
+            .get('/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
+    });
+
+    it.each([
+        ['Maire'],
+        ['Responsable'],
+        ['Stagiaire'],
+        ['Super Admin'],
+    ])('MAIR-689 refuses %p on an administrator route', async (name) => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: name, roles: [name] })));
+
+        const response = await request(app)
+            .get('/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(2)}`);
+
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({ error: { code: 'FORBIDDEN', message: 'Administrator role required', details: [] } });
+        expect(mockedListUsers).not.toHaveBeenCalled();
+    });
+
     it('rejects user deletion when the requester is not an administrator', async () => {
         mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 

@@ -194,7 +194,7 @@ and the legacy `/me` resolve.
 - **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* with the lib's `verifySessionToken` — EdDSA signature against Core's public key `JWT_PUBLIC_KEY` (MAIR-680:
   `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 only while `JWT_SECRET` is set), `exp`, `sub` — then reads the roles from Core
-  `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
+  `GET /api/v1/user/me/` and requires an administrator among `roles` (Core ≥ 2.0.0; `role` is only the first one), recognised with the lib's `isAdminRole` (`Admin`, `Administrateur`, `ROLE_ADMIN`, … a custom role never is). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
