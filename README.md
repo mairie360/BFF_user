@@ -50,7 +50,6 @@ Generated contract: [`contracts/openapi.json`](contracts/openapi.json) (36 opera
 | `POST` | `/auth/reset_password` | Resets a password with the e-mailed token |
 | `POST` | `/auth/refresh` | Renews the access JWT |
 | `POST` | `/auth/logout` | Signs a user out |
-| `POST` | `/auth/keycloak` | Signs a user in with Keycloak |
 | `GET` | `/user/{userId}/about` | Gets the public information of a user |
 | `GET` | `/admin/users` | List the manageable users, at most 20 items per page |
 | `POST` | `/admin/users` | Create a user through Core API |
@@ -75,7 +74,6 @@ Generated contract: [`contracts/openapi.json`](contracts/openapi.json) (36 opera
 | `GET` | `/admin/sessions` | List the active sessions through Core API |
 | `GET` | `/admin/sessions/history` | Reads the session history through Core API, one page chosen with `limit` / `offset` |
 | `POST` | `/admin/sessions/revoke` | Revokes a session through Core API |
-| `POST` | `/admin/keycloak/console-access` | Opens the Keycloak admin console for a short time (MAIR-609) |
 | `GET` | `/me` | Get the identity, groups and roles of the session |
 | `GET` | `/session/me` | Get the identity, groups and roles of the session |
 

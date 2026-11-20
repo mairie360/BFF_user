@@ -16,7 +16,6 @@ Business domain: Identity and administration.
 - Session lookup with identity, groups and roles through `/me` and `/session/me`.
 - User, role, group, membership and session operations under `/admin`.
 - List of the projects left without a group (`/admin/projects-without-group`, read from BFF_Project) for the groups tab.
-- A single-use link opening the Keycloak admin console for a short time to administrators (`/admin/keycloak/console-access`).
 
 ## Typical workflow
 

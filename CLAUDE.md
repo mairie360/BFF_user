@@ -177,20 +177,9 @@ and the legacy `/me` resolve.
   Core rate-limits per client address and reads it from that `X-Forwarded-For`; with `withoutSession` every request
   counted on the BFF pod and 10 forgot-password requests locked recovery for the whole instance. The integration stack
   runs with the rate limits on (BFF `TRUST_PROXY=uniquelocal`, Core default) for the MAIR-679 journey.
-- **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
-  `POST /api/v1/auth/keycloak` and sets the session exactly like `/auth/login`; Core's 503
-  (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
-  (`keycloakLogin`), although `@mairie360/core-api-openapi` 2.0.0 ships it: switching to the generated
-  function (and adding it to `upstream-contracts.test.ts`) is left for later.
-- **`/auth/logout`** single logout (MAIR-143):
-  when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
-  call), the response adds `logout_url`, the realm's OIDC end-session URL
-  (`/protocol/openid-connect/logout?client_id=…&post_logout_redirect_uri=…`) that the front must
-  navigate to so Keycloak closes the SSO session and, via front/back-channel logout, the other
-  tools (n8n). Core keeps no Keycloak token, hence `client_id` instead of `id_token_hint` (Keycloak
-  shows a confirmation page). The redirect comes from the optional body
-  `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
-  if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
+- **No Keycloak any more** (MAIR-812): Core is the only account system. `POST /auth/keycloak`, `POST /admin/keycloak/console-access`
+  and the `logout_url` of `/auth/logout` (and its `post_logout_redirect_uri` body field) are gone; `/auth/logout` only answers
+  `{ message, session_revoked }`.
 - **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* with the lib's `verifySessionToken` — EdDSA signature against Core's public key `JWT_PUBLIC_KEY` (MAIR-680:
   `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 only while `JWT_SECRET` is set), `exp`, `sub` — then reads the roles from Core
@@ -231,7 +220,7 @@ for the call options, and `callUpstream('CORE_API', call, { declared, retry })` 
 error, declared)`: only the Core 4xx the route declares are kept (generic message), any other status, a network
 failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
 relayed. `retry: true` (one retry on no answer / 502 / 503 / 504) is only set on Core GETs. Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
-`{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
+`{ token }` only, not an error), force_change_password
 `[400, 401, 403]`, forgot_password `[400, 429]`, reset_password `[400, 401, 429]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
 `READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
 must add `errorHandler()` after it. The rate limiters answer 429 in the same envelope.
@@ -251,10 +240,7 @@ transition `JWT_SECRET` alone also passes the startup check; Core alone
 signs the session tokens), `JWT_SECRET` (HS256 transition only: while it is set, HS256 tokens signed with it are still
 accepted; remove it once `JWT_PUBLIC_KEY` is deployed), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
-`AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`). Keycloak single logout (all optional, unset = no
-`logout_url`): `KEYCLOAK_REALM_URL` (public realm URL as the browser reaches it, e.g.
-`https://auth.<domain>/realms/mairie360`, not Core's in-cluster one), `KEYCLOAK_CLIENT_ID` (the
-fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
+`AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`).
 
 ## Docker
 
@@ -299,7 +285,7 @@ The collection is split in two kinds of checks, both on the BFF's own routes:
 
 - **working checks** (folders `Service`, `Session resolution`): the BFF starts, `/health`, `/check_apis`,
   `/openapi.json`, a JSON 404, the session is resolved against Core API (401 without a Bearer, the seeded
-  Admin `sub=1` and agent `sub=2` through `/me` and `/session/me`), Keycloak answers its documented 503;
+  Admin `sub=1` and agent `sub=2` through `/me` and `/session/me`);
 - **business journeys** the fronts rely on (the account lifecycle): creation through `POST /admin/users`
   (MAIR-225, 403 for a plain user, 409 on a duplicate), first sign-in (412 + one-time token,
   `force_change_password`, token single use), sign-in with cookies only (MAIR-397) and the `accessToken`
@@ -360,12 +346,11 @@ working Core. Every `*_test.sh` sources `stack_secrets.sh` (MAIR-474, MAIR-680):
 anywhere), `ADMIN_JWT` (`sub=1`, 4 h, EdDSA like Core) for the ZAP replacer and k6, and `sign_jwt` / `sign_jwt_file`
 (node, for the thousands of k6 tokens: k6 cannot sign Ed25519) for the other callers; the compose files refuse to
 start without them, and no key or token is committed. The core-api image of the stacks must be one that signs EdDSA
-(`dev-690f32b` or later, MAIR-609 console access). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
+(`dev-690f32b` or later). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
 shell provides the key pair (`source ./stack_secrets.sh` before `docker compose up`). They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
 the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
-ignores `100000`: a 500 / 502 answered during the scan fails it. Its only scope-out is `/auth/keycloak`, whose
-documented 503 (Keycloak not configured, the stack has no realm) is the expected answer there. In `crud`, handlers run path by
+ignores `100000`: a 500 / 502 answered during the scan fails it. In `crud`, handlers run path by
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens
