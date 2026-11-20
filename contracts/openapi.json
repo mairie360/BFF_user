@@ -318,10 +318,10 @@
         "properties": {
           "new_password": {
             "type": "string",
-            "minLength": 8,
+            "minLength": 12,
             "maxLength": 255,
-            "description": "New password of the user (8 to 255 characters).",
-            "example": "NouveauMotDePasse123"
+            "description": "New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).",
+            "example": "Riviere-Velo-Mairie-2026"
           },
           "token": {
             "type": "string",
@@ -361,10 +361,10 @@
           },
           "new_password": {
             "type": "string",
-            "minLength": 8,
+            "minLength": 12,
             "maxLength": 255,
-            "description": "New password of the user (8 to 255 characters).",
-            "example": "NouveauMotDePasse123"
+            "description": "New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).",
+            "example": "Riviere-Velo-Mairie-2026"
           },
           "device_info": {
             "type": "string",
@@ -1010,9 +1010,9 @@
         "properties": {
           "new_password": {
             "type": "string",
-            "minLength": 8,
+            "minLength": 12,
             "maxLength": 255,
-            "example": "Temporary-Passw0rd"
+            "example": "Temporary-Ecole-Pont-2026"
           }
         },
         "required": [
@@ -1044,9 +1044,9 @@
           },
           "password": {
             "type": "string",
-            "minLength": 8,
+            "minLength": 12,
             "maxLength": 255,
-            "example": "Temporary-Passw0rd"
+            "example": "Temporary-Ecole-Pont-2026"
           },
           "phone_number": {
             "type": [

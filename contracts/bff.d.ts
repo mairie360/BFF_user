@@ -5680,8 +5680,8 @@ export interface components {
         };
         ForceChangePasswordView: {
             /**
-             * @description New password of the user (8 to 255 characters).
-             * @example NouveauMotDePasse123
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).
+             * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
             /**
@@ -5705,8 +5705,8 @@ export interface components {
              */
             token: string;
             /**
-             * @description New password of the user (8 to 255 characters).
-             * @example NouveauMotDePasse123
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).
+             * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
             /**
@@ -5955,7 +5955,7 @@ export interface components {
             description?: string;
         };
         AdminUserPasswordResetBody: {
-            /** @example Temporary-Passw0rd */
+            /** @example Temporary-Ecole-Pont-2026 */
             new_password: string;
         };
         AdminUserCreateBody: {
@@ -5968,7 +5968,7 @@ export interface components {
             first_name: string;
             /** @example Doe */
             last_name: string;
-            /** @example Temporary-Passw0rd */
+            /** @example Temporary-Ecole-Pont-2026 */
             password: string;
             /** @example 06 12 34 56 78 */
             phone_number?: string | null;
