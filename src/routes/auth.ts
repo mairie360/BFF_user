@@ -10,10 +10,8 @@ import {
     LoginSessionResponse,
     PasskeyRegisterOptionsResponse,
     PasskeySetupViewSchema,
-    CoreApiRateLimited,
     ForceChangePasswordViewSchema,
     ForgotPasswordViewSchema,
-    KeycloakLoginViewSchema,
     LoginTwoFactorViewSchema,
     PasskeyLoginOptionsResponse,
     PasskeyLoginViewSchema,
@@ -30,7 +28,6 @@ import {
     ResetPasswordViewSchema,
     TwoFactorRequiredResponse,
 } from '../openapi-registry';
-import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
 import { logger } from '../logger';
 import {
     clearRefreshTokenCookie,
@@ -47,7 +44,6 @@ import {
     forceChangeUserPassword,
     isLoginResponseView,
     isTwoFactorRequired,
-    keycloakLoginUser,
     loginUser,
     loginUserTwoFactor,
     finishPasskeyEnrolment,
@@ -380,12 +376,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT\'s session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
-        + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
-        + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
-        + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
-        + '`id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) '
-        + 'if the client allows it.',
+    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT\'s session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails.',
     request: {
         body: {
             required: false,
@@ -398,7 +389,7 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'Cookie cleared; navigate to `logout_url` when present to close the Keycloak session.',
+            description: 'Cookie cleared.',
             content: {
                 'application/json': {
                     schema: LogoutResponse,
@@ -406,7 +397,7 @@ registry.registerPath({
             },
         },
         400: {
-            description: 'Invalid payload (`post_logout_redirect_uri` is not a URL)',
+            description: 'Invalid payload (`refresh_token` is empty)',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -594,61 +585,6 @@ registry.registerPath({
         500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
         502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
         503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
-    },
-});
-
-registry.registerPath({
-    method: 'post',
-    path: '/auth/keycloak',
-    security: [],
-    tags: ['Authentication'],
-    summary: 'Signs a user in with Keycloak',
-    description: 'Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the '
-        + 'authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and '
-        + 'opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly '
-        + 'like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps '
-        + 'working unchanged and the user keeps their roles. The password login stays available during the transition.',
-    request: {
-        body: {
-            required: true,
-            content: {
-                'application/json': {
-                    schema: KeycloakLoginViewSchema,
-                },
-            },
-        },
-    },
-    responses: {
-        200: {
-            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
-            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
-            content: { 'application/json': { schema: AuthSessionResponse } },
-        },
-        400: {
-            description: 'Invalid payload',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        401: {
-            description: 'Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak.',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        403: {
-            description: 'The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account.',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        500: {
-            description: 'Server error',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        429: CoreApiRateLimited,
-        502: {
-            description: 'Core API or Keycloak unavailable, or invalid upstream response',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        503: {
-            description: 'Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set.',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
     },
 });
 
@@ -871,20 +807,6 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         }
     });
 
-    router.post('/keycloak', async (req: Request, res: Response) => {
-        const body = parseRequest(KeycloakLoginViewSchema, req.body, 'body');
-
-        try {
-            return sendSession(res, await keycloakLoginUser(body, req));
-        } catch (error) {
-            // Core answers 503 when Keycloak is not configured: keep it so the front can fall back to the password login.
-            if (axios.isAxiosError(error) && error.response?.status === 503) {
-                throw new HttpError(503, 'Keycloak sign-in is not configured');
-            }
-            throw upstreamError('CORE_API', error, [400, 401, 403]);
-        }
-    });
-
     router.post('/force_change_password', limiters.perIp, async (req: Request, res: Response) => {
         const body = parseRequest(ForceChangePasswordViewSchema, req.body, 'body');
 
@@ -984,17 +906,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         clearTokenCookie(res);
         clearRefreshTokenCookie(res);
 
-        // Single logout (MAIR-143): the browser must end the Keycloak session itself, the BFF holds no Keycloak token.
-        const keycloak = getKeycloakConfig();
-        if (!keycloak) {
-            return res.json({ message: 'Logged out successfully', session_revoked: sessionRevoked });
-        }
-
-        return res.json({
-            message: 'Logged out successfully',
-            session_revoked: sessionRevoked,
-            logout_url: buildKeycloakLogoutUrl(keycloak, body.post_logout_redirect_uri),
-        });
+        return res.json({ message: 'Logged out successfully', session_revoked: sessionRevoked });
     });
 
     return router;

@@ -661,11 +661,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
   });
 
   describe('POST /auth/logout', () => {
-    afterEach(() => {
-      delete process.env.KEYCLOAK_REALM_URL;
-      delete process.env.KEYCLOAK_CLIENT_ID;
-    });
-
     test('revokes the Core session from the JWT alone when no refresh token is sent', async () => {
       coreApi.on('post', CORE.sessionsLogout, { status: 204 });
 
@@ -748,26 +743,12 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
     });
 
-    test('adds the Keycloak end-session URL when the instance has Keycloak, still without calling Core API', async () => {
-      process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
-      process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
-
+    test('MAIR-812 answers no end-session URL: the logout only ends the Core session, without calling Core API when no session is sent', async () => {
       const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'https://login.mairie360.fr/' });
 
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/logout', response);
-      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-      expect(response.body.session_revoked).toBe(false);
-      expect(response.body.logout_url).toBe('https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout'
-        + '?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F');
-      expect(coreApi.requests).toHaveLength(0);
-    });
-
-    test('rejects an invalid post_logout_redirect_uri', async () => {
-      const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'login' });
-
-      expect(response.status).toBe(400);
-      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
       expect(coreApi.requests).toHaveLength(0);
     });
   });
@@ -1169,64 +1150,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ error: { code: 'BAD_REQUEST', message: 'Validation failed', details: [{ path: `params.${name}`, message: expect.any(String) }] } });
       // The role is checked before the parameters, so nothing is revealed to an unauthorized caller.
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
-    });
-  });
-
-  describe('MAIR-609 POST /admin/keycloak/console-access', () => {
-    const CONSOLE = '/api/v1/admin/keycloak/console-access';
-    const LINK = { url: 'https://auth.dev.mairie360-eip.fr/admin-access?token=a.b.c', expires_in: 120 };
-    const call = (token = SESSION) => request(app).post('/admin/keycloak/console-access').set('Authorization', `Bearer ${token}`);
-
-    test('checks the admin role, forwards the session and relays only the link', async () => {
-      coreApi.on('post', CONSOLE, { body: { ...LINK, internal: 'dropped' } });
-
-      const response = await call();
-
-      expect(response.status).toBe(200);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(response.body).toEqual(LINK);
-      expect(response.headers['cache-control']).toContain('no-store');
-      expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl()), called('POST', coreApiUrls.getRequestKeycloakConsoleAccessUrl())]);
-      expect(coreApi.requests[1].headers.authorization).toBe(`Bearer ${SESSION}`);
-    });
-
-    test('is refused to a plain user without asking Core for a link', async () => {
-      coreApi.on('get', CORE.me, { body: meResponse({ role: 'User' }) });
-
-      const response = await call(sessionToken(7));
-
-      expect(response.status).toBe(403);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(coreApi.calls(CONSOLE)).toHaveLength(0);
-    });
-
-    test('relays the Core rate limit with its Retry-After', async () => {
-      coreApi.on('post', CONSOLE, { ...coreError(429, 'Too many requests'), headers: { 'Retry-After': '840' } });
-
-      const response = await call();
-
-      expect(response.status).toBe(429);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(response.headers['retry-after']).toBe('840');
-    });
-
-    test('keeps the 503 of an instance without console access, so the front can hide the button', async () => {
-      coreApi.on('post', CONSOLE, coreError(503, 'Keycloak console access is not configured on this instance.'));
-
-      const response = await call();
-
-      expect(response.status).toBe(503);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(response.body.error.message).toBe('Keycloak console access is not configured');
-    });
-
-    test('answers 502 to a link outside the contract instead of relaying it', async () => {
-      coreApi.on('post', CONSOLE, { body: { url: 'not a url', expires_in: 120 }, outOfContract: true });
-
-      const response = await call();
-
-      expect(response.status).toBe(502);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
     });
   });
 

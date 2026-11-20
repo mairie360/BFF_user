@@ -145,9 +145,6 @@ services:
       # MAIR-810: the WebAuthn relying party of the passkey sign-in (the journey replays the challenges and refusals).
       WEBAUTHN_RP_ID: localhost
       WEBAUTHN_RP_ORIGIN: http://localhost
-      # MAIR-609: enables the Keycloak console link of POST /admin/keycloak/console-access. The realm URL is Core's
-      # own address here, so the link it returns (`<host>/admin-access?token=…`) can be opened in the stack.
-      KEYCLOAK_ISSUER: http://core-api:3000/realms/mairie360
     expose:
       - "3000"
     networks:

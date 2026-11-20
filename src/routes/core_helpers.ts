@@ -24,7 +24,6 @@ import type {
     TwoFactorSetupView,
 } from '@mairie360/core-api-openapi/model';
 import { coreAuthClient, corePasskeysClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
-import type { KeycloakLoginView } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 /**
@@ -152,14 +151,6 @@ export async function logoutWithRefreshToken(refreshToken: string, client: Upstr
  */
 export async function logoutSession(caller: UpstreamRequestOptions): Promise<void> {
     await coreSessionsClient.logout(caller);
-}
-
-/** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
-export async function keycloakLoginUser(
-    keycloakLoginView: KeycloakLoginView,
-    client: AnonymousClient,
-): Promise<AxiosResponse<LoginResponseView>> {
-    return coreAuthClient.keycloakLogin(keycloakLoginView, asAnonymousClient('CORE_API', client));
 }
 
 export async function forceChangeUserPassword(

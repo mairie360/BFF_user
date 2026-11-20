@@ -622,7 +622,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user out
-         * @description Revokes the caller's Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT's session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
+         * @description Revokes the caller's Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT's session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails.
          */
         post: {
             parameters: {
@@ -637,7 +637,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Cookie cleared; navigate to `logout_url` when present to close the Keycloak session. */
+                /** @description Cookie cleared. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -646,7 +646,7 @@ export interface paths {
                         "application/json": components["schemas"]["LogoutResponse"];
                     };
                 };
-                /** @description Invalid payload (`post_logout_redirect_uri` is not a URL) */
+                /** @description Invalid payload (`refresh_token` is empty) */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1407,114 +1407,6 @@ export interface paths {
                     };
                 };
                 /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/keycloak": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Signs a user in with Keycloak
-         * @description Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["KeycloakLoginView"];
-                };
-            };
-            responses: {
-                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
-                200: {
-                    headers: {
-                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
-                        "Set-Cookie"?: string;
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["AuthSessionResponse"];
-                    };
-                };
-                /** @description Invalid payload */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak. */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account. */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
-                429: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Server error */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Core API or Keycloak unavailable, or invalid upstream response */
-                502: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set. */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -5269,101 +5161,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/keycloak/console-access": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Opens the Keycloak admin console for a short time (MAIR-609)
-         * @description Core POST /api/v1/admin/keycloak/console-access: returns a single-use link, valid 2 minutes, to open in a new tab. On the Keycloak host it sets a 30-minute console cookie bound to `/admin` and redirects to the realm admin console; Keycloak then asks for a realm account holding the `realm-management` roles. The console closes as soon as the administrator loses the Admin role or is archived. Never cache the answer.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Single-use console link */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["KeycloakConsoleAccess"];
-                    };
-                };
-                /** @description Not authenticated */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Access denied */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description At most 10 links per administrator every 15 minutes: retry after the Retry-After header (seconds) */
-                429: {
-                    headers: {
-                        /** @description Seconds to wait */
-                        "Retry-After"?: number;
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Unexpected server error; the cause is only logged */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Core API unavailable, failed or answered an undeclared error */
-                502: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Console access is not configured on this instance (no Keycloak realm URL or no Core signing key), or CORE_API_URL / the session key of the BFF is not set */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/me": {
         parameters: {
             query?: never;
@@ -5650,34 +5447,6 @@ export interface components {
              */
             code: string;
         };
-        KeycloakLoginView: {
-            /**
-             * @description Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).
-             * @example 7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83
-             */
-            code: string;
-            /**
-             * Format: uri
-             * @description Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.
-             * @example https://login.mairie360.fr/auth/callback
-             */
-            redirect_uri: string;
-            /**
-             * @description PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.
-             * @example dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
-             */
-            code_verifier?: string | null;
-            /**
-             * @description Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.
-             * @example n-0S6_WzA2Mj
-             */
-            nonce?: string | null;
-            /**
-             * @description Description of the device, stored on the session (empty string accepted, like the password login).
-             * @example Firefox 142 on Ubuntu 24.04
-             */
-            device_info: string;
-        };
         ForceChangePasswordView: {
             /**
              * @description New password of the user (8 to 255 characters).
@@ -5764,12 +5533,6 @@ export interface components {
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             refresh_token?: string;
-            /**
-             * Format: uri
-             * @description Where Keycloak sends the browser once the single sign-on session is closed. Must be one of the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.
-             * @example https://login.mairie360.fr/
-             */
-            post_logout_redirect_uri?: string;
         };
         LogoutResponse: {
             /** @example Logged out successfully */
@@ -5779,12 +5542,6 @@ export interface components {
              * @example true
              */
             session_revoked: boolean;
-            /**
-             * Format: uri
-             * @description Keycloak end-session URL the browser must navigate to so the single sign-on session is closed on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the logout is then complete once the cookie is cleared.
-             * @example https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F
-             */
-            logout_url?: string;
         };
         UserIdParams: {
             /**
@@ -5804,19 +5561,6 @@ export interface components {
             name: string;
             description: string;
             can_be_deleted?: boolean | null;
-        };
-        KeycloakConsoleAccess: {
-            /**
-             * Format: uri
-             * @description Single-use link to open in a new tab, on the Keycloak host: it sets the 30-minute console cookie and redirects to the realm admin console.
-             * @example https://auth.dev.mairie360-eip.fr/admin-access?token=<link token>
-             */
-            url: string;
-            /**
-             * @description Seconds before the link expires (120).
-             * @example 120
-             */
-            expires_in: number;
         };
         AdministrationUser: {
             id: number;

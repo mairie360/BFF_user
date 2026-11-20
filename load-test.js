@@ -373,16 +373,6 @@ const handlers = {
       }),
       { 'reset_password 401 (unknown token)': (r) => r.status === 401 },
     ),
-  // The test stack has no Keycloak: the BFF answers its declared 503 without calling Core.
-  'POST /auth/keycloak': ({ request }) =>
-    check(
-      request({
-        // Contract examples: a well-formed sign-in that only fails because Keycloak is not configured.
-        body: { code: '7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83', redirect_uri: 'https://login.mairie360.fr/auth/callback', code_verifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk', nonce: 'n-0S6_WzA2Mj', device_info: 'Firefox 142 on Ubuntu 24.04' },
-        params: { responseCallback: http.expectedStatuses(503) },
-      }),
-      { 'keycloak 503 (not configured)': (r) => r.status === 503 },
-    ),
 
   // --- User ---
   'GET /user/{userId}/about': ({ request }) => {
@@ -543,12 +533,6 @@ const handlers = {
     }),
   // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
   // sessions, hence the admin login).
-  // MAIR-609: a single-use Keycloak console link. Core's rate limits are off in the perf stack
-  // (RATE_LIMIT_ENABLED=false), so every call gets its link.
-  'POST /admin/keycloak/console-access': ({ request, data }) =>
-    check(request({ headers: data.admin }), {
-      'console link 200': (r) => r.status === 200 && r.json('expires_in') === 120,
-    }),
   'POST /admin/sessions/revoke': ({ request, data }) =>
     check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
       'revoke 200': (r) => r.status === 200,

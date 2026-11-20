@@ -162,29 +162,6 @@ export const TwoFactorEnrolmentCompletedResponse = z.object({
     backup_codes: z.array(z.string()).openapi({ description: 'The ten single-use backup codes, shown once: the front must make the agent keep them.', example: ['a1b2-c3d4', 'e5f6-a7b8'] }),
 }).openapi('TwoFactorEnrolmentCompletedResponse');
 
-export const KeycloakLoginViewSchema = z.object({
-    code: z.string().min(1).openapi({
-        description: 'Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).',
-        example: '7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83',
-    }),
-    redirect_uri: z.url().openapi({
-        description: 'Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.',
-        example: 'https://login.mairie360.fr/auth/callback',
-    }),
-    code_verifier: z.string().min(1).nullable().optional().openapi({
-        description: 'PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.',
-        example: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
-    }),
-    nonce: z.string().min(1).nullable().optional().openapi({
-        description: 'Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.',
-        example: 'n-0S6_WzA2Mj',
-    }),
-    device_info: z.string().openapi({
-        description: 'Description of the device, stored on the session (empty string accepted, like the password login).',
-        example: 'Firefox 142 on Ubuntu 24.04',
-    }),
-}).openapi('KeycloakLoginView');
-
 // Same password policy as the admin routes (AdminUserCreateBody, AdminUserPasswordResetBody).
 export const ForceChangePasswordViewSchema = z.object({
     new_password: z.string().min(8).max(255).openapi({
@@ -285,11 +262,6 @@ export const LogoutViewSchema = z.object({
         description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. The Core API session is revoked through it (POST /api/v1/auth/logout), with or without a valid JWT (MAIR-692); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
-    post_logout_redirect_uri: z.url().optional().openapi({
-        description: 'Where Keycloak sends the browser once the single sign-on session is closed. Must be one of '
-            + 'the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.',
-        example: 'https://login.mairie360.fr/',
-    }),
 }).openapi('LogoutView');
 
 export const LogoutResponse = z.object({
@@ -299,12 +271,6 @@ export const LogoutResponse = z.object({
     session_revoked: z.boolean().openapi({
         description: 'Whether the Core API session was revoked. `false` when no session was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.',
         example: true,
-    }),
-    logout_url: z.url().optional().openapi({
-        description: 'Keycloak end-session URL the browser must navigate to so the single sign-on session is closed '
-            + 'on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the '
-            + 'logout is then complete once the cookie is cleared.',
-        example: 'https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F',
     }),
 }).openapi('LogoutResponse');
 
@@ -322,7 +288,6 @@ registry.register('PasskeyRegisterView', PasskeyRegisterViewSchema);
 registry.register('PasskeySetupView', PasskeySetupViewSchema);
 registry.register('TwoFactorSetupTokenView', TwoFactorSetupTokenViewSchema);
 registry.register('TwoFactorSetupConfirmView', TwoFactorSetupConfirmViewSchema);
-registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('ForgotPasswordView', ForgotPasswordViewSchema);
 registry.register('ResetPasswordView', ResetPasswordViewSchema);

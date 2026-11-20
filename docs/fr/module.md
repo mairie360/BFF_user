@@ -16,7 +16,6 @@ Domaine fonctionnel: Identité et administration.
 - Consultation de la session avec identité, groupes et rôles via `/me` et `/session/me`.
 - Gestion des utilisateurs, rôles, groupes, membres et opérations de session sous `/admin`.
 - Liste des projets restés sans groupe (`/admin/projects-without-group`, lue dans BFF_Project) pour l’onglet Groupes.
-- Un lien à usage unique qui ouvre aux administrateurs, pour un temps limité, la console d’administration Keycloak (`/admin/keycloak/console-access`).
 
 ## Parcours type
 
