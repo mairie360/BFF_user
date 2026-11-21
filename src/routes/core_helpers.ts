@@ -5,13 +5,25 @@ import type {
     ForceChangePasswordView,
     ForgotPasswordView,
     LoginResponseView,
+    LoginTwoFactorView,
     LoginView,
+    PasskeyLoginOptionsView,
+    PasskeyLoginView,
+    PasskeyRegisterOptionsView,
+    PasskeyRegisterView,
+    PasskeySetupCompletedView,
+    PasskeySetupView,
+    PasskeyView,
     RefreshResponseView,
     ResetPasswordResponseView,
     ResetPasswordView,
+    SetupCompletedView,
+    SetupConfirmView,
+    SetupTokenView,
+    TwoFactorRequiredView,
+    TwoFactorSetupView,
 } from '@mairie360/core-api-openapi/model';
-import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
-import type { KeycloakLoginView } from '../clients/coreClient';
+import { coreAuthClient, corePasskeysClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
 
 /**
@@ -30,8 +42,89 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
     );
 }
 
-export async function loginUser(loginView: LoginView, client: AnonymousClient): Promise<AxiosResponse<LoginResponseView>> {
+/**
+ * Core's 202 (MAIR-805, MAIR-808): no session yet. `2fa_required` carries the token of the second step of a protected
+ * account, `2fa_setup_required` the token of the enrolment the mandatory policy imposes.
+ */
+export function isTwoFactorRequired(value: unknown): value is TwoFactorRequiredView {
+    return (
+        typeof value === 'object'
+        && value !== null
+        && 'status' in value
+        && (value.status === '2fa_required' || value.status === '2fa_setup_required')
+        && 'token' in value
+        && typeof value.token === 'string'
+    );
+}
+
+export async function loginUser(
+    loginView: LoginView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView | TwoFactorRequiredView>> {
     return coreAuthClient.login(loginView, asAnonymousClient('CORE_API', client));
+}
+
+/** Second step of a protected account's login: the login token plus a TOTP or backup code opens the session. */
+export async function loginUserTwoFactor(
+    view: LoginTwoFactorView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.loginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey sign-in, step 1: a discoverable challenge, no account named. */
+export async function startPasskeyLogin(client: AnonymousClient): Promise<AxiosResponse<PasskeyLoginOptionsView>> {
+    return coreAuthClient.passkeyLoginOptions(asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey sign-in, step 2: the signed challenge opens the session, answered like a login. */
+export async function finishPasskeyLogin(
+    view: PasskeyLoginView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.passkeyLogin(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey creation by the enrolment token, step 1: the `2fa_setup_required` token yields the challenge. */
+export async function startPasskeyEnrolment(
+    view: SetupTokenView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<PasskeyRegisterOptionsView>> {
+    return coreAuthClient.passkeySetupOptions(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey creation by the enrolment token, step 2: the passkey satisfies the policy and opens the session. */
+export async function finishPasskeyEnrolment(
+    view: PasskeySetupView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<PasskeySetupCompletedView>> {
+    return coreAuthClient.passkeySetup(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey creation by a signed-in agent, step 1: the challenge, with the caller's session. */
+export async function startPasskeyRegistration(caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyRegisterOptionsView>> {
+    return corePasskeysClient.passkeyRegisterOptions(caller);
+}
+
+/** Passkey creation by a signed-in agent, step 2: stores the passkey under the label. */
+export async function finishPasskeyRegistration(view: PasskeyRegisterView, caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyView>> {
+    return corePasskeysClient.registerPasskey(view, caller);
+}
+
+/** Mandatory enrolment, step 1 (MAIR-808): the `2fa_setup_required` token yields the secret to register. */
+export async function startLoginEnrolment(
+    view: SetupTokenView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<TwoFactorSetupView>> {
+    return coreAuthClient.setupLoginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Mandatory enrolment, step 2 (MAIR-808): the first code activates the factor and opens the session. */
+export async function confirmLoginEnrolment(
+    view: SetupConfirmView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<SetupCompletedView>> {
+    return coreAuthClient.confirmLoginTwoFactor(view, asAnonymousClient('CORE_API', client));
 }
 
 /**
@@ -60,14 +153,6 @@ export async function logoutSession(caller: UpstreamRequestOptions): Promise<voi
     await coreSessionsClient.logout(caller);
 }
 
-/** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
-export async function keycloakLoginUser(
-    keycloakLoginView: KeycloakLoginView,
-    client: AnonymousClient,
-): Promise<AxiosResponse<LoginResponseView>> {
-    return coreAuthClient.keycloakLogin(keycloakLoginView, asAnonymousClient('CORE_API', client));
-}
-
 export async function forceChangeUserPassword(
     forceChangePasswordView: ForceChangePasswordView,
     client: AnonymousClient,
@@ -90,7 +175,7 @@ export async function requestPasswordReset(forgotPasswordView: ForgotPasswordVie
 export async function resetUserPassword(
     resetPasswordView: ResetPasswordView,
     client: AnonymousClient,
-): Promise<AxiosResponse<ResetPasswordResponseView>> {
+): Promise<AxiosResponse<ResetPasswordResponseView | TwoFactorRequiredView>> {
     return coreAuthClient.resetPassword(resetPasswordView, asAnonymousClient('CORE_API', client));
 }
 

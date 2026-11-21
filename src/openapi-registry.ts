@@ -50,37 +50,126 @@ export const LoginViewSchema = z.object({
     }),
 }).openapi('LoginView');
 
-export const KeycloakLoginViewSchema = z.object({
-    code: z.string().min(1).openapi({
-        description: 'Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).',
-        example: '7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83',
+export const LoginTwoFactorViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({
+        description: 'Login token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_required"`. Single use, valid 5 minutes.',
+        example: 'example-two-factor-token',
     }),
-    redirect_uri: z.url().openapi({
-        description: 'Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.',
-        example: 'https://login.mairie360.fr/auth/callback',
+    code: z.string().min(1).max(32).openapi({
+        description: 'Six-digit code of the authenticator application, or a backup code (`xxxx-xxxx`).',
+        example: '492039',
     }),
-    code_verifier: z.string().min(1).nullable().optional().openapi({
-        description: 'PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.',
-        example: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+}).openapi('LoginTwoFactorView');
+
+export const PasskeyLoginOptionsResponse = z.object({
+    id: z.string().openapi({
+        description: 'Identifier of the ceremony: send it back, with the browser answer, to `POST /auth/passkey`. Single use, valid two minutes.',
+        example: 'example-two-factor-token',
     }),
-    nonce: z.string().min(1).nullable().optional().openapi({
-        description: 'Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.',
-        example: 'n-0S6_WzA2Mj',
+    options: z.record(z.string(), z.unknown()).openapi({
+        description: 'WebAuthn `PublicKeyCredentialRequestOptions` for `navigator.credentials.get` (discoverable: no account is named, user verification required).',
+        example: { publicKey: { challenge: 'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c', rpId: 'mairie360-eip.fr', userVerification: 'required' }, mediation: 'conditional' },
     }),
-    device_info: z.string().openapi({
-        description: 'Description of the device, stored on the session (empty string accepted, like the password login).',
-        example: 'Firefox 142 on Ubuntu 24.04',
+}).openapi('PasskeyLoginOptionsResponse');
+
+export const PasskeyLoginViewSchema = z.object({
+    id: z.string().min(1).max(512).openapi({
+        description: 'The `id` returned by `POST /auth/passkey/options`.',
+        example: 'example-two-factor-token',
     }),
-}).openapi('KeycloakLoginView');
+    credential: z.record(z.string(), z.unknown()).openapi({
+        description: 'The `PublicKeyCredential` returned by `navigator.credentials.get`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.',
+        example: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { authenticatorData: 'SZYN5Y', clientDataJSON: 'eyJ0eXBl', signature: 'MEUCIQ', userHandle: 'bWFpcmll' } },
+    }),
+    device_info: z.string().max(512).openapi({
+        description: 'Device used to sign in (an empty string is accepted, as for the password login).',
+        example: 'Firefox',
+    }),
+}).openapi('PasskeyLoginView');
+
+const WEBAUTHN_CREDENTIAL_EXAMPLE = { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { attestationObject: 'o2NmbXRkbm9uZQ', clientDataJSON: 'eyJ0eXBl' } };
+
+export const PasskeyRegisterOptionsResponse = z.object({
+    options: z.record(z.string(), z.unknown()).openapi({
+        description: 'WebAuthn `PublicKeyCredentialCreationOptions` for `navigator.credentials.create` (discoverable credential and user verification required, no `authenticatorAttachment`: every password manager is accepted).',
+        example: { publicKey: { challenge: 'q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c', rp: { id: 'mairie360-eip.fr', name: 'Mairie 360' }, user: { id: 'bWFpcmll', name: 'camille@mairie360.test', displayName: 'Camille Trois' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { residentKey: 'required', userVerification: 'required' } } },
+    }),
+}).openapi('PasskeyRegisterOptionsResponse');
+
+export const PasskeyRegisterViewSchema = z.object({
+    label: z.string().min(1).max(100).openapi({ description: 'Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.', example: 'Google Password Manager' }),
+    credential: z.record(z.string(), z.unknown()).openapi({
+        description: 'The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.',
+        example: WEBAUTHN_CREDENTIAL_EXAMPLE,
+    }),
+}).openapi('PasskeyRegisterView');
+
+export const PasskeyResponse = z.object({
+    id: z.number().int().openapi({ example: 7 }),
+    label: z.string().openapi({ example: 'Google Password Manager' }),
+    provider: z.string().nullable().openapi({ description: 'Name of the passkey manager deduced by Core from the authenticator (iCloud Keychain, Google Password Manager, ...); `null` when unknown: the agent types a name.', example: 'Google Password Manager' }),
+    created_at: z.string().openapi({ example: '2026-11-19T09:12:00Z' }),
+    last_used_at: z.string().nullable().openapi({ description: '`null` until the passkey signs in.', example: null }),
+}).openapi('PasskeyResponse');
+
+export const PasskeySetupViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({ description: 'Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.', example: 'example-two-factor-token' }),
+    label: PasskeyRegisterViewSchema.shape.label,
+    credential: PasskeyRegisterViewSchema.shape.credential,
+}).openapi('PasskeySetupView');
+
+export const TwoFactorRequiredResponse = z.object({
+    status: z.enum(['2fa_required', '2fa_setup_required']).openapi({
+        description: '`2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. '
+            + '`2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, '
+            + 'send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases.',
+    }),
+    token: z.string().openapi({ description: 'Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.', example: 'example-two-factor-token' }),
+    policy: z.object({
+        totp_allowed: z.boolean().openapi({ description: 'The authenticator application is an accepted mode.', example: true }),
+        passkey_allowed: z.boolean().openapi({ description: 'Passkeys are an accepted mode.', example: false }),
+        backup_codes_allowed: z.boolean().openapi({ description: 'Backup codes are accepted at login: when `false`, none must be shown.', example: true }),
+    }).optional().openapi({
+        description: 'Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it.',
+    }),
+}).openapi('TwoFactorRequiredResponse');
+
+export const TwoFactorSetupTokenViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({
+        description: 'Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.',
+        example: 'example-two-factor-token',
+    }),
+}).openapi('TwoFactorSetupTokenView');
+
+export const TwoFactorSetupConfirmViewSchema = z.object({
+    token: z.string().min(1).max(512).openapi({
+        description: 'The same enrolment token as `POST /auth/2fa/setup`.',
+        example: 'example-two-factor-token',
+    }),
+    code: z.string().min(1).max(32).openapi({
+        description: 'First six-digit code displayed by the authenticator application.',
+        example: '492039',
+    }),
+}).openapi('TwoFactorSetupConfirmView');
+
+export const TwoFactorEnrolmentResponse = z.object({
+    secret: z.string().openapi({ description: 'Base32 secret to type in the authenticator application.', example: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' }),
+    otpauth_uri: z.string().openapi({ description: '`otpauth://` URI to render as a QR code.', example: 'otpauth://totp/Mairie360:camille@mairie.fr?secret=JBSWY3DPEHPK3PXP&issuer=Mairie360' }),
+}).openapi('TwoFactorEnrolmentResponse');
+
+export const TwoFactorEnrolmentCompletedResponse = z.object({
+    message: z.string().openapi({ example: 'Logged in successfully' }),
+    backup_codes: z.array(z.string()).openapi({ description: 'The ten single-use backup codes, shown once: the front must make the agent keep them.', example: ['a1b2-c3d4', 'e5f6-a7b8'] }),
+}).openapi('TwoFactorEnrolmentCompletedResponse');
 
 // Same password policy as the admin routes (AdminUserCreateBody, AdminUserPasswordResetBody): the length rule of Core
-// API's CNIL 2022 policy (MAIR-757); Core also refuses common passwords and the account's e-mail or names, with a 400.
-/** Minimum password length of Core API's policy (MAIR-757, CNIL 2022). */
+// API's CNIL 2022 policy; Core also refuses common passwords and the account's e-mail or names, with a 400.
+/** Minimum password length of Core API's policy (CNIL 2022). */
 export const PASSWORD_MIN_LENGTH = 12;
 
 export const ForceChangePasswordViewSchema = z.object({
     new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({
-        description: 'New password of the user: 12 to 255 characters, not a commonly used password, not containing the account\'s e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).',
+        description: 'New password of the user: 12 to 255 characters, not a commonly used password, not containing the account\'s e-mail, first name or last name (Core API policy: 400 otherwise).',
         example: 'Riviere-Velo-Mairie-2026',
     }),
     token: z.string().min(1).openapi({
@@ -105,7 +194,7 @@ export const ResetPasswordViewSchema = z.object({
         example: '2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35',
     }),
     new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({
-        description: 'New password of the user: 12 to 255 characters, not a commonly used password, not containing the account\'s e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).',
+        description: 'New password of the user: 12 to 255 characters, not a commonly used password, not containing the account\'s e-mail, first name or last name (Core API policy: 400 otherwise).',
         example: 'Riviere-Velo-Mairie-2026',
     }),
     device_info: z.string().max(512).openapi({
@@ -146,10 +235,23 @@ export const AuthSessionResponse = z.object({
     }),
 }).openapi('AuthSessionResponse');
 
+export const PasskeyOfferSchema = z.object({
+    allowed: z.boolean().openapi({ description: 'The instance accepts passkeys (Core has a WebAuthn relying party and the policy allows them).', example: true }),
+    registered: z.boolean().openapi({ description: 'The account already has at least one passkey.', example: false }),
+}).openapi('PasskeyOffer');
+
+// Answer of the password sign-ins: the session goes to the cookies, the body only carries what the screen needs next.
+export const LoginSessionResponse = z.object({
+    message: z.string().openapi({ example: 'Logged in successfully' }),
+    passkey_offer: PasskeyOfferSchema.optional().openapi({
+        description: 'Only after a password sign-in on a Core that sends it: whether the Login screen proposes to create a passkey. Absent after a sign-in by passkey, and from an older Core.',
+    }),
+}).openapi('LoginSessionResponse');
+
 export const RefreshViewSchema = z.object({
     refresh_token: z.string().min(1).optional().openapi({
         description: 'Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.',
-        example: '8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE',
+        example: 'example-two-factor-token',
     }),
 }).openapi('RefreshView');
 
@@ -164,11 +266,6 @@ export const LogoutViewSchema = z.object({
         description: 'Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. The Core API session is revoked through it (POST /api/v1/auth/logout), with or without a valid JWT (MAIR-692); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.',
         example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
     }),
-    post_logout_redirect_uri: z.url().optional().openapi({
-        description: 'Where Keycloak sends the browser once the single sign-on session is closed. Must be one of '
-            + 'the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.',
-        example: 'https://login.mairie360.fr/',
-    }),
 }).openapi('LogoutView');
 
 export const LogoutResponse = z.object({
@@ -178,12 +275,6 @@ export const LogoutResponse = z.object({
     session_revoked: z.boolean().openapi({
         description: 'Whether the Core API session was revoked. `false` when no session was sent, or when Core API refused or failed the revocation; the cookie is cleared in every case.',
         example: true,
-    }),
-    logout_url: z.url().optional().openapi({
-        description: 'Keycloak end-session URL the browser must navigate to so the single sign-on session is closed '
-            + 'on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the '
-            + 'logout is then complete once the cookie is cleared.',
-        example: 'https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F',
     }),
 }).openapi('LogoutResponse');
 
@@ -195,7 +286,12 @@ export const UserIdParams = z.object({
 }).openapi('UserIdParams');
 
 registry.register('LoginView', LoginViewSchema);
-registry.register('KeycloakLoginView', KeycloakLoginViewSchema);
+registry.register('LoginTwoFactorView', LoginTwoFactorViewSchema);
+registry.register('PasskeyLoginView', PasskeyLoginViewSchema);
+registry.register('PasskeyRegisterView', PasskeyRegisterViewSchema);
+registry.register('PasskeySetupView', PasskeySetupViewSchema);
+registry.register('TwoFactorSetupTokenView', TwoFactorSetupTokenViewSchema);
+registry.register('TwoFactorSetupConfirmView', TwoFactorSetupConfirmViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
 registry.register('ForgotPasswordView', ForgotPasswordViewSchema);
 registry.register('ResetPasswordView', ResetPasswordViewSchema);

@@ -21,6 +21,7 @@ INSERT INTO users (id, first_name, last_name, email, password, status)
 VALUES
     (1, 'Security', 'Admin', 'security-admin@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (2, 'Perf', 'Tester', 'perf-tester@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
+    (3, 'Scan', 'Mayor', 'scan-mayor@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (10, 'Scan', 'Target', 'scan-target@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (11, 'Scan', 'Deleted', 'scan-deleted@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (42, 'Scan', 'Member', 'scan-member@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active')
@@ -71,3 +72,13 @@ ON CONFLICT (token_hash) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT max(id) FROM users));
 SELECT setval(pg_get_serial_sequence('roles', 'id'), (SELECT max(id) FROM roles));
 SELECT setval(pg_get_serial_sequence('groups', 'id'), (SELECT max(id) FROM groups));
+
+-- The mayor (user 3) holds the Maire role only: it may list the projects without a group, not the other /admin routes.
+INSERT INTO user_roles (user_id, role_id)
+SELECT 3, r.id FROM roles r WHERE r.name = 'Maire'
+ON CONFLICT DO NOTHING;
+
+-- A project with no group (as left by a group deleted in Core API), read by GET /admin/projects-without-group.
+INSERT INTO projects (id, title, description, owner_id)
+VALUES (900, 'Seeded project without a group', 'Listed by the administration groups tab', 1)
+ON CONFLICT (id) DO NOTHING;

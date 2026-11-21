@@ -11,7 +11,6 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | GET | `/health` | 200 OK |
 | GET | `/check_apis` | 200 CheckApiResponse |
 | POST | `/auth/login` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
-| POST | `/auth/keycloak` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |
 | POST | `/auth/force_change_password` | 204 Mot de passe changé avec succès |
 | POST | `/auth/forgot_password` | 200 (corps vide, identique pour un e-mail connu ou inconnu) |
 | POST | `/auth/reset_password` | 200 AuthSessionResponse (tokens in HttpOnly cookies only) |

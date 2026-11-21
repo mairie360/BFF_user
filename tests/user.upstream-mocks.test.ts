@@ -28,6 +28,9 @@ const CORE = {
   adminUserRole: '/api/v1/admin/users/{userId}/roles/{roleId}', adminRoles: '/api/v1/admin/roles/', adminRole: '/api/v1/admin/roles/{id}',
   groups: '/api/v1/groups/', group: '/api/v1/groups/{groupId}/',
   sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout', authLogout: '/api/v1/auth/logout',
+  passkeyOptions: '/api/v1/auth/passkey/options', passkey: '/api/v1/auth/passkey',
+  passkeySetupOptions: '/api/v1/auth/passkey/setup/options', passkeySetup: '/api/v1/auth/passkey/setup',
+  myPasskeyOptions: '/api/v1/user/me/passkeys/options/', myPasskeys: '/api/v1/user/me/passkeys/',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -168,6 +171,216 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.status).toBe(502);
       expectBffContract('post', '/auth/login', response);
       expect(response.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  describe('MAIR-810 passkey sign-in', () => {
+    const answer = {
+      id: 'example-two-factor-token',
+      credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { signature: 'MEUCIQ', userHandle: 'bWFpcmll' } },
+      device_info: 'Firefox',
+    };
+
+    test('relays the anonymous challenge', async () => {
+      coreApi.on('post', CORE.passkeyOptions, { body: { id: answer.id, options: { publicKey: { challenge: 'q1w2e3', rpId: 'mairie360-eip.fr', userVerification: 'required' } } } });
+
+      const response = await request(app).post('/auth/passkey/options').send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.id).toBe(answer.id);
+      expect(response.body.options.publicKey.userVerification).toBe('required');
+      expectBffContract('post', '/auth/passkey/options', response);
+      expect(coreApi.calls(CORE.passkeyOptions)[0].headers.authorization).toBeUndefined();
+    });
+
+    test('forwards the browser answer as is, anonymously, and only delivers the tokens in HttpOnly cookies', async () => {
+      coreApi.on('post', CORE.passkey, { body: loginResponse(), headers: { Authorization: 'Bearer core.jwt.token' } });
+
+      const response = await request(app).post('/auth/passkey').send({ ...answer, role: 'Admin' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Logged in successfully' });
+      expect(response.headers.authorization).toBeUndefined();
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly.*SameSite=Strict/);
+      expect(response.headers['set-cookie'][1]).toMatch(new RegExp(`^refreshToken=${loginResponse().refresh_token};.*Path=/auth;.*HttpOnly`));
+      const [call] = coreApi.calls(CORE.passkey);
+      expect(call.body).toEqual(answer);
+      expect(call.headers.authorization).toBeUndefined();
+      expectBffContract('post', '/auth/passkey', response);
+    });
+
+    test.each([401, 403, 429])('keeps the Core %i of the sign-in, with no cookie', async (status) => {
+      coreApi.on('post', CORE.passkey, coreError(status, 'refused'));
+
+      const response = await request(app).post('/auth/passkey').send(answer);
+
+      expect(response.status).toBe(status);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expectBffContract('post', '/auth/passkey', response);
+    });
+
+    test('answers 503 on both routes when Core has no WebAuthn configuration', async () => {
+      coreApi.on('post', CORE.passkeyOptions, coreError(503, 'Passkeys are not configured.'));
+      coreApi.on('post', CORE.passkey, coreError(503, 'Passkeys are not configured.'));
+
+      const options = await request(app).post('/auth/passkey/options').send({});
+      const login = await request(app).post('/auth/passkey').send(answer);
+
+      expect([options.status, login.status]).toEqual([503, 503]);
+      expect(JSON.stringify([options.body, login.body])).not.toContain('not configured.');
+    });
+
+    test('rejects a body without credential before calling Core API', async () => {
+      const response = await request(app).post('/auth/passkey').send({ id: answer.id, device_info: 'Firefox' });
+
+      expect(response.status).toBe(400);
+      expect(coreApi.requests).toHaveLength(0);
+    });
+  });
+
+  describe('MAIR-810 passkey creation relayed for the Login screen', () => {
+    const credential = { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { attestationObject: 'o2Nmb', clientDataJSON: 'eyJ0eXBl' } };
+    const creation = { publicKey: { challenge: 'q1w2e3', authenticatorSelection: { residentKey: 'required', userVerification: 'required' } } };
+    const stored = { id: 7, label: 'Google Password Manager', provider: 'Google Password Manager', created_at: '2026-11-19T09:12:00Z', last_used_at: null };
+    const SETUP_TOKEN = 'example-two-factor-token';
+
+    test('with the session: forwards the Bearer header to the challenge and answers its options only', async () => {
+      coreApi.on('post', CORE.myPasskeyOptions, { body: { options: creation } });
+
+      const response = await request(app).post('/user/me/passkeys/options').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ options: creation });
+      expect(coreApi.calls(CORE.myPasskeyOptions)[0].headers.authorization).toBe(`Bearer ${SESSION}`);
+      expectBffContract('post', '/user/me/passkeys/options', response);
+    });
+
+    test('with the session: a Core challenge without options is a 502, not an empty 200', async () => {
+      coreApi.on('post', CORE.myPasskeyOptions, { body: {} as never, outOfContract: true });
+
+      const response = await request(app).post('/user/me/passkeys/options').set('Authorization', `Bearer ${SESSION}`);
+
+      expect(response.status).toBe(502);
+    });
+
+    test('with the session: stores the passkey under its label and returns the manager name Core deduced', async () => {
+      coreApi.on('post', CORE.myPasskeys, { status: 201, body: { ...stored, secret: 'never relayed' } });
+
+      const response = await request(app).post('/user/me/passkeys').set('Authorization', `Bearer ${SESSION}`).send({ label: stored.label, credential, role: 'Admin' });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(stored);
+      const [call] = coreApi.calls(CORE.myPasskeys);
+      expect(call.body).toEqual({ label: stored.label, credential });
+      expect(call.headers.authorization).toBe(`Bearer ${SESSION}`);
+      expectBffContract('post', '/user/me/passkeys', response);
+    });
+
+    test('with the session: a manager Core does not know comes back as null', async () => {
+      coreApi.on('post', CORE.myPasskeys, { status: 201, body: { ...stored, provider: null } });
+
+      const response = await request(app).post('/user/me/passkeys').set('Authorization', `Bearer ${SESSION}`).send({ label: 'My key', credential });
+
+      expect(response.body.provider).toBeNull();
+      expectBffContract('post', '/user/me/passkeys', response);
+    });
+
+    test('without a session: 401 before Core API is called', async () => {
+      const options = await request(app).post('/user/me/passkeys/options');
+      const register = await request(app).post('/user/me/passkeys').send({ label: 'x', credential });
+
+      expect([options.status, register.status]).toEqual([401, 401]);
+      expect(coreApi.requests.filter((call) => call.path.includes('passkeys'))).toHaveLength(0);
+    });
+
+    test.each([400, 403, 409, 429])('with the session: keeps the Core %i of the creation', async (status) => {
+      coreApi.on('post', CORE.myPasskeys, coreError(status, 'refused'));
+
+      const response = await request(app).post('/user/me/passkeys').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x', credential });
+
+      expect(response.status).toBe(status);
+      expectBffContract('post', '/user/me/passkeys', response);
+    });
+
+    test('with the session: 503 on both routes when Core has no WebAuthn configuration', async () => {
+      coreApi.on('post', CORE.myPasskeyOptions, coreError(503, 'Passkeys are not configured.'));
+      coreApi.on('post', CORE.myPasskeys, coreError(503, 'Passkeys are not configured.'));
+
+      const options = await request(app).post('/user/me/passkeys/options').set('Authorization', `Bearer ${SESSION}`);
+      const register = await request(app).post('/user/me/passkeys').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x', credential });
+
+      expect([options.status, register.status]).toEqual([503, 503]);
+    });
+
+    test('with the session: rejects a label that is empty or too long before calling Core API', async () => {
+      for (const label of ['', 'x'.repeat(101)]) {
+        const response = await request(app).post('/user/me/passkeys').set('Authorization', `Bearer ${SESSION}`).send({ label, credential });
+        expect(response.status).toBe(400);
+      }
+      expect(coreApi.calls(CORE.myPasskeys)).toHaveLength(0);
+    });
+
+    test('with the enrolment token: relays the challenge anonymously, token included', async () => {
+      coreApi.on('post', CORE.passkeySetupOptions, { body: { options: creation } });
+
+      const response = await request(app).post('/auth/passkey/setup/options').send({ token: SETUP_TOKEN });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ options: creation });
+      const [call] = coreApi.calls(CORE.passkeySetupOptions);
+      expect(call.body).toEqual({ token: SETUP_TOKEN });
+      expect(call.headers.authorization).toBeUndefined();
+      expectBffContract('post', '/auth/passkey/setup/options', response);
+    });
+
+    test('with the enrolment token: the passkey opens the session in HttpOnly cookies, no backup codes', async () => {
+      coreApi.on('post', CORE.passkeySetup, { body: loginResponse(), headers: { Authorization: 'Bearer core.jwt.token' } });
+
+      const response = await request(app).post('/auth/passkey/setup').send({ token: SETUP_TOKEN, label: 'Windows Hello', credential });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Logged in successfully' });
+      expect(response.headers.authorization).toBeUndefined();
+      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=core\.jwt\.token;.*HttpOnly/);
+      const [call] = coreApi.calls(CORE.passkeySetup);
+      expect(call.body).toEqual({ token: SETUP_TOKEN, label: 'Windows Hello', credential });
+      expect(call.headers.authorization).toBeUndefined();
+      expectBffContract('post', '/auth/passkey/setup', response);
+    });
+
+    test.each([400, 401, 403, 409, 429])('with the enrolment token: keeps the Core %i, with no cookie', async (status) => {
+      coreApi.on('post', CORE.passkeySetup, coreError(status, 'refused'));
+      coreApi.on('post', CORE.passkeySetupOptions, coreError(status, 'refused'));
+
+      const setup = await request(app).post('/auth/passkey/setup').send({ token: SETUP_TOKEN, label: 'x', credential });
+      const options = await request(app).post('/auth/passkey/setup/options').send({ token: SETUP_TOKEN });
+
+      expect([setup.status, options.status]).toEqual([status, status]);
+      expect(setup.headers['set-cookie']).toBeUndefined();
+      expectBffContract('post', '/auth/passkey/setup', setup);
+      expectBffContract('post', '/auth/passkey/setup/options', options);
+    });
+
+    test('with the enrolment token: 503 without WebAuthn configuration, and a body without token never reaches Core API', async () => {
+      coreApi.on('post', CORE.passkeySetup, coreError(503, 'Passkeys are not configured.'));
+
+      const unavailable = await request(app).post('/auth/passkey/setup').send({ token: SETUP_TOKEN, label: 'x', credential });
+      const noToken = await request(app).post('/auth/passkey/setup').send({ label: 'x', credential });
+
+      expect([unavailable.status, noToken.status]).toEqual([503, 400]);
+      expect(coreApi.calls(CORE.passkeySetup)).toHaveLength(1);
+    });
+  });
+
+  describe('MAIR-810 passkey offer of the password login', () => {
+    test('the two booleans Core answers reach the Login screen, and the contract documents them', async () => {
+      coreApi.on('post', CORE.login, { body: { ...loginResponse(), passkey_offer: { allowed: true, registered: false } }, headers: { Authorization: 'Bearer core.jwt.token' } });
+
+      const response = await request(app).post('/auth/login').send({ email: 'alice@mairie.test', password: 'MotDePasse123', device_info: 'Firefox' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ message: 'Logged in successfully', passkey_offer: { allowed: true, registered: false } });
+      expectBffContract('post', '/auth/login', response);
     });
   });
 
@@ -459,11 +672,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
   });
 
   describe('POST /auth/logout', () => {
-    afterEach(() => {
-      delete process.env.KEYCLOAK_REALM_URL;
-      delete process.env.KEYCLOAK_CLIENT_ID;
-    });
-
     test('revokes the Core session from the JWT alone when no refresh token is sent', async () => {
       coreApi.on('post', CORE.sessionsLogout, { status: 204 });
 
@@ -546,26 +754,12 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
     });
 
-    test('adds the Keycloak end-session URL when the instance has Keycloak, still without calling Core API', async () => {
-      process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
-      process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
-
+    test('MAIR-812 answers no end-session URL: the logout only ends the Core session, without calling Core API when no session is sent', async () => {
       const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'https://login.mairie360.fr/' });
 
       expect(response.status).toBe(200);
       expectBffContract('post', '/auth/logout', response);
-      expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-      expect(response.body.session_revoked).toBe(false);
-      expect(response.body.logout_url).toBe('https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout'
-        + '?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F');
-      expect(coreApi.requests).toHaveLength(0);
-    });
-
-    test('rejects an invalid post_logout_redirect_uri', async () => {
-      const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'login' });
-
-      expect(response.status).toBe(400);
-      expectBffContract('post', '/auth/logout', response);
+      expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
       expect(coreApi.requests).toHaveLength(0);
     });
   });
@@ -967,64 +1161,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ error: { code: 'BAD_REQUEST', message: 'Validation failed', details: [{ path: `params.${name}`, message: expect.any(String) }] } });
       // The role is checked before the parameters, so nothing is revealed to an unauthorized caller.
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
-    });
-  });
-
-  describe('MAIR-609 POST /admin/keycloak/console-access', () => {
-    const CONSOLE = '/api/v1/admin/keycloak/console-access';
-    const LINK = { url: 'https://auth.dev.mairie360-eip.fr/admin-access?token=a.b.c', expires_in: 120 };
-    const call = (token = SESSION) => request(app).post('/admin/keycloak/console-access').set('Authorization', `Bearer ${token}`);
-
-    test('checks the admin role, forwards the session and relays only the link', async () => {
-      coreApi.on('post', CONSOLE, { body: { ...LINK, internal: 'dropped' } });
-
-      const response = await call();
-
-      expect(response.status).toBe(200);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(response.body).toEqual(LINK);
-      expect(response.headers['cache-control']).toContain('no-store');
-      expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl()), called('POST', coreApiUrls.getRequestKeycloakConsoleAccessUrl())]);
-      expect(coreApi.requests[1].headers.authorization).toBe(`Bearer ${SESSION}`);
-    });
-
-    test('is refused to a plain user without asking Core for a link', async () => {
-      coreApi.on('get', CORE.me, { body: meResponse({ role: 'User' }) });
-
-      const response = await call(sessionToken(7));
-
-      expect(response.status).toBe(403);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(coreApi.calls(CONSOLE)).toHaveLength(0);
-    });
-
-    test('relays the Core rate limit with its Retry-After', async () => {
-      coreApi.on('post', CONSOLE, { ...coreError(429, 'Too many requests'), headers: { 'Retry-After': '840' } });
-
-      const response = await call();
-
-      expect(response.status).toBe(429);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(response.headers['retry-after']).toBe('840');
-    });
-
-    test('keeps the 503 of an instance without console access, so the front can hide the button', async () => {
-      coreApi.on('post', CONSOLE, coreError(503, 'Keycloak console access is not configured on this instance.'));
-
-      const response = await call();
-
-      expect(response.status).toBe(503);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
-      expect(response.body.error.message).toBe('Keycloak console access is not configured');
-    });
-
-    test('answers 502 to a link outside the contract instead of relaying it', async () => {
-      coreApi.on('post', CONSOLE, { body: { url: 'not a url', expires_in: 120 }, outOfContract: true });
-
-      const response = await call();
-
-      expect(response.status).toBe(502);
-      expectBffContract('post', '/admin/keycloak/console-access', response);
     });
   });
 

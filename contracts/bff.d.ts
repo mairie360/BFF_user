@@ -117,7 +117,16 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AuthSessionResponse"];
+                        "application/json": components["schemas"]["LoginSessionResponse"];
+                    };
+                };
+                /** @description No session is open. `2fa_required`: the account is protected by a second factor, send the `token` with a code to `POST /auth/login/2fa` within five minutes. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, enrol through `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorRequiredResponse"];
                     };
                 };
                 /** @description Invalid data */
@@ -428,6 +437,15 @@ export interface paths {
                         "application/json": components["schemas"]["AuthSessionResponse"];
                     };
                 };
+                /** @description Password reset, but no session is open (the mailbox is not a second factor): `2fa_required` sends the `token` with a code to `POST /auth/login/2fa`, `2fa_setup_required` (mandatory policy, MAIR-808) to `POST /auth/2fa/setup`. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorRequiredResponse"];
+                    };
+                };
                 /** @description Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character) */
                 400: {
                     headers: {
@@ -604,7 +622,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user out
-         * @description Revokes the caller's Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT's session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
+         * @description Revokes the caller's Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT's session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails.
          */
         post: {
             parameters: {
@@ -619,7 +637,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Cookie cleared; navigate to `logout_url` when present to close the Keycloak session. */
+                /** @description Cookie cleared. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -628,7 +646,7 @@ export interface paths {
                         "application/json": components["schemas"]["LogoutResponse"];
                     };
                 };
-                /** @description Invalid payload (`post_logout_redirect_uri` is not a URL) */
+                /** @description Invalid payload (`refresh_token` is empty) */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -654,7 +672,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/keycloak": {
+    "/auth/login/2fa": {
         parameters: {
             query?: never;
             header?: never;
@@ -664,8 +682,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Signs a user in with Keycloak
-         * @description Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.
+         * Completes the sign-in of a protected account (second factor)
+         * @description Second step of `POST /auth/login` (or `POST /auth/reset_password`) when they answered `202` `2fa_required`: forwards the login token and the code (TOTP or backup code) to Core API. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The token is single use and burnt after five wrong codes: restart from the password.
          */
         post: {
             parameters: {
@@ -676,7 +694,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["KeycloakLoginView"];
+                    "application/json": components["schemas"]["LoginTwoFactorView"];
                 };
             };
             responses: {
@@ -688,10 +706,10 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AuthSessionResponse"];
+                        "application/json": components["schemas"]["LoginSessionResponse"];
                     };
                 };
-                /** @description Invalid payload */
+                /** @description Invalid data */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -700,7 +718,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak. */
+                /** @description Unknown, expired or burnt login token, or wrong or replayed code. A backup code that was already spent is told apart: two refusals are told apart by `error.details`: `body.code` (message `Backup code already used.`: it still counts as a failed attempt and five burn the token, so the agent can type another backup code only while the login token is still valid; the fifth failed attempt, or an expired token, answers `body.token` instead) and `body.token` (message `Invalid or expired login token.`: the login session is over, restart from the password). A wrong code has no detail. */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -709,18 +727,11 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account. */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
                 429: {
                     headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -736,7 +747,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Core API or Keycloak unavailable, or invalid upstream response */
+                /** @description Core API unavailable or invalid upstream answer */
                 502: {
                     headers: {
                         [name: string]: unknown;
@@ -745,7 +756,657 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set. */
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey sign-in: gets the challenge
+         * @description Starts a discoverable passkey sign-in on Core API: the browser offers the passkeys it holds for the site, so nobody types an e-mail. Returns the WebAuthn options and the `id` of the ceremony (single use, two minutes), to send back with the browser answer to `POST /auth/passkey`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Challenge created. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyLoginOptionsResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front falls back to the password. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey sign-in: sends the browser answer
+         * @description Forwards the signed challenge to Core API, which identifies the account by the passkey and verifies it. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey is a complete sign-in: no second factor is asked, a mandatory policy is satisfied. Every refusal is the same `401`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyLoginView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The passkey is refused: unknown, expired or replayed challenge, unknown passkey, bad signature, cloned passkey, archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/setup/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment by passkey: gets the challenge
+         * @description For an agent who got `202` `2fa_setup_required` (no session yet) and whom the policy lets enrol with a passkey: forwards the enrolment token to Core API, which answers the WebAuthn creation options (discoverable credential and user verification required, any password manager accepted). The token stays valid (five minutes) until the passkey is created. Same refusals as `POST /auth/passkey/setup`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupTokenView"];
+                };
+            };
+            responses: {
+                /** @description Challenge created. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyRegisterOptionsResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired, spent or burnt enrolment token, or archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account already has an active second factor: the token is of no use. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), the front offers the authenticator application only. When CORE_API_URL is not set Core is out of reach and the authenticator application is unavailable too. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment by passkey: sends the browser answer
+         * @description Forwards the enrolment token, the label and the browser answer to Core API, which stores the passkey, spends the token and opens the session like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey satisfies the mandatory policy by itself: no backup codes are issued. A refused answer counts like a wrong code and the token is burnt at the fifth.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeySetupView"];
+                };
+            };
+            responses: {
+                /** @description Passkey created and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid data, or an answer Core refuses (the same token can try again until it is burnt). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired, spent or burnt enrolment token, or archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account already has an active second factor, or this credential is already registered. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/2fa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment: starts the registration of the authenticator application
+         * @description When the instance makes the second factor mandatory, `POST /auth/login` (or `/auth/reset_password`) answers `202` `2fa_setup_required` for an account without a usable factor. Forwards that token to Core API, which answers the secret and the `otpauth://` URI to register in the authenticator application. No session exists yet: finish with `POST /auth/2fa/confirm`. Calling it again replaces the pending secret.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupTokenView"];
+                };
+            };
+            responses: {
+                /** @description Secret to register. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorEnrolmentResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account got a second factor meanwhile: sign in normally. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment: confirms with a first code and signs in
+         * @description Forwards the enrolment token and the first code of the authenticator application to Core API, which activates the second factor and opens the session, delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The ten single-use backup codes are in the body, once: the front must make the agent keep them. The token is single use and burnt after five wrong codes: restart from the password.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupConfirmView"];
+                };
+            };
+            responses: {
+                /** @description Enrolled and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorEnrolmentCompletedResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password). */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description `POST /auth/2fa/setup` was not called with this token. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -849,6 +1510,308 @@ export interface paths {
                     };
                 };
                 /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey creation by a signed-in agent: gets the challenge
+         * @description Forwards the caller's `Authorization: Bearer` header to Core API `POST /api/v1/user/me/passkeys/options/`, which answers the WebAuthn creation options (discoverable credential and user verification required, no `authenticatorAttachment`, passkeys already registered excluded). Used by the Login screen right after the password sign-in (`passkey_offer.allowed`). The management of the list (rename, delete) is Settings'.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Challenge created. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyRegisterOptionsResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many attempts (Core API rate limit); retry after the `Retry-After` delay. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey creation by a signed-in agent: sends the browser answer
+         * @description Forwards the label and the browser answer to Core API `POST /api/v1/user/me/passkeys/`, with the caller's session. Core stores the passkey and sends the agent a security e-mail. The answer carries the `provider` (name of the passkey manager deduced by Core, `null` when unknown) the front offers as the name of the passkey.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyRegisterView"];
+                };
+            };
+            responses: {
+                /** @description Passkey registered. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyResponse"];
+                    };
+                };
+                /** @description Invalid data, or a browser answer Core refuses (challenge replayed, wrong origin, user verification missing). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description This credential is already registered. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many attempts (Core API rate limit); retry after the `Retry-After` delay. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects-without-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the projects without a group through BFF_Project */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The projects without a group */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationProjectsWithoutGroup"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API or BFF_Project unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1511,6 +2474,144 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/admin/users/{userId}/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Reset the second factor of a user
+         * @description Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/admin/users/{userId}/roles": {
@@ -3818,20 +4919,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/keycloak/console-access": {
+    "/admin/two-factor-policy": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Opens the Keycloak admin console for a short time (MAIR-609)
-         * @description Core POST /api/v1/admin/keycloak/console-access: returns a single-use link, valid 2 minutes, to open in a new tab. On the Keycloak host it sets a 30-minute console cookie bound to `/admin` and redirects to the realm admin console; Keycloak then asks for a realm account holding the `realm-management` roles. The console closes as soon as the administrator loses the Admin role or is archived. Never cache the answer.
+         * Reads the second-factor policy of the instance (MAIR-808)
+         * @description Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.
          */
-        post: {
+        get: {
             parameters: {
                 query?: never;
                 header?: never;
@@ -3840,13 +4939,38 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Single-use console link */
+                /** @description The policy */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["KeycloakConsoleAccess"];
+                        "application/json": components["schemas"]["TwoFactorPolicy"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
                 /** @description Not authenticated */
@@ -3867,11 +4991,18 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description At most 10 links per administrator every 15 minutes: retry after the Retry-After header (seconds) */
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
                 429: {
                     headers: {
-                        /** @description Seconds to wait */
-                        "Retry-After"?: number;
                         [name: string]: unknown;
                     };
                     content: {
@@ -3896,7 +5027,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Console access is not configured on this instance (no Keycloak realm URL or no Core signing key), or CORE_API_URL / the session key of the BFF is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3907,6 +5038,123 @@ export interface paths {
                 };
             };
         };
+        /**
+         * Changes the second-factor policy of the instance (MAIR-808)
+         * @description Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorPolicyUpdate"];
+                };
+            };
+            responses: {
+                /** @description The policy as saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorPolicy"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4090,37 +5338,118 @@ export interface components {
              */
             device_info: string;
         };
-        KeycloakLoginView: {
+        LoginTwoFactorView: {
             /**
-             * @description Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).
-             * @example 7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83
+             * @description Login token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description Six-digit code of the authenticator application, or a backup code (`xxxx-xxxx`).
+             * @example 492039
              */
             code: string;
+        };
+        PasskeyLoginView: {
             /**
-             * Format: uri
-             * @description Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.
-             * @example https://login.mairie360.fr/auth/callback
+             * @description The `id` returned by `POST /auth/passkey/options`.
+             * @example example-two-factor-token
              */
-            redirect_uri: string;
+            id: string;
             /**
-             * @description PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.
-             * @example dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.get`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "authenticatorData": "SZYN5Y",
+             *         "clientDataJSON": "eyJ0eXBl",
+             *         "signature": "MEUCIQ",
+             *         "userHandle": "bWFpcmll"
+             *       }
+             *     }
              */
-            code_verifier?: string | null;
+            credential: {
+                [key: string]: unknown;
+            };
             /**
-             * @description Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.
-             * @example n-0S6_WzA2Mj
-             */
-            nonce?: string | null;
-            /**
-             * @description Description of the device, stored on the session (empty string accepted, like the password login).
-             * @example Firefox 142 on Ubuntu 24.04
+             * @description Device used to sign in (an empty string is accepted, as for the password login).
+             * @example Firefox
              */
             device_info: string;
         };
+        PasskeyRegisterView: {
+            /**
+             * @description Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.
+             * @example Google Password Manager
+             */
+            label: string;
+            /**
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "attestationObject": "o2NmbXRkbm9uZQ",
+             *         "clientDataJSON": "eyJ0eXBl"
+             *       }
+             *     }
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeySetupView: {
+            /**
+             * @description Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.
+             * @example Google Password Manager
+             */
+            label: string;
+            /**
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "attestationObject": "o2NmbXRkbm9uZQ",
+             *         "clientDataJSON": "eyJ0eXBl"
+             *       }
+             *     }
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        TwoFactorSetupTokenView: {
+            /**
+             * @description Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+        };
+        TwoFactorSetupConfirmView: {
+            /**
+             * @description The same enrolment token as `POST /auth/2fa/setup`.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description First six-digit code displayed by the authenticator application.
+             * @example 492039
+             */
+            code: string;
+        };
         ForceChangePasswordView: {
             /**
-             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy: 400 otherwise).
              * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
@@ -4145,7 +5474,7 @@ export interface components {
              */
             token: string;
             /**
-             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy, MAIR-757: 400 otherwise).
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy: 400 otherwise).
              * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
@@ -4190,7 +5519,7 @@ export interface components {
         RefreshView: {
             /**
              * @description Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.
-             * @example 8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE
+             * @example example-two-factor-token
              */
             refresh_token?: string;
         };
@@ -4204,12 +5533,6 @@ export interface components {
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             refresh_token?: string;
-            /**
-             * Format: uri
-             * @description Where Keycloak sends the browser once the single sign-on session is closed. Must be one of the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.
-             * @example https://login.mairie360.fr/
-             */
-            post_logout_redirect_uri?: string;
         };
         LogoutResponse: {
             /** @example Logged out successfully */
@@ -4219,12 +5542,6 @@ export interface components {
              * @example true
              */
             session_revoked: boolean;
-            /**
-             * Format: uri
-             * @description Keycloak end-session URL the browser must navigate to so the single sign-on session is closed on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the logout is then complete once the cookie is cleared.
-             * @example https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F
-             */
-            logout_url?: string;
         };
         UserIdParams: {
             /**
@@ -4244,19 +5561,6 @@ export interface components {
             name: string;
             description: string;
             can_be_deleted?: boolean | null;
-        };
-        KeycloakConsoleAccess: {
-            /**
-             * Format: uri
-             * @description Single-use link to open in a new tab, on the Keycloak host: it sets the 30-minute console cookie and redirects to the realm admin console.
-             * @example https://auth.dev.mairie360-eip.fr/admin-access?token=<link token>
-             */
-            url: string;
-            /**
-             * @description Seconds before the link expires (120).
-             * @example 120
-             */
-            expires_in: number;
         };
         AdministrationUser: {
             id: number;
@@ -4302,6 +5606,67 @@ export interface components {
             created_at: string;
             expires_at: string;
             revoked_at: string | null;
+        };
+        TwoFactorPolicy: {
+            /**
+             * @description Every agent must hold a second factor: an agent without one enrols at its next sign-in, before any session opens.
+             * @example true
+             */
+            required: boolean;
+            /**
+             * @description Authenticator application (TOTP) accepted.
+             * @example true
+             */
+            totp_allowed: boolean;
+            /**
+             * @description Passkeys accepted. A PUT with true answers 400 while the instance has no WebAuthn configuration (MAIR-810).
+             * @example false
+             */
+            passkey_allowed: boolean;
+            /**
+             * @description Backup codes accepted at the second step.
+             * @example true
+             */
+            backup_codes_allowed: boolean;
+            /**
+             * @description Id of the administrator who last changed the policy, null for the initial one.
+             * @example 1
+             */
+            updated_by: number | null;
+            /**
+             * @description ISO 8601 date of the last change.
+             * @example 2026-11-17T09:30:00Z
+             */
+            updated_at: string;
+        };
+        TwoFactorPolicyUpdate: {
+            /** @example true */
+            required: boolean;
+            /** @example true */
+            totp_allowed: boolean;
+            /** @example false */
+            passkey_allowed: boolean;
+            /** @example true */
+            backup_codes_allowed: boolean;
+        };
+        AdministrationProjectWithoutGroup: {
+            /**
+             * @description Id of the project in BFF_Project
+             * @example project-9
+             */
+            id: string;
+            /** @example LED street lighting */
+            title: string;
+            /**
+             * @description Creation date (ISO 8601), `null` when unknown
+             * @example 2026-03-03T09:12:00+00:00
+             */
+            createdAt: string | null;
+        };
+        AdministrationProjectsWithoutGroup: {
+            total: number;
+            /** @description Newest first; empty when every project has a group */
+            projects: components["schemas"]["AdministrationProjectWithoutGroup"][];
         };
         AdminUserIdParams: {
             userId: number;
@@ -4437,6 +5802,153 @@ export interface components {
                 id?: number;
                 name: string;
             })[];
+        };
+        LoginSessionResponse: {
+            /** @example Logged in successfully */
+            message: string;
+            passkey_offer?: components["schemas"]["PasskeyOffer"];
+        };
+        /** @description Only after a password sign-in on a Core that sends it: whether the Login screen proposes to create a passkey. Absent after a sign-in by passkey, and from an older Core. */
+        PasskeyOffer: {
+            /**
+             * @description The instance accepts passkeys (Core has a WebAuthn relying party and the policy allows them).
+             * @example true
+             */
+            allowed: boolean;
+            /**
+             * @description The account already has at least one passkey.
+             * @example false
+             */
+            registered: boolean;
+        };
+        TwoFactorRequiredResponse: {
+            /**
+             * @description `2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases.
+             * @enum {string}
+             */
+            status: "2fa_required" | "2fa_setup_required";
+            /**
+             * @description Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /** @description Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it. */
+            policy?: {
+                /**
+                 * @description The authenticator application is an accepted mode.
+                 * @example true
+                 */
+                totp_allowed: boolean;
+                /**
+                 * @description Passkeys are an accepted mode.
+                 * @example false
+                 */
+                passkey_allowed: boolean;
+                /**
+                 * @description Backup codes are accepted at login: when `false`, none must be shown.
+                 * @example true
+                 */
+                backup_codes_allowed: boolean;
+            };
+        };
+        PasskeyLoginOptionsResponse: {
+            /**
+             * @description Identifier of the ceremony: send it back, with the browser answer, to `POST /auth/passkey`. Single use, valid two minutes.
+             * @example example-two-factor-token
+             */
+            id: string;
+            /**
+             * @description WebAuthn `PublicKeyCredentialRequestOptions` for `navigator.credentials.get` (discoverable: no account is named, user verification required).
+             * @example {
+             *       "publicKey": {
+             *         "challenge": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c",
+             *         "rpId": "mairie360-eip.fr",
+             *         "userVerification": "required"
+             *       },
+             *       "mediation": "conditional"
+             *     }
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeyRegisterOptionsResponse: {
+            /**
+             * @description WebAuthn `PublicKeyCredentialCreationOptions` for `navigator.credentials.create` (discoverable credential and user verification required, no `authenticatorAttachment`: every password manager is accepted).
+             * @example {
+             *       "publicKey": {
+             *         "challenge": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c",
+             *         "rp": {
+             *           "id": "mairie360-eip.fr",
+             *           "name": "Mairie 360"
+             *         },
+             *         "user": {
+             *           "id": "bWFpcmll",
+             *           "name": "camille@mairie360.test",
+             *           "displayName": "Camille Trois"
+             *         },
+             *         "pubKeyCredParams": [
+             *           {
+             *             "type": "public-key",
+             *             "alg": -7
+             *           },
+             *           {
+             *             "type": "public-key",
+             *             "alg": -257
+             *           }
+             *         ],
+             *         "authenticatorSelection": {
+             *           "residentKey": "required",
+             *           "userVerification": "required"
+             *         }
+             *       }
+             *     }
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        TwoFactorEnrolmentResponse: {
+            /**
+             * @description Base32 secret to type in the authenticator application.
+             * @example JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+             */
+            secret: string;
+            /**
+             * @description `otpauth://` URI to render as a QR code.
+             * @example otpauth://totp/Mairie360:camille@mairie.fr?secret=JBSWY3DPEHPK3PXP&issuer=Mairie360
+             */
+            otpauth_uri: string;
+        };
+        TwoFactorEnrolmentCompletedResponse: {
+            /** @example Logged in successfully */
+            message: string;
+            /**
+             * @description The ten single-use backup codes, shown once: the front must make the agent keep them.
+             * @example [
+             *       "a1b2-c3d4",
+             *       "e5f6-a7b8"
+             *     ]
+             */
+            backup_codes: string[];
+        };
+        PasskeyResponse: {
+            /** @example 7 */
+            id: number;
+            /** @example Google Password Manager */
+            label: string;
+            /**
+             * @description Name of the passkey manager deduced by Core from the authenticator (iCloud Keychain, Google Password Manager, ...); `null` when unknown: the agent types a name.
+             * @example Google Password Manager
+             */
+            provider: string | null;
+            /** @example 2026-11-19T09:12:00Z */
+            created_at: string;
+            /**
+             * @description `null` until the passkey signs in.
+             * @example null
+             */
+            last_used_at: string | null;
         };
     };
     responses: never;

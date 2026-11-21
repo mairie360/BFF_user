@@ -67,6 +67,11 @@ consume. There is **no fallback bearer**: routes forward only the caller's sessi
 is exempt from its JWT middleware, so login/force_change_password go anonymous; `/api/v1/sessions/refresh` is also served outside it). There is no public
 self-registration: accounts are created by administrators through `/admin/users`.
 
+One exception: `GET /admin/projects-without-group` (groups tab of the administration) reads BFF_Project through
+`src/clients/projectBffClient.ts` (`@mairie360/bff-project-openapi`, `PROJECT_BFF_URL` + optional `PROJECT_BFF_PORT`,
+read per call, 503 when missing, not required at startup). It forwards the caller's session after `requireAdmin`; the
+test stacks run `project-api` and `bff-project` images for it.
+
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
 `PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,
@@ -110,11 +115,37 @@ and the legacy `/me` resolve.
   cookies (`src/utils/cookieUtils.ts`): `accessToken` (path `/`) and `refreshToken` (path `/auth`).
   No token goes to the response body or a response header (MAIR-397); the body is
   `{ message }`. Login bodies are validated with Zod (unknown fields stripped) before reaching Core.
-  `/auth/force_change_password` requires a 12-255 character password, like the admin routes and `/auth/reset_password` (Core API's CNIL 2022 policy, MAIR-757: Core also refuses common passwords and the account's e-mail or names with a `400`).
+  `/auth/force_change_password` requires a 12-255 character password, like the admin routes and `/auth/reset_password` (Core API's CNIL 2022 policy: Core also refuses common passwords and the account's e-mail or names with a `400`).
 - **`/auth/forgot_password`** / **`/auth/reset_password`** (MAIR-527, public): forgot forwards `{ email }` to Core
   and answers the same empty 200 for a known or unknown address (Core 400 / 429 kept); reset forwards
   `{ token (UUID), new_password, device_info }` and opens the session with `sendSession` like login (Core 400 / 401
   / 429 kept, 401 = token unknown, expired or already used). Both behind the `perIp` limiter.
+- **Second factor** (MAIR-805, MAIR-808): Core answers `202` `{ status, token }` to `/auth/login` and `/auth/reset_password`
+  when no session may open yet; `sendLoginOutcome` relays it as is (no cookie). `status: "2fa_required"` → `POST /auth/login/2fa`
+  `{ token, code }` (TOTP or backup code) opens the session like login (cookies only). `status: "2fa_setup_required"` (the
+  administrator made the factor mandatory and the agent has none) → public `POST /auth/2fa/setup { token }` (`{ secret,
+  otpauth_uri }`) then `POST /auth/2fa/confirm { token, code }`, which sets the cookies and returns the ten backup codes **once**
+  in the body (`{ message, backup_codes }`). Core's 503 (no `TOTP_ENCRYPTION_KEY`) is kept. `GET` / `PUT /admin/two-factor-policy`
+  (`requireAdmin`) relay the instance policy; `DELETE /admin/users/{id}/2fa` the administrator reset. The agent's own `/user/me/2fa`
+  routes are `BFF_Settings`'. The newman journey `Two-factor policy (MAIR-808)` makes the policy mandatory for a few requests only:
+  a mandatory policy answers every login of the instance `202`.
+- **Passkey sign-in** (MAIR-810): public `POST /auth/passkey/options` (relays Core's discoverable challenge `{ id, options }`) then
+  `POST /auth/passkey { id, credential, device_info }`, which forwards the browser answer as is and opens the session like
+  `/auth/login` (cookies only). A passkey is a complete sign-in: no `202`, no second step. Core's 403 (policy does not allow passkeys),
+  429 and every 401 are kept, its 503 (no WebAuthn relying party) too so the front can fall back to the password. Managing the
+  passkeys of the account is `BFF_Settings`'. The Login screen also creates a passkey through this BFF (answers `{ options }`, then
+  the registration): `POST /user/me/passkeys/options` and `POST /user/me/passkeys { label, credential }` with the session of the agent
+  (`201` with `provider`, the name of the passkey manager Core deduced, `null` when unknown: the front offers it as the name), and, for
+  the mandatory enrolment of an agent that has no session yet, the public `POST /auth/passkey/setup/options { token }` and
+  `POST /auth/passkey/setup { token, label, credential }` (the passkey satisfies the policy and the session opens in cookies like a
+  login, no backup codes). Same refusals as the sign-in (403 policy, 409 already protected or credential already registered, 429, 503
+  kept), `src/routes/passkey_errors.ts` keeps the 503. `POST /auth/login` and `/auth/login/2fa` answer `passkey_offer { allowed,
+  registered }` next to `message` when Core sends it (Login decides whether to propose a passkey); it is never on a passkey sign-in.
+  The newman journey `Passkeys (MAIR-810)` cannot sign (no authenticator in the
+  sandbox): it replays the challenge, the refusals and the policy gate, and needs `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` on Core.
+  `tests/e2e/passkey-journey.mjs` (service `passkey-journey` of the integration compose, profile `journey`, run by
+  `integration_test.sh` once newman passed) signs with a software authenticator (node:crypto): creation with the session and
+  with the enrolment token, passkey sign-in, replayed challenge and cloned counter refused, deletion.
 - **`/auth/refresh`** (public) exchanges the login `refresh_token` for a new JWT through Core's
   `POST /api/v1/sessions/refresh`, which Core ≥ 1.2.0 serves outside its JWT middleware: no session
   is forwarded, so an expired JWT can be renewed. The refresh token comes from the body, else the
@@ -146,24 +177,13 @@ and the legacy `/me` resolve.
   Core rate-limits per client address and reads it from that `X-Forwarded-For`; with `withoutSession` every request
   counted on the BFF pod and 10 forgot-password requests locked recovery for the whole instance. The integration stack
   runs with the rate limits on (BFF `TRUST_PROXY=uniquelocal`, Core default) for the MAIR-679 journey.
-- **`/auth/keycloak`**: Keycloak SSO. Forwards the OIDC authorization code to Core's public
-  `POST /api/v1/auth/keycloak` and sets the session exactly like `/auth/login`; Core's 503
-  (Keycloak not configured) is kept so the front can fall back to password login. `coreClient.ts` still calls it by hand
-  (`keycloakLogin`), although `@mairie360/core-api-openapi` 2.0.0 ships it: switching to the generated
-  function (and adding it to `upstream-contracts.test.ts`) is left for later.
-- **`/auth/logout`** single logout (MAIR-143):
-  when `KEYCLOAK_REALM_URL` + `KEYCLOAK_CLIENT_ID` are set (`src/config/keycloak.ts`, read on every
-  call), the response adds `logout_url`, the realm's OIDC end-session URL
-  (`/protocol/openid-connect/logout?client_id=…&post_logout_redirect_uri=…`) that the front must
-  navigate to so Keycloak closes the SSO session and, via front/back-channel logout, the other
-  tools (n8n). Core keeps no Keycloak token, hence `client_id` instead of `id_token_hint` (Keycloak
-  shows a confirmation page). The redirect comes from the optional body
-  `post_logout_redirect_uri`, else `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`; Keycloak only accepts it
-  if the client lists it. Without Keycloak the response is unchanged (no `logout_url`).
+- **No Keycloak any more** (MAIR-812): Core is the only account system. `POST /auth/keycloak`, `POST /admin/keycloak/console-access`
+  and the `logout_url` of `/auth/logout` (and its `post_logout_redirect_uri` body field) are gone; `/auth/logout` only answers
+  `{ message, session_revoked }`.
 - **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* with the lib's `verifySessionToken` — EdDSA signature against Core's public key `JWT_PUBLIC_KEY` (MAIR-680:
   `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 only while `JWT_SECRET` is set), `exp`, `sub` — then reads the roles from Core
-  `GET /api/v1/user/me/` and requires `admin` among `roles` (Core ≥ 2.0.0; `role` is only the first one). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
+  `GET /api/v1/user/me/` and requires an administrator among `roles` (Core ≥ 2.0.0; `role` is only the first one), recognised with the lib's `isAdminRole` (`Admin`, `Administrateur`, `ROLE_ADMIN`, … a custom role never is). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
 - **Everything else** (MAIR-429): the only accepted credential is the `Authorization: Bearer <jwt>`
@@ -200,7 +220,7 @@ for the call options, and `callUpstream('CORE_API', call, { declared, retry })` 
 error, declared)`: only the Core 4xx the route declares are kept (generic message), any other status, a network
 failure (`The CORE_API service is unavailable.`) or any other failure of the call -> 502, the Core body is never
 relayed. `retry: true` (one retry on no answer / 502 / 503 / 504) is only set on Core GETs. Declared per route: login `[400, 401]` (+ the 412 first sign-in, relayed as
-`{ token }` only, not an error), keycloak `[400, 401, 403]` (+ 503 kept), force_change_password
+`{ token }` only, not an error), force_change_password
 `[400, 401, 403]`, forgot_password `[400, 429]`, reset_password `[400, 401, 429]`, refresh `[400, 401]`, `/me` `[401]`, `/user/{id}/about` `[401, 404]`, admin reads
 `READ_STATUSES`, admin writes `WRITE_STATUSES` (+ 409). Unit tests mounting one router on a bare app
 must add `errorHandler()` after it. The rate limiters answer 429 in the same envelope.
@@ -220,10 +240,7 @@ transition `JWT_SECRET` alone also passes the startup check; Core alone
 signs the session tokens), `JWT_SECRET` (HS256 transition only: while it is set, HS256 tokens signed with it are still
 accepted; remove it once `JWT_PUBLIC_KEY` is deployed), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
-`AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`). Keycloak single logout (all optional, unset = no
-`logout_url`): `KEYCLOAK_REALM_URL` (public realm URL as the browser reaches it, e.g.
-`https://auth.<domain>/realms/mairie360`, not Core's in-cluster one), `KEYCLOAK_CLIENT_ID` (the
-fronts' OIDC client, same as Core's), `KEYCLOAK_POST_LOGOUT_REDIRECT_URI`.
+`AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`).
 
 ## Docker
 
@@ -268,7 +285,7 @@ The collection is split in two kinds of checks, both on the BFF's own routes:
 
 - **working checks** (folders `Service`, `Session resolution`): the BFF starts, `/health`, `/check_apis`,
   `/openapi.json`, a JSON 404, the session is resolved against Core API (401 without a Bearer, the seeded
-  Admin `sub=1` and agent `sub=2` through `/me` and `/session/me`), Keycloak answers its documented 503;
+  Admin `sub=1` and agent `sub=2` through `/me` and `/session/me`);
 - **business journeys** the fronts rely on (the account lifecycle): creation through `POST /admin/users`
   (MAIR-225, 403 for a plain user, 409 on a duplicate), first sign-in (412 + one-time token,
   `force_change_password`, token single use), sign-in with cookies only (MAIR-397) and the `accessToken`
@@ -308,10 +325,13 @@ the pinned `cicd_version` (`CICD_VERSION=<branch>` overrides it). ZAP runs its `
 non-401/403 answer. The spec declares `bearerAuth` (the only accepted credential) at the top level (`openapi.ts`);
 public routes (`/health`, `/check_apis`, `/auth/*`) set `security: []` in `registerPath`.
 `load-test.js` builds on `coverage.js` with **one handler per operation** of
-`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Three scenarios: `crud`
+`contracts/openapi.json`: a new route without a handler makes k6 abort at init. Four scenarios: `crud`
 runs every handler through `coverage.run()` and carries the gate; `reads` replays the GET handlers only,
 so GET handlers must read seeded fixtures, never `state`; `me_rush` sends `GET /me` at a fixed arrival
-rate. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
+rate; `policy` (MAIR-808, MAIR-810) runs once, alone, after the others, the operations that need a mandatory policy
+(every login answers 202 meanwhile) or allowed passkeys: the policy, the enrolment, the second step and the passkey sign-in
+(`policyCoverage`, `isPolicy` in `load-test.js`; they restore the optional policy, and k6 can only send a forged passkey
+answer, refused with the single 401). The perf stack's Core gets `TOTP_ENCRYPTION_KEY` and the WebAuthn relying party. Every operation gets a `p(95)` threshold from its family (`budgetOf`). MAIR-474: the perf stack's
 seeder also runs `init-perf.sql` (10 000 agents `500001`-`510000`, 2 000 groups `50000`-`51999` of 20
 members, the Admin in 300 of them, sessions); the session reads run as a random seeded agent (token
 signed by `performance_test.sh` into the token file mounted at `/tokens.json`), the admin listings read random pages (every page of the 10 000 agents, or an e-mail search), and every read checks that it got the seeded rows.
@@ -326,12 +346,11 @@ working Core. Every `*_test.sh` sources `stack_secrets.sh` (MAIR-474, MAIR-680):
 anywhere), `ADMIN_JWT` (`sub=1`, 4 h, EdDSA like Core) for the ZAP replacer and k6, and `sign_jwt` / `sign_jwt_file`
 (node, for the thousands of k6 tokens: k6 cannot sign Ed25519) for the other callers; the compose files refuse to
 start without them, and no key or token is committed. The core-api image of the stacks must be one that signs EdDSA
-(`dev-690f32b` or later, MAIR-609 console access). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
+(`dev-690f32b` or later). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
 shell provides the key pair (`source ./stack_secrets.sh` before `docker compose up`). They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
 the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
-ignores `100000`: a 500 / 502 answered during the scan fails it. Its only scope-out is `/auth/keycloak`, whose
-documented 503 (Keycloak not configured, the stack has no realm) is the expected answer there. In `crud`, handlers run path by
+ignores `100000`: a 500 / 502 answered during the scan fails it. In `crud`, handlers run path by
 path in contract order and, per path, get → put → post → delete → patch, so DELETE handlers work on
 a disposable resource and `cleanup()` removes the kept ones. Core API quirks the handlers rely on:
 admin-created and self-registered users answer 412 + one-time token on first login, refresh tokens
@@ -367,3 +386,7 @@ A push to `main` only releases dev (`cicd.yml` stops at `release-dev`). Staging 
 (environments `Staging` / `Prod`). Staging refuses a commit without `dev-<sha>` and a green main run, and runs
 the integration (newman, MAIR-262), ZAP and k6 stacks on that image; prod refuses one without `staging-<sha>` and tags the version semantic-release computes
 for that commit. `cicd.yml`, `promote-staging.yml` and `promote-prod.yml` pin the same mairie360/CICD release.
+
+## Shutdown
+
+`src/index.ts` wraps the server in the bffs-lib `gracefulShutdown`. On SIGTERM it drains the running requests, ends the SSE streams, flushes the telemetry and exits 0; after 10 s it exits 1. The image runs `tini` as PID 1 (`ENTRYPOINT`) so the signal reaches Node. The pod's `preStop` (5 s) and grace period (30 s) live in `Devops/Deploiment`. `tests/mair-682-graceful-shutdown.test.ts` starts the real entry point and sends it SIGTERM.

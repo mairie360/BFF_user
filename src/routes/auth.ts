@@ -7,10 +7,18 @@ import {
     CoreApiNotConfigured,
     ErrorResponse,
     AuthSessionResponse,
-    CoreApiRateLimited,
+    LoginSessionResponse,
+    PasskeyRegisterOptionsResponse,
+    PasskeySetupViewSchema,
     ForceChangePasswordViewSchema,
     ForgotPasswordViewSchema,
-    KeycloakLoginViewSchema,
+    LoginTwoFactorViewSchema,
+    PasskeyLoginOptionsResponse,
+    PasskeyLoginViewSchema,
+    TwoFactorEnrolmentCompletedResponse,
+    TwoFactorEnrolmentResponse,
+    TwoFactorSetupConfirmViewSchema,
+    TwoFactorSetupTokenViewSchema,
     LoginViewSchema,
     LogoutResponse,
     LogoutViewSchema,
@@ -18,8 +26,8 @@ import {
     RefreshViewSchema,
     registry,
     ResetPasswordViewSchema,
+    TwoFactorRequiredResponse,
 } from '../openapi-registry';
-import { buildKeycloakLogoutUrl, getKeycloakConfig } from '../config/keycloak';
 import { logger } from '../logger';
 import {
     clearRefreshTokenCookie,
@@ -29,19 +37,28 @@ import {
     setRefreshTokenCookie,
     transmitAccessToken,
 } from '../utils/cookieUtils';
+import { passkeysUnavailable } from './passkey_errors';
 import { createAuthRateLimiters, RATE_LIMIT_MESSAGE } from '../middleware/rateLimit';
 import type { AuthRateLimiters } from '../middleware/rateLimit';
 import {
     forceChangeUserPassword,
     isLoginResponseView,
-    keycloakLoginUser,
+    isTwoFactorRequired,
     loginUser,
+    loginUserTwoFactor,
+    finishPasskeyEnrolment,
+    finishPasskeyLogin,
+    startPasskeyEnrolment,
+    startPasskeyLogin,
+    confirmLoginEnrolment,
+    startLoginEnrolment,
     refreshSession,
     logoutSession,
     requestPasswordReset,
     resetUserPassword,
     logoutWithRefreshToken,
 } from './core_helpers';
+import { whitelist } from './admin_helpers';
 
 const tooManyAttempts = {
     description: `Too many failed attempts from this client (or for this account); retry after the \`Retry-After\` delay. Body: \`{ "error": { "code": "TOO_MANY_REQUESTS", "message": "${RATE_LIMIT_MESSAGE}", "details": [] } }\`.`,
@@ -78,7 +95,7 @@ registry.registerPath({
             headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
             content: {
                 'application/json': {
-                    schema: AuthSessionResponse,
+                    schema: LoginSessionResponse,
                 },
             },
         },
@@ -89,6 +106,10 @@ registry.registerPath({
                     schema: ErrorResponse,
                 },
             },
+        },
+        202: {
+            description: 'No session is open. `2fa_required`: the account is protected by a second factor, send the `token` with a code to `POST /auth/login/2fa` within five minutes. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, enrol through `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`.',
+            content: { 'application/json': { schema: TwoFactorRequiredResponse } },
         },
         412: {
             description: 'First sign-in: the password must be changed',
@@ -260,6 +281,10 @@ registry.registerPath({
             headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
             content: { 'application/json': { schema: AuthSessionResponse } },
         },
+        202: {
+            description: 'Password reset, but no session is open (the mailbox is not a second factor): `2fa_required` sends the `token` with a code to `POST /auth/login/2fa`, `2fa_setup_required` (mandatory policy, MAIR-808) to `POST /auth/2fa/setup`.',
+            content: { 'application/json': { schema: TwoFactorRequiredResponse } },
+        },
         400: {
             description: 'Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character)',
             content: { 'application/json': { schema: ErrorResponse } },
@@ -351,12 +376,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Signs a user out',
-    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT\'s session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. '
-        + 'When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect '
-        + 'end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / '
-        + 'back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than '
-        + '`id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) '
-        + 'if the client allows it.',
+    description: 'Revokes the caller\'s Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT\'s session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails.',
     request: {
         body: {
             required: false,
@@ -369,7 +389,7 @@ registry.registerPath({
     },
     responses: {
         200: {
-            description: 'Cookie cleared; navigate to `logout_url` when present to close the Keycloak session.',
+            description: 'Cookie cleared.',
             content: {
                 'application/json': {
                     schema: LogoutResponse,
@@ -377,7 +397,7 @@ registry.registerPath({
             },
         },
         400: {
-            description: 'Invalid payload (`post_logout_redirect_uri` is not a URL)',
+            description: 'Invalid payload (`refresh_token` is empty)',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -397,56 +417,174 @@ registry.registerPath({
 
 registry.registerPath({
     method: 'post',
-    path: '/auth/keycloak',
+    path: '/auth/login/2fa',
     security: [],
     tags: ['Authentication'],
-    summary: 'Signs a user in with Keycloak',
-    description: 'Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the '
-        + 'authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and '
-        + 'opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly '
-        + 'like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps '
-        + 'working unchanged and the user keeps their roles. The password login stays available during the transition.',
+    summary: 'Completes the sign-in of a protected account (second factor)',
+    description: 'Second step of `POST /auth/login` (or `POST /auth/reset_password`) when they answered `202` '
+        + '`2fa_required`: forwards the login token and the code (TOTP or backup code) to Core API. The session is then '
+        + 'delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The token is '
+        + 'single use and burnt after five wrong codes: restart from the password.',
     request: {
-        body: {
-            required: true,
-            content: {
-                'application/json': {
-                    schema: KeycloakLoginViewSchema,
-                },
-            },
-        },
+        body: { required: true, content: { 'application/json': { schema: LoginTwoFactorViewSchema } } },
     },
+    responses: {
+        200: {
+            description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: LoginSessionResponse } },
+        },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt login token, or wrong or replayed code. A backup code that was already spent is told apart: two refusals are told apart by `error.details`: `body.code` (message `Backup code already used.`: it still counts as a failed attempt and five burn the token, so the agent can type another backup code only while the login token is still valid; the fifth failed attempt, or an expired token, answers `body.token` instead) and `body.token` (message `Invalid or expired login token.`: the login session is over, restart from the password). A wrong code has no detail.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey/options',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Passkey sign-in: gets the challenge',
+    description: 'Starts a discoverable passkey sign-in on Core API: the browser offers the passkeys it holds for the site, so nobody '
+        + 'types an e-mail. Returns the WebAuthn options and the `id` of the ceremony (single use, two minutes), to send back with the '
+        + 'browser answer to `POST /auth/passkey`.',
+    responses: {
+        200: { description: 'Challenge created.', content: { 'application/json': { schema: PasskeyLoginOptionsResponse } } },
+        403: { description: 'The administrator does not accept passkeys (two-factor policy).', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front falls back to the password.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Passkey sign-in: sends the browser answer',
+    description: 'Forwards the signed challenge to Core API, which identifies the account by the passkey and verifies it. The session is '
+        + 'then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey is a complete '
+        + 'sign-in: no second factor is asked, a mandatory policy is satisfied. Every refusal is the same `401`.',
+    request: { body: { required: true, content: { 'application/json': { schema: PasskeyLoginViewSchema } } } },
     responses: {
         200: {
             description: 'Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
             headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
             content: { 'application/json': { schema: AuthSessionResponse } },
         },
-        400: {
-            description: 'Invalid payload',
-            content: { 'application/json': { schema: ErrorResponse } },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'The passkey is refused: unknown, expired or replayed challenge, unknown passkey, bad signature, cloned passkey, archived account.', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'The administrator does not accept passkeys (two-factor policy).', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey/setup/options',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Mandatory enrolment by passkey: gets the challenge',
+    description: 'For an agent who got `202` `2fa_setup_required` (no session yet) and whom the policy lets enrol with a passkey: forwards the '
+        + 'enrolment token to Core API, which answers the WebAuthn creation options (discoverable credential and user verification required, '
+        + 'any password manager accepted). The token stays valid (five minutes) until the passkey is created. Same refusals as `POST /auth/passkey/setup`.',
+    request: { body: { required: true, content: { 'application/json': { schema: TwoFactorSetupTokenViewSchema } } } },
+    responses: {
+        200: { description: 'Challenge created.', content: { 'application/json': { schema: PasskeyRegisterOptionsResponse } } },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired, spent or burnt enrolment token, or archived account.', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'The administrator does not accept passkeys (two-factor policy).', content: { 'application/json': { schema: ErrorResponse } } },
+        409: { description: 'The account already has an active second factor: the token is of no use.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), the front offers the authenticator application only. When CORE_API_URL is not set Core is out of reach and the authenticator application is unavailable too.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/passkey/setup',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Mandatory enrolment by passkey: sends the browser answer',
+    description: 'Forwards the enrolment token, the label and the browser answer to Core API, which stores the passkey, spends the token and '
+        + 'opens the session like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey satisfies the mandatory '
+        + 'policy by itself: no backup codes are issued. A refused answer counts like a wrong code and the token is burnt at the fifth.',
+    request: { body: { required: true, content: { 'application/json': { schema: PasskeySetupViewSchema } } } },
+    responses: {
+        200: {
+            description: 'Passkey created and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: AuthSessionResponse } },
         },
-        401: {
-            description: 'Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak.',
-            content: { 'application/json': { schema: ErrorResponse } },
+        400: { description: 'Invalid data, or an answer Core refuses (the same token can try again until it is burnt).', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired, spent or burnt enrolment token, or archived account.', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'The administrator does not accept passkeys (two-factor policy).', content: { 'application/json': { schema: ErrorResponse } } },
+        409: { description: 'The account already has an active second factor, or this credential is already registered.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/2fa/setup',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Mandatory enrolment: starts the registration of the authenticator application',
+    description: 'When the instance makes the second factor mandatory, `POST /auth/login` (or `/auth/reset_password`) answers `202` '
+        + '`2fa_setup_required` for an account without a usable factor. Forwards that token to Core API, which answers the secret and '
+        + 'the `otpauth://` URI to register in the authenticator application. No session exists yet: finish with `POST /auth/2fa/confirm`. '
+        + 'Calling it again replaces the pending secret.',
+    request: { body: { required: true, content: { 'application/json': { schema: TwoFactorSetupTokenViewSchema } } } },
+    responses: {
+        200: { description: 'Secret to register.', content: { 'application/json': { schema: TwoFactorEnrolmentResponse } } },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password.', content: { 'application/json': { schema: ErrorResponse } } },
+        409: { description: 'The account got a second factor meanwhile: sign in normally.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/auth/2fa/confirm',
+    security: [],
+    tags: ['Authentication'],
+    summary: 'Mandatory enrolment: confirms with a first code and signs in',
+    description: 'Forwards the enrolment token and the first code of the authenticator application to Core API, which activates the '
+        + 'second factor and opens the session, delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` '
+        + 'cookies). The ten single-use backup codes are in the body, once: the front must make the agent keep them. The token is single use '
+        + 'and burnt after five wrong codes: restart from the password.',
+    request: { body: { required: true, content: { 'application/json': { schema: TwoFactorSetupConfirmViewSchema } } } },
+    responses: {
+        200: {
+            description: 'Enrolled and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie.',
+            headers: { 'Set-Cookie': { description: 'HttpOnly `accessToken` and `refreshToken` cookies', schema: { type: 'string' } } },
+            content: { 'application/json': { schema: TwoFactorEnrolmentCompletedResponse } },
         },
-        403: {
-            description: 'The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account.',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        500: {
-            description: 'Server error',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        429: CoreApiRateLimited,
-        502: {
-            description: 'Core API or Keycloak unavailable, or invalid upstream response',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        503: {
-            description: 'Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set.',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
+        400: { description: 'Invalid data', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password).', content: { 'application/json': { schema: ErrorResponse } } },
+        404: { description: '`POST /auth/2fa/setup` was not called with this token.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: tooManyAttempts,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
     },
 });
 
@@ -463,7 +601,28 @@ function firstConnectionToken(error: unknown): string | undefined {
  * Turns a Core sign-in response into the BFF session: the access JWT and the refresh token only go to
  * HttpOnly cookies, never to the body or a header readable by the browser's JavaScript.
  */
-function sendSession(res: Response, coreResponse: AxiosResponse): Response {
+function sendSession(res: Response, coreResponse: AxiosResponse, withPasskeyOffer = false): Response {
+    openSession(res, coreResponse);
+    const offer = withPasskeyOffer ? passkeyOfferOf(coreResponse.data) : undefined;
+
+    return res.status(coreResponse.status).json(offer ? { message: 'Logged in successfully', passkey_offer: offer } : { message: 'Logged in successfully' });
+}
+
+/**
+ * What a password sign-in tells the Login screen about passkeys: whether to propose creating one. Only the two
+ * booleans are relayed; a Core that does not send them (older image) gives `undefined`.
+ */
+function passkeyOfferOf(value: unknown): { allowed: boolean; registered: boolean } | undefined {
+    const offer = typeof value === 'object' && value !== null && 'passkey_offer' in value ? value.passkey_offer : undefined;
+    if (typeof offer !== 'object' || offer === null) {
+        return undefined;
+    }
+    const { allowed, registered } = offer as Record<string, unknown>;
+    return typeof allowed === 'boolean' && typeof registered === 'boolean' ? { allowed, registered } : undefined;
+}
+
+/** Sets the session cookies from a Core sign-in response, without answering (the caller adds its own body). */
+function openSession(res: Response, coreResponse: AxiosResponse): void {
     const authorizationHeader = coreResponse.headers?.authorization
         ?? coreResponse.headers?.Authorization;
 
@@ -471,8 +630,64 @@ function sendSession(res: Response, coreResponse: AxiosResponse): Response {
         throw new HttpError(502, 'Core API did not return a Bearer token in the Authorization header');
     }
     setRefreshTokenCookie(res, coreResponse.data.refresh_token);
+}
 
-    return res.status(coreResponse.status).json({ message: 'Logged in successfully' });
+/**
+ * What the administrator allows, carried by Core's `2fa_setup_required` (MAIR-809): the agent has no session and cannot read
+ * the policy, so the front takes it from here. Only the three booleans are relayed; a Core that does not send them (older
+ * image) gives `undefined` and the front falls back to what it can do without them.
+ */
+function setupPolicyOf(value: unknown): { totp_allowed: boolean; passkey_allowed: boolean; backup_codes_allowed: boolean } | undefined {
+    const policy = typeof value === 'object' && value !== null && 'policy' in value ? value.policy : undefined;
+    if (typeof policy !== 'object' || policy === null) {
+        return undefined;
+    }
+    const { totp_allowed, passkey_allowed, backup_codes_allowed } = policy as Record<string, unknown>;
+    return typeof totp_allowed === 'boolean' && typeof passkey_allowed === 'boolean' && typeof backup_codes_allowed === 'boolean'
+        ? { totp_allowed, passkey_allowed, backup_codes_allowed }
+        : undefined;
+}
+
+/**
+ * Answer of a sign-in that may need a second step: Core's 202 `2fa_required` (no session, MAIR-805) is relayed as
+ * `{ status, token }` (the login token only opens `POST /auth/login/2fa`), anything else opens the session.
+ */
+function sendLoginOutcome(res: Response, coreResponse: AxiosResponse, withPasskeyOffer = false): Response {
+    if (coreResponse.status === 202 && isTwoFactorRequired(coreResponse.data)) {
+        // `2fa_required` (second step) or `2fa_setup_required` (mandatory enrolment, MAIR-808): the front routes on it.
+        const { status, token } = coreResponse.data;
+        const policy = status === '2fa_setup_required' ? setupPolicyOf(coreResponse.data) : undefined;
+        return res.status(202).json(policy ? { status, token, policy } : { status, token });
+    }
+    return sendSession(res, coreResponse, withPasskeyOffer);
+}
+
+/** Core answers 503 when it has no TOTP encryption key: kept, so the front can tell it from a Core outage. */
+function twoFactorUnavailable(error: unknown): HttpError | undefined {
+    return axios.isAxiosError(error) && error.response?.status === 503
+        ? new HttpError(503, 'Two-factor authentication is not configured')
+        : undefined;
+}
+
+/** Plain-text 401 bodies of Core's second step that the front must tell apart from a wrong code. */
+// A Map, not an object: an upstream body such as `toString` must not match an inherited property.
+const SECOND_STEP_REFUSALS: ReadonlyMap<string, { message: string; path: string }> = new Map([
+    ['Backup code already used.', { message: 'Backup code already used.', path: 'body.code' }],
+    ['Invalid or expired login token.', { message: 'Invalid or expired login token.', path: 'body.token' }],
+    // Mandatory enrolment (MAIR-809): the enrolment token is over, as opposed to a wrong first code.
+    ['Invalid or expired enrolment token.', { message: 'Invalid or expired enrolment token.', path: 'body.token' }],
+]);
+
+/**
+ * Core answers three different 401 on the second step: a wrong code (the login token stays usable), a backup code that
+ * was already spent (same, the agent types another one) and an unknown, expired or burnt login token (the agent starts
+ * over from the password). They are relayed as a 401 whose single detail points at `body.code` (spent backup code) or
+ * `body.token` (login session over); a wrong code has no detail.
+ */
+function secondStepRefusal(error: unknown): HttpError | undefined {
+    if (!axios.isAxiosError(error) || error.response?.status !== 401 || typeof error.response.data !== 'string') return undefined;
+    const refusal = SECOND_STEP_REFUSALS.get(error.response.data);
+    return refusal === undefined ? undefined : new HttpError(401, refusal.message, { details: [refusal] });
 }
 
 /** Refresh token of the caller: the body field, else the HttpOnly `refreshToken` cookie set at sign-in. */
@@ -493,7 +708,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         const body = parseRequest(LoginViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await loginUser(body, req));
+            return sendLoginOutcome(res, await loginUser(body, req), true);
         } catch (error) {
             // First sign-in: Core answers 412 with the one-time token of the password change. It is a regular
             // answer the front needs, not an error: only the token is relayed.
@@ -502,21 +717,93 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
                 return res.status(412).json({ token });
             }
             // Core API rate-limits sign-ins too (MAIR-425): its 429 is relayed, like the BFF's own limiter.
-            throw upstreamError('CORE_API', error, [400, 401, 429]);
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 
-    router.post('/keycloak', async (req: Request, res: Response) => {
-        const body = parseRequest(KeycloakLoginViewSchema, req.body, 'body');
+    router.post('/login/2fa', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(LoginTwoFactorViewSchema, req.body, 'body');
 
         try {
-            return sendSession(res, await keycloakLoginUser(body, req));
+            return sendSession(res, await loginUserTwoFactor(body, req), true);
         } catch (error) {
-            // Core answers 503 when Keycloak is not configured: keep it so the front can fall back to the password login.
-            if (axios.isAxiosError(error) && error.response?.status === 503) {
-                throw new HttpError(503, 'Keycloak sign-in is not configured');
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
+        }
+    });
+
+    router.post('/passkey/options', limiters.perIp, async (req: Request, res: Response) => {
+        try {
+            const { data } = await startPasskeyLogin(req);
+            return res.status(200).json({ id: data.id, options: data.options });
+        } catch (error) {
+            throw passkeysUnavailable(error) ?? upstreamError('CORE_API', error, [403, 429]);
+        }
+    });
+
+    router.post('/passkey', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(PasskeyLoginViewSchema, req.body, 'body');
+
+        try {
+            return sendSession(res, await finishPasskeyLogin(body as never, req));
+        } catch (error) {
+            if (error instanceof HttpError) {
+                throw error;
             }
-            throw upstreamError('CORE_API', error, [400, 401, 403]);
+            throw passkeysUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 403, 429]);
+        }
+    });
+
+    router.post('/2fa/setup', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(TwoFactorSetupTokenViewSchema, req.body, 'body');
+
+        try {
+            const { data } = await startLoginEnrolment(body, req);
+            return res.status(200).json({ secret: data.secret, otpauth_uri: data.otpauth_uri });
+        } catch (error) {
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 409, 429]);
+        }
+    });
+
+    router.post('/2fa/confirm', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(TwoFactorSetupConfirmViewSchema, req.body, 'body');
+
+        try {
+            const coreResponse = await confirmLoginEnrolment(body, req);
+            // The session goes to the cookies like a login; the one-time backup codes are the only secret of the body.
+            openSession(res, coreResponse);
+            return res.status(200).json({ message: 'Logged in successfully', backup_codes: coreResponse.data.backup_codes });
+        } catch (error) {
+            if (error instanceof HttpError) {
+                throw error;
+            }
+            throw twoFactorUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 404, 429]);
+        }
+    });
+
+    router.post('/passkey/setup/options', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(TwoFactorSetupTokenViewSchema, req.body, 'body');
+
+        let data: unknown;
+        try {
+            ({ data } = await startPasskeyEnrolment(body, req));
+        } catch (error) {
+            throw passkeysUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 403, 409, 429]);
+        }
+        // A Core answer without `options` is a 502, not an empty 200 the Login screen cannot use.
+        return res.status(200).json(whitelist(PasskeyRegisterOptionsResponse, data));
+    });
+
+    router.post('/passkey/setup', limiters.perIp, async (req: Request, res: Response) => {
+        const body = parseRequest(PasskeySetupViewSchema, req.body, 'body');
+
+        try {
+            // The passkey satisfies the mandatory policy: the session opens like a login, with no backup codes.
+            return sendSession(res, await finishPasskeyEnrolment(body as never, req));
+        } catch (error) {
+            if (error instanceof HttpError) {
+                throw error;
+            }
+            throw passkeysUnavailable(error) ?? secondStepRefusal(error) ?? upstreamError('CORE_API', error, [400, 401, 403, 409, 429]);
         }
     });
 
@@ -549,9 +836,9 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
         try {
             // Core consumes the token, saves the password and opens a session answered like a login.
-            return sendSession(res, await resetUserPassword(body, req));
+            return sendLoginOutcome(res, await resetUserPassword(body, req));
         } catch (error) {
-            throw upstreamError('CORE_API', error, [400, 401, 429]);
+            throw twoFactorUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 429]);
         }
     });
 
@@ -619,17 +906,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         clearTokenCookie(res);
         clearRefreshTokenCookie(res);
 
-        // Single logout (MAIR-143): the browser must end the Keycloak session itself, the BFF holds no Keycloak token.
-        const keycloak = getKeycloakConfig();
-        if (!keycloak) {
-            return res.json({ message: 'Logged out successfully', session_revoked: sessionRevoked });
-        }
-
-        return res.json({
-            message: 'Logged out successfully',
-            session_revoked: sessionRevoked,
-            logout_url: buildKeycloakLogoutUrl(keycloak, body.post_logout_redirect_uri),
-        });
+        return res.json({ message: 'Logged out successfully', session_revoked: sessionRevoked });
     });
 
     return router;

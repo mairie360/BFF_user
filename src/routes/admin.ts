@@ -1,4 +1,4 @@
-import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, KeycloakConsoleAccessSchema } from './admin_schemas';
+import { AdministrationProjectsWithoutGroupSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -12,8 +12,9 @@ import {
     upstreamError,
     validationError,
     verifySessionToken,
+    canonicalRole,
+    isAdminRole,
 } from '@mairie360/bffs-lib';
-import axios from 'axios';
 import { NextFunction, Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { CoreApiRateLimited, ErrorResponse, PASSWORD_MIN_LENGTH, registry } from '../openapi-registry';
@@ -24,11 +25,12 @@ import {
     coreAdminRolesClient,
     coreAdminUsersClient,
     coreGroupsClient,
-    coreKeycloakConsoleClient,
     coreSessionsClient,
+    coreTwoFactorPolicyClient,
     coreUsersClient,
 } from '../clients/coreClient';
 import { forwardCoreResponse, whitelist } from './admin_helpers';
+import { projectBff } from '../clients/projectBffClient';
 
 const router = Router();
 
@@ -276,8 +278,9 @@ const coreWriteResponses = {
 const READ_STATUSES = [400, 401, 403, 404] as const;
 const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
 
-// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (not an administrator).
-async function requireAdmin(req: Request): Promise<void> {
+// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (none of the roles is allowed).
+// Roles are recognised with the lib's rule (`isAdminRole`, `canonicalRole`): "Administrateur" and `ROLE_ADMIN` are administrators.
+async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, refusal: string): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
     const token = bearerToken(req);
     if (token === undefined) {
@@ -309,16 +312,49 @@ async function requireAdmin(req: Request): Promise<void> {
     const caller = asCaller('CORE_API', req);
     const { data: { roles } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
-    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && role.trim().toLowerCase() === 'admin')) {
-        throw new HttpError(403, 'Administrator role required');
+    if (!Array.isArray(roles) || !roles.some(isAllowed)) {
+        throw new HttpError(403, refusal);
     }
 }
 
-// Every /admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
+const requireAdmin = (req: Request) => requireRole(req, isAdminRole, 'Administrator role required');
+
+// Every /admin route requires a role checked locally (the admin role, except the projects without a group below) as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
 // The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
 // Administration answers are session-bound: never cached by a proxy or the browser.
 router.use(noStore);
+
+// Projects left without a group (created before groups were required, or their group was deleted in Core API), for the
+// groups tab. Like BFF_Project, it accepts the Admin and Maire roles, while every other /admin route stays Admin only:
+// mounted before the admin guard below, with its own role check.
+registry.registerPath({
+    method: 'get',
+    path: '/admin/projects-without-group',
+    tags: ['Administration'],
+    summary: 'List the projects without a group through BFF_Project',
+    responses: {
+        200: { description: 'The projects without a group', content: { 'application/json': { schema: AdministrationProjectsWithoutGroupSchema } } },
+        401: { description: 'Not authenticated', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'Access denied', content: { 'application/json': { schema: ErrorResponse } } },
+        429: { description: 'Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds)', content: { 'application/json': { schema: ErrorResponse } } },
+        500: { description: 'Unexpected server error; the cause is only logged', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API or BFF_Project unavailable, failed or answered an undeclared error', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+router.get('/projects-without-group', async (req: Request, res: Response) => {
+    await requireRole(req, (role) => isAdminRole(role) || canonicalRole(role) === 'Maire', 'Administrator or mayor role required');
+    const { data } = await callUpstream(
+        'PROJECT_BFF',
+        () => projectBff.getProjectGroupsProjectsWithoutGroup(asCaller('PROJECT_BFF', req)),
+        { declared: [401, 403], retry: true },
+    );
+    const projects = data.projects.map(({ id, title, createdAt }) => ({ id, title, createdAt: createdAt ?? null }));
+    res.status(200).json({ total: projects.length, projects });
+});
+
 router.use(async (req: Request, _res: Response, next: NextFunction) => {
     await requireAdmin(req);
     next();
@@ -412,6 +448,28 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
             asCaller('CORE_API', req),
         );
 
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/users/{userId}/2fa',
+    tags: ['Administration'],
+    summary: 'Reset the second factor of a user',
+    description: 'Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. '
+        + 'Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/2fa', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminResetUserTwoFactor(userId, asCaller('CORE_API', req));
         return res.status(204).send();
     } catch (error) {
         throw upstreamError('CORE_API', error, WRITE_STATUSES);
@@ -815,44 +873,39 @@ router.post('/sessions/revoke', async (req: Request, res: Response) => {
 });
 
 registry.registerPath({
-    method: 'post',
-    path: '/admin/keycloak/console-access',
+    method: 'get',
+    path: '/admin/two-factor-policy',
     tags: ['Administration'],
-    summary: 'Opens the Keycloak admin console for a short time (MAIR-609)',
-    description: 'Core POST /api/v1/admin/keycloak/console-access: returns a single-use link, valid 2 minutes, to open '
-        + 'in a new tab. On the Keycloak host it sets a 30-minute console cookie bound to `/admin` and redirects to the '
-        + 'realm admin console; Keycloak then asks for a realm account holding the `realm-management` roles. The console '
-        + 'closes as soon as the administrator loses the Admin role or is archived. Never cache the answer.',
-    responses: {
-        200: { description: 'Single-use console link', content: { 'application/json': { schema: KeycloakConsoleAccessSchema } } },
-        401: coreResponses[401],
-        403: coreResponses[403],
-        429: {
-            description: 'At most 10 links per administrator every 15 minutes: retry after the Retry-After header (seconds)',
-            headers: { 'Retry-After': { description: 'Seconds to wait', schema: { type: 'integer' } } },
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-        500: coreResponses[500],
-        502: coreResponses[502],
-        503: {
-            description: 'Console access is not configured on this instance (no Keycloak realm URL or no Core signing key), '
-                + 'or CORE_API_URL / the session key of the BFF is not set',
-            content: { 'application/json': { schema: ErrorResponse } },
-        },
-    },
+    summary: 'Reads the second-factor policy of the instance (MAIR-808)',
+    description: 'Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.',
+    responses: { ...coreResponses, 200: { description: 'The policy', content: { 'application/json': { schema: TwoFactorPolicySchema } } } },
 });
 
-router.post('/keycloak/console-access', async (req: Request, res: Response) => {
+router.get('/two-factor-policy', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreTwoFactorPolicyClient.getTwoFactorPolicy(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(TwoFactorPolicySchema, response.data));
+});
+
+registry.registerPath({
+    method: 'put',
+    path: '/admin/two-factor-policy',
+    tags: ['Administration'],
+    summary: 'Changes the second-factor policy of the instance (MAIR-808)',
+    description: 'Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a '
+        + 'usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay '
+        + 'allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.',
+    request: { body: jsonBodyRequest(TwoFactorPolicyUpdateSchema) },
+    responses: { ...coreResponses, 200: { description: 'The policy as saved', content: { 'application/json': { schema: TwoFactorPolicySchema } } } },
+});
+
+router.put('/two-factor-policy', async (req: Request, res: Response) => {
+    const body = parseRequest(TwoFactorPolicyUpdateSchema, req.body, 'body');
+
     try {
-        const response = await coreKeycloakConsoleClient.requestKeycloakConsoleAccess(asCaller('CORE_API', req));
-        return res.status(200).json(whitelist(KeycloakConsoleAccessSchema, response.data));
+        const response = await coreTwoFactorPolicyClient.updateTwoFactorPolicy(body, asCaller('CORE_API', req));
+        return res.status(200).json(whitelist(TwoFactorPolicySchema, response.data));
     } catch (error) {
-        // Core answers 503 when console access is not configured: keep it so the front can hide the button.
-        if (axios.isAxiosError(error) && error.response?.status === 503) {
-            throw new HttpError(503, 'Keycloak console access is not configured');
-        }
-        // A 429 is relayed with its Retry-After by the lib.
-        throw upstreamError('CORE_API', error, [401, 403]);
+        throw upstreamError('CORE_API', error, READ_STATUSES);
     }
 });
 

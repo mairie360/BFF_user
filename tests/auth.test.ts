@@ -6,7 +6,7 @@ import request from 'supertest';
 import type { LoginView } from '@mairie360/core-api-openapi/model';
 import authRouter, { createAuthRouter } from '../src/routes/auth';
 import {
-    forceChangeUserPassword, keycloakLoginUser, loginUser, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword,
+    confirmLoginEnrolment, finishPasskeyEnrolment, startPasskeyEnrolment, forceChangeUserPassword, loginUser, loginUserTwoFactor, logoutSession, logoutWithRefreshToken, refreshSession, requestPasswordReset, resetUserPassword, startLoginEnrolment, startPasskeyLogin, finishPasskeyLogin,
 } from '../src/routes/core_helpers';
 import {
     authRateLimitOptionsFromEnv,
@@ -17,14 +17,23 @@ import { axiosResponse, loginResponse } from './support/core-fixtures';
 import { captureLogs } from './support/logs';
 
 jest.mock('../src/routes/core_helpers', () => ({
+    confirmLoginEnrolment: jest.fn(),
+    startLoginEnrolment: jest.fn(),
+    startPasskeyLogin: jest.fn(),
+    finishPasskeyLogin: jest.fn(),
+    startPasskeyEnrolment: jest.fn(),
+    finishPasskeyEnrolment: jest.fn(),
     forceChangeUserPassword: jest.fn(),
     isLoginResponseView: jest.fn((value: unknown) => (
         typeof value === 'object'
         && value !== null
         && 'refresh_token' in value
     )),
-    keycloakLoginUser: jest.fn(),
+    isTwoFactorRequired: jest.fn((value: unknown) => (
+        typeof value === 'object' && value !== null && ['2fa_required', '2fa_setup_required'].includes((value as { status?: string }).status ?? '')
+    )),
     loginUser: jest.fn(),
+    loginUserTwoFactor: jest.fn(),
     logoutSession: jest.fn(),
     logoutWithRefreshToken: jest.fn(),
     refreshSession: jest.fn(),
@@ -32,12 +41,18 @@ jest.mock('../src/routes/core_helpers', () => ({
     resetUserPassword: jest.fn(),
 }));
 
+const mockedStartPasskeyEnrolment = jest.mocked(startPasskeyEnrolment);
+const mockedFinishPasskeyEnrolment = jest.mocked(finishPasskeyEnrolment);
+const mockedStartPasskey = jest.mocked(startPasskeyLogin);
+const mockedFinishPasskey = jest.mocked(finishPasskeyLogin);
 const mockedLoginUser = jest.mocked(loginUser);
+const mockedLoginTwoFactor = jest.mocked(loginUserTwoFactor);
+const mockedStartEnrolment = jest.mocked(startLoginEnrolment);
+const mockedConfirmEnrolment = jest.mocked(confirmLoginEnrolment);
 const mockedForceChangePassword = jest.mocked(forceChangeUserPassword);
 const mockedLogoutWithRefreshToken = jest.mocked(logoutWithRefreshToken);
 const mockedLogoutSession = jest.mocked(logoutSession);
 const mockedRefreshSession = jest.mocked(refreshSession);
-const mockedKeycloakLogin = jest.mocked(keycloakLoginUser);
 const mockedRequestPasswordReset = jest.mocked(requestPasswordReset);
 const mockedResetUserPassword = jest.mocked(resetUserPassword);
 
@@ -1013,12 +1028,284 @@ describe('authentication rate limiting', () => {
     });
 });
 
-describe('POST /auth/keycloak', () => {
-    const keycloakLogin = {
-        code: '7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83',
-        redirect_uri: 'https://login.mairie360.fr/auth/callback',
-        code_verifier: 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
-        nonce: 'n-0S6_WzA2Mj',
+describe('POST /auth/logout, no end-session URL', () => {
+    it('clears the accessToken cookie and answers the session state only', async () => {
+        const response = await request(app).post('/auth/logout');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
+    });
+
+    it('MAIR-812 never answers an end-session URL, whatever the body or the environment', async () => {
+        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
+
+        const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'https://login.mairie360.fr/' });
+        delete process.env.KEYCLOAK_REALM_URL;
+        delete process.env.KEYCLOAK_CLIENT_ID;
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
+    });
+});
+
+describe('MAIR-805 second factor', () => {
+    const LOGIN_TOKEN = 'example-two-factor-token';
+    const challenge = { status: '2fa_required', token: LOGIN_TOKEN };
+    const RESET = { token: '11111111-2222-4333-8444-555555555555', new_password: 'Updated-456!', device_info: 'Firefox' };
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('relays the 202 of a protected account on login: the login token only, no cookie', async () => {
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...challenge, internal: 'hidden' }, 202));
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual(challenge);
+        expect(response.headers['set-cookie']).toBeUndefined();
+        expect(response.headers.authorization).toBeUndefined();
+    });
+
+    it('relays the 202 of a protected account on reset_password', async () => {
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(challenge, 202));
+
+        const response = await request(app).post('/auth/reset_password').send(RESET);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual(challenge);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('opens the session once the code is accepted: HttpOnly cookies only', async () => {
+        mockedLoginTwoFactor.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '492039' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedLoginTwoFactor).toHaveBeenCalledWith({ token: LOGIN_TOKEN, code: '492039' }, expect.anything());
+    });
+
+    it.each([400, 401, 429])('keeps the Core %i of the second step', async (status) => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+
+        expect(response.status).toBe(status);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('MAIR-806 tells a spent backup code apart from a wrong code, on a 401 that keeps the login token usable', async () => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(401, 'Backup code already used.'));
+
+        const spent = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: 'k3m9-x7pq' });
+
+        expect(spent.status).toBe(401);
+        expect(spent.body).toEqual({
+            error: { code: 'UNAUTHORIZED', message: 'Backup code already used.', details: [{ path: 'body.code', message: 'Backup code already used.' }] },
+        });
+        expect(spent.headers['set-cookie']).toBeUndefined();
+
+        mockedLoginTwoFactor.mockRejectedValue(coreError(401, 'Invalid verification code.'));
+        const wrong = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+        expect(wrong.status).toBe(401);
+        expect(wrong.body.error.details).toEqual([]);
+        expect(wrong.body.error.message).not.toBe('Backup code already used.');
+    });
+
+    it('MAIR-806 relays an unlisted 401 body, even one named like an inherited property, as the generic refusal', async () => {
+        for (const body of ['toString', 'constructor', '__proto__', 'Something else']) {
+            mockedLoginTwoFactor.mockRejectedValue(coreError(401, body));
+
+            const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+
+            expect(response.status).toBe(401);
+            expect(response.body.error.details).toEqual([]);
+            expect(typeof response.body.error.message).toBe('string');
+        }
+    });
+
+    it('MAIR-806 tells an unknown, expired or burnt login token apart from a wrong code', async () => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(401, 'Invalid or expired login token.'));
+
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '000000' });
+
+        expect(response.status).toBe(401);
+        expect(response.body).toEqual({
+            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired login token.', details: [{ path: 'body.token', message: 'Invalid or expired login token.' }] },
+        });
+    });
+
+    it('answers 503 when Core has no encryption key, on the three routes', async () => {
+        mockedLoginTwoFactor.mockRejectedValue(coreError(503));
+        mockedLoginUser.mockRejectedValue(coreError(503));
+        mockedResetUserPassword.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN, code: '1' })).status).toBe(503);
+        expect((await request(app).post('/auth/login').send(credentials)).status).toBe(503);
+        expect((await request(app).post('/auth/reset_password').send(RESET)).status).toBe(503);
+    });
+
+    it('refuses a malformed second step before any Core call', async () => {
+        const response = await request(app).post('/auth/login/2fa').send({ token: LOGIN_TOKEN });
+
+        expect(response.status).toBe(400);
+        expect(mockedLoginTwoFactor).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-808 mandatory second factor', () => {
+    const SETUP_TOKEN = 'example-two-factor-token';
+    const setupRequired = { status: '2fa_setup_required', token: SETUP_TOKEN };
+    const RESET = { token: '11111111-2222-4333-8444-555555555555', new_password: 'Updated-456!', device_info: 'Firefox' };
+    const enrolment = { secret: 'JBSWY3DPEHPK3PXP', otpauth_uri: 'otpauth://totp/Mairie360:a@b.fr?secret=JBSWY3DPEHPK3PXP' };
+    const codes = ['aaaa-bbbb', 'cccc-dddd'];
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('relays the enrolment 202 of login and reset_password with its own status, no cookie', async () => {
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, internal: 'hidden' }, 202));
+        mockedResetUserPassword.mockResolvedValue(axiosResponse(setupRequired, 202));
+
+        const login = await request(app).post('/auth/login').send(credentials);
+        const reset = await request(app).post('/auth/reset_password').send(RESET);
+
+        for (const response of [login, reset]) {
+            expect(response.status).toBe(202);
+            expect(response.body).toEqual(setupRequired);
+            expect(response.headers['set-cookie']).toBeUndefined();
+            expect(response.headers.authorization).toBeUndefined();
+        }
+    });
+
+    it('MAIR-809 relays the policy of the enrolment, only its three booleans, and nothing of it on the second step', async () => {
+        const policy = { totp_allowed: true, passkey_allowed: false, backup_codes_allowed: false };
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, policy: { ...policy, internal: 'hidden' } }, 202));
+        mockedResetUserPassword.mockResolvedValue(axiosResponse({ ...setupRequired, policy }, 202));
+
+        const login = await request(app).post('/auth/login').send(credentials);
+        const reset = await request(app).post('/auth/reset_password').send(RESET);
+
+        for (const response of [login, reset]) {
+            expect(response.status).toBe(202);
+            expect(response.body).toEqual({ ...setupRequired, policy });
+        }
+
+        mockedLoginUser.mockResolvedValue(axiosResponse({ status: '2fa_required', token: SETUP_TOKEN, policy }, 202));
+        const second = await request(app).post('/auth/login').send(credentials);
+        expect(second.body).toEqual({ status: '2fa_required', token: SETUP_TOKEN });
+    });
+
+    it('MAIR-809 drops an incomplete policy instead of guessing the missing modes', async () => {
+        // Core always sends the three booleans: the incomplete policy is what an older Core could send.
+        mockedLoginUser.mockResolvedValue(axiosResponse({ ...setupRequired, policy: { totp_allowed: true } }, 202) as never);
+
+        const response = await request(app).post('/auth/login').send(credentials);
+
+        expect(response.status).toBe(202);
+        expect(response.body).toEqual(setupRequired);
+    });
+
+    it('MAIR-809 tells an enrolment token that is over apart from a wrong first code, on both enrolment routes', async () => {
+        const over = {
+            error: { code: 'UNAUTHORIZED', message: 'Invalid or expired enrolment token.', details: [{ path: 'body.token', message: 'Invalid or expired enrolment token.' }] },
+        };
+        mockedStartEnrolment.mockRejectedValue(coreError(401, 'Invalid or expired enrolment token.'));
+        mockedConfirmEnrolment.mockRejectedValue(coreError(401, 'Invalid or expired enrolment token.'));
+
+        const start = await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN });
+        const confirm = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '492039' });
+        expect([start.status, start.body]).toEqual([401, over]);
+        expect([confirm.status, confirm.body]).toEqual([401, over]);
+
+        mockedConfirmEnrolment.mockRejectedValue(coreError(401, 'Invalid verification code.'));
+        const wrong = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '000000' });
+        expect(wrong.status).toBe(401);
+        expect(wrong.body.error.details).toEqual([]);
+        expect(wrong.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('starts the enrolment: only the secret and the URI come back', async () => {
+        mockedStartEnrolment.mockResolvedValue(axiosResponse({ ...enrolment, internal: 'hidden' }, 200));
+
+        const response = await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(enrolment);
+        expect(mockedStartEnrolment).toHaveBeenCalledWith({ token: SETUP_TOKEN }, expect.anything());
+    });
+
+    it('confirms the enrolment: cookies for the session, the backup codes (once) in the body, no token', async () => {
+        mockedConfirmEnrolment.mockResolvedValue(axiosResponse({ ...loginResponse(), backup_codes: codes }, 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '492039' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully', backup_codes: codes });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedConfirmEnrolment).toHaveBeenCalledWith({ token: SETUP_TOKEN, code: '492039' }, expect.anything());
+    });
+
+    it('answers 502 and sets no cookie when Core confirms without a Bearer token', async () => {
+        mockedConfirmEnrolment.mockResolvedValue(axiosResponse({ ...loginResponse(), backup_codes: codes }, 200));
+
+        const response = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '492039' });
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([400, 401, 409, 429])('keeps the Core %i of the enrolment start', async (status) => {
+        mockedStartEnrolment.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN });
+
+        expect(response.status).toBe(status);
+    });
+
+    it.each([400, 401, 404, 429])('keeps the Core %i of the enrolment confirmation', async (status) => {
+        mockedConfirmEnrolment.mockRejectedValue(coreError(status));
+
+        const response = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '000000' });
+
+        expect(response.status).toBe(status);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 503 when Core has no encryption key, on both routes', async () => {
+        mockedStartEnrolment.mockRejectedValue(coreError(503));
+        mockedConfirmEnrolment.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/2fa/setup').send({ token: SETUP_TOKEN })).status).toBe(503);
+        expect((await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN, code: '1' })).status).toBe(503);
+    });
+
+    it('refuses malformed bodies before any Core call', async () => {
+        const setup = await request(app).post('/auth/2fa/setup').send({});
+        const confirm = await request(app).post('/auth/2fa/confirm').send({ token: SETUP_TOKEN });
+
+        expect(setup.status).toBe(400);
+        expect(confirm.status).toBe(400);
+        expect(mockedStartEnrolment).not.toHaveBeenCalled();
+        expect(mockedConfirmEnrolment).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-810 passkey sign-in', () => {
+    const CEREMONY = 'example-two-factor-token';
+    const options = { publicKey: { challenge: 'q1w2e3', rpId: 'mairie360-eip.fr', userVerification: 'required' } };
+    const answer = {
+        id: CEREMONY,
+        credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { signature: 'MEUCIQ' } },
         device_info: 'Firefox',
     };
 
@@ -1026,167 +1313,205 @@ describe('POST /auth/keycloak', () => {
         jest.clearAllMocks();
     });
 
-    it('opens the same session as the password login: HttpOnly cookies only', async () => {
-        mockedKeycloakLogin.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+    it('relays the challenge and only its two fields', async () => {
+        mockedStartPasskey.mockResolvedValue(axiosResponse({ id: CEREMONY, options, internal: 'hidden' }, 200));
 
-        const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
+        const response = await request(app).post('/auth/passkey/options').send({});
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ id: CEREMONY, options });
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('opens the session in HttpOnly cookies only, like the password login', async () => {
+        mockedFinishPasskey.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
+
+        const response = await request(app).post('/auth/passkey').send(answer);
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
         expect(response.headers.authorization).toBeUndefined();
-        expect(response.headers['set-cookie'][0]).toContain('accessToken=header.payload.signature');
-        expect(response.headers['set-cookie'][0]).toContain('HttpOnly');
-        expect(response.headers['set-cookie'][1]).toMatch(/^refreshToken=.*Path=\/auth;.*HttpOnly/);
-        expect(mockedKeycloakLogin).toHaveBeenCalledWith(keycloakLogin, expect.anything());
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedFinishPasskey).toHaveBeenCalledWith(answer, expect.anything());
     });
 
-    it('accepts a request without PKCE verifier nor nonce and strips undeclared fields', async () => {
-        mockedKeycloakLogin.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
-        const { code, redirect_uri, device_info } = keycloakLogin;
+    it('answers 502 and sets no cookie when Core signs in without a Bearer token', async () => {
+        mockedFinishPasskey.mockResolvedValue(axiosResponse(loginResponse(), 200));
 
-        const response = await request(app).post('/auth/keycloak').send({ code, redirect_uri, device_info, user_id: 1 });
-
-        expect(response.status).toBe(200);
-        expect(mockedKeycloakLogin).toHaveBeenCalledWith({ code, redirect_uri, device_info }, expect.anything());
-    });
-
-    it.each([
-        ['no code', { ...keycloakLogin, code: '' }],
-        ['an invalid redirect URI', { ...keycloakLogin, redirect_uri: 'not a uri' }],
-        ['no device info', { code: keycloakLogin.code, redirect_uri: keycloakLogin.redirect_uri }],
-    ])('rejects a payload with %s without calling Core API', async (_case, body) => {
-        const response = await request(app).post('/auth/keycloak').send(body);
-
-        expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Validation failed'));
-        expect(mockedKeycloakLogin).not.toHaveBeenCalled();
-    });
-
-    it('returns 502 when the Core omits the Authorization Bearer header', async () => {
-        mockedKeycloakLogin.mockResolvedValue(axiosResponse(loginResponse()));
-
-        const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
+        const response = await request(app).post('/auth/passkey').send(answer);
 
         expect(response.status).toBe(502);
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 
-    it('keeps the 503 of an instance without Keycloak so the front can fall back to the password login', async () => {
-        mockedKeycloakLogin.mockRejectedValue(coreError(503, 'Keycloak sign-in is not configured.'));
+    it.each([403, 429])('keeps the Core %i of the challenge', async (status) => {
+        mockedStartPasskey.mockRejectedValue(coreError(status));
 
-        const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
-
-        expect(response.status).toBe(503);
-        expect(response.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Keycloak sign-in is not configured', details: [] } });
+        expect((await request(app).post('/auth/passkey/options').send({})).status).toBe(status);
     });
 
-    it.each([
-        [401, 'UNAUTHORIZED'],
-        [403, 'FORBIDDEN'],
-    ])('keeps a declared Core %i without relaying the Core message', async (status, code) => {
-        mockedKeycloakLogin.mockRejectedValue(coreError(status, 'No Mairie 360 account matches this Keycloak e-mail address.'));
+    it.each([400, 401, 403, 429])('keeps the Core %i of the sign-in, with no cookie', async (status) => {
+        mockedFinishPasskey.mockRejectedValue(coreError(status));
 
-        const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
+        const response = await request(app).post('/auth/passkey').send(answer);
 
         expect(response.status).toBe(status);
-        expect(response.body.error.code).toBe(code);
-        expect(JSON.stringify(response.body)).not.toContain('Keycloak e-mail');
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 
-    it.each([404, 500])('turns a Core %i into a 502', async (status) => {
-        mockedKeycloakLogin.mockRejectedValue(coreError(status));
+    it('answers 503 when Core has no WebAuthn configuration, on both routes', async () => {
+        mockedStartPasskey.mockRejectedValue(coreError(503));
+        mockedFinishPasskey.mockRejectedValue(coreError(503));
 
-        const response = await request(app).post('/auth/keycloak').send(keycloakLogin);
+        expect((await request(app).post('/auth/passkey/options').send({})).status).toBe(503);
+        expect((await request(app).post('/auth/passkey').send(answer)).status).toBe(503);
+    });
 
-        expect(response.status).toBe(502);
-        expect(response.body.error.code).toBe('BAD_GATEWAY');
+    it('refuses malformed bodies before any Core call', async () => {
+        const noCredential = await request(app).post('/auth/passkey').send({ id: CEREMONY, device_info: 'x' });
+        const noId = await request(app).post('/auth/passkey').send({ credential: answer.credential, device_info: 'x' });
+
+        expect(noCredential.status).toBe(400);
+        expect(noId.status).toBe(400);
+        expect(mockedFinishPasskey).not.toHaveBeenCalled();
     });
 });
 
-describe('POST /auth/logout', () => {
-    const KEYCLOAK_ENV = ['KEYCLOAK_REALM_URL', 'KEYCLOAK_CLIENT_ID', 'KEYCLOAK_POST_LOGOUT_REDIRECT_URI'] as const;
-    const END_SESSION = 'https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout';
+
+describe('MAIR-810 passkey creation with the enrolment token', () => {
+    const TOKEN = 'example-two-factor-token';
+    const options = { publicKey: { challenge: 'q1w2e3', authenticatorSelection: { residentKey: 'required', userVerification: 'required' } } };
+    const answer = {
+        token: TOKEN,
+        label: 'Google Password Manager',
+        credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: { attestationObject: 'o2Nmb' } },
+    };
 
     beforeEach(() => {
-        for (const name of KEYCLOAK_ENV) delete process.env[name];
+        jest.clearAllMocks();
     });
 
-    afterAll(() => {
-        for (const name of KEYCLOAK_ENV) delete process.env[name];
-    });
+    it('relays the token for the challenge and answers its options only', async () => {
+        mockedStartPasskeyEnrolment.mockResolvedValue(axiosResponse({ options, internal: 'hidden' }, 200));
 
-    it('clears the accessToken cookie and stops there when Keycloak is not configured', async () => {
-        const response = await request(app).post('/auth/logout');
+        const response = await request(app).post('/auth/passkey/setup/options').send({ token: TOKEN });
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
-        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-    });
-
-    it('returns the Keycloak end-session URL so the browser closes the single sign-on session', async () => {
-        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360/';
-        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
-        process.env.KEYCLOAK_POST_LOGOUT_REDIRECT_URI = 'https://login.mairie360.fr/';
-
-        const response = await request(app).post('/auth/logout');
-
-        expect(response.status).toBe(200);
-        expect(response.body.message).toBe('Logged out successfully');
-        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=;/);
-        const logoutUrl = new URL(response.body.logout_url);
-        expect(`${logoutUrl.origin}${logoutUrl.pathname}`).toBe(END_SESSION);
-        expect(logoutUrl.searchParams.get('client_id')).toBe('mairie360');
-        expect(logoutUrl.searchParams.get('post_logout_redirect_uri')).toBe('https://login.mairie360.fr/');
-        expect(logoutUrl.searchParams.has('id_token_hint')).toBe(false);
-    });
-
-    it('lets the front choose where Keycloak sends the browser afterwards', async () => {
-        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
-        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
-        process.env.KEYCLOAK_POST_LOGOUT_REDIRECT_URI = 'https://login.mairie360.fr/';
-
-        const response = await request(app)
-            .post('/auth/logout')
-            .send({ post_logout_redirect_uri: 'https://projects.mairie360.fr/login', ignored: true });
-
-        expect(response.status).toBe(200);
-        expect(new URL(response.body.logout_url).searchParams.get('post_logout_redirect_uri'))
-            .toBe('https://projects.mairie360.fr/login');
-    });
-
-    it('omits post_logout_redirect_uri when neither the front nor the environment provides one', async () => {
-        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
-        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
-
-        const response = await request(app).post('/auth/logout');
-
-        expect(response.status).toBe(200);
-        expect(response.body.logout_url).toBe(`${END_SESSION}?client_id=mairie360`);
-    });
-
-    it('rejects a post_logout_redirect_uri that is not a URL without clearing the cookie', async () => {
-        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
-        process.env.KEYCLOAK_CLIENT_ID = 'mairie360';
-
-        const response = await request(app).post('/auth/logout').send({ post_logout_redirect_uri: 'not a url' });
-
-        expect(response.status).toBe(400);
-        expect(response.body).toEqual(invalidPayload('Validation failed'));
+        expect(response.body).toEqual({ options });
+        expect(mockedStartPasskeyEnrolment).toHaveBeenCalledWith({ token: TOKEN }, expect.anything());
         expect(response.headers['set-cookie']).toBeUndefined();
     });
 
-    it('keeps the plain logout when only one of the two Keycloak variables is set', async () => {
-        const logs = captureLogs();
-        process.env.KEYCLOAK_REALM_URL = 'https://auth.mairie360.fr/realms/mairie360';
+    it('opens the session in HttpOnly cookies and tells nothing else (no backup codes, no token)', async () => {
+        mockedFinishPasskeyEnrolment.mockResolvedValue(axiosResponse(loginResponse(), 200, { authorization: 'Bearer header.payload.signature' }));
 
-        const response = await request(app).post('/auth/logout');
+        const response = await request(app).post('/auth/passkey/setup').send(answer);
 
         expect(response.status).toBe(200);
-        expect(response.body).toEqual({ message: 'Logged out successfully', session_revoked: false });
-        expect(logs).toEqual(
-            expect.arrayContaining([expect.objectContaining({ level: 'WARN', message: expect.stringContaining('KEYCLOAK_REALM_URL and KEYCLOAK_CLIENT_ID') })]),
-        );
-        jest.restoreAllMocks();
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+        expect(JSON.stringify(response.body)).not.toContain(loginResponse().refresh_token);
+        expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=header\.payload\.signature;.*HttpOnly/);
+        expect(mockedFinishPasskeyEnrolment).toHaveBeenCalledWith(answer, expect.anything());
+    });
+
+    it('answers 502 and sets no cookie when Core spends the token without a Bearer token', async () => {
+        mockedFinishPasskeyEnrolment.mockResolvedValue(axiosResponse(loginResponse(), 200));
+
+        const response = await request(app).post('/auth/passkey/setup').send(answer);
+
+        expect(response.status).toBe(502);
+        expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    it.each([400, 401, 403, 409, 429])('keeps the Core %i, on both routes, with no cookie', async (status) => {
+        mockedStartPasskeyEnrolment.mockRejectedValue(coreError(status));
+        mockedFinishPasskeyEnrolment.mockRejectedValue(coreError(status));
+
+        const options = await request(app).post('/auth/passkey/setup/options').send({ token: TOKEN });
+        const setup = await request(app).post('/auth/passkey/setup').send(answer);
+
+        expect(options.status).toBe(status);
+        expect(setup.status).toBe(status);
+        expect(setup.headers['set-cookie']).toBeUndefined();
+    });
+
+    it('answers 503 when Core has no WebAuthn configuration, so the screen offers the authenticator application only', async () => {
+        mockedStartPasskeyEnrolment.mockRejectedValue(coreError(503));
+        mockedFinishPasskeyEnrolment.mockRejectedValue(coreError(503));
+
+        expect((await request(app).post('/auth/passkey/setup/options').send({ token: TOKEN })).status).toBe(503);
+        expect((await request(app).post('/auth/passkey/setup').send(answer)).status).toBe(503);
+    });
+
+    it('refuses malformed bodies before any Core call', async () => {
+        const noToken = await request(app).post('/auth/passkey/setup/options').send({});
+        const noLabel = await request(app).post('/auth/passkey/setup').send({ token: TOKEN, credential: answer.credential });
+        const longLabel = await request(app).post('/auth/passkey/setup').send({ ...answer, label: 'x'.repeat(101) });
+        const noCredential = await request(app).post('/auth/passkey/setup').send({ token: TOKEN, label: 'x' });
+
+        expect([noToken.status, noLabel.status, longLabel.status, noCredential.status]).toEqual([400, 400, 400, 400]);
+        expect(mockedStartPasskeyEnrolment).not.toHaveBeenCalled();
+        expect(mockedFinishPasskeyEnrolment).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-810 passkey offer after a password sign-in', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    const withOffer = (offer: unknown) => axiosResponse({ ...loginResponse(), passkey_offer: offer }, 200, { authorization: 'Bearer header.payload.signature' }) as never;
+    const credentials = { email: 'camille@mairie.fr', password: 'MotDePasse123', device_info: 'Firefox' };
+
+    it('relays the two booleans to the Login screen after the password login and after its second step', async () => {
+        mockedLoginUser.mockResolvedValue(withOffer({ allowed: true, registered: false, extra: 'hidden' }));
+        mockedLoginTwoFactor.mockResolvedValue(withOffer({ allowed: true, registered: true }));
+
+        const password = await request(app).post('/auth/login').send(credentials);
+        const second = await request(app).post('/auth/login/2fa').send({ token: 'example-two-factor-token', code: '492039' });
+
+        expect(password.body).toEqual({ message: 'Logged in successfully', passkey_offer: { allowed: true, registered: false } });
+        expect(second.body).toEqual({ message: 'Logged in successfully', passkey_offer: { allowed: true, registered: true } });
+    });
+
+    it('never adds the offer to the answer of a password reset (its contract holds the message only)', async () => {
+        mockedResetUserPassword.mockResolvedValue(withOffer({ allowed: true, registered: false }));
+
+        const response = await request(app).post('/auth/reset_password').send({ token: '11111111-2222-4333-8444-555555555555', new_password: 'Updated-456!', device_info: 'Firefox' });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
+    });
+
+    it('answers 502 when the enrolment challenge of Core carries no options', async () => {
+        mockedStartPasskeyEnrolment.mockResolvedValue(axiosResponse({}, 200) as never);
+
+        const response = await request(app).post('/auth/passkey/setup/options').send({ token: 'example-two-factor-token' });
+
+        expect(response.status).toBe(502);
+        expect(response.body.error).toBeDefined();
+    });
+
+    it('leaves the answer as it was when Core sends no valid offer (older Core)', async () => {
+        for (const offer of [undefined, null, 'yes', { allowed: 'yes', registered: false }, { allowed: true }]) {
+            mockedLoginUser.mockResolvedValue(withOffer(offer));
+
+            const response = await request(app).post('/auth/login').send(credentials);
+
+            expect(response.body).toEqual({ message: 'Logged in successfully' });
+        }
+    });
+
+    it('never adds the offer to a sign-in by passkey', async () => {
+        mockedFinishPasskey.mockResolvedValue(withOffer({ allowed: true, registered: true }));
+
+        const response = await request(app).post('/auth/passkey').send({
+            id: 'example-two-factor-token',
+            credential: { id: 'k3m9x7p2', rawId: 'k3m9x7p2', type: 'public-key', response: {} },
+            device_info: 'Firefox',
+        });
+
+        expect(response.body).toEqual({ message: 'Logged in successfully' });
     });
 });

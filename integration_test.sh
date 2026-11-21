@@ -29,12 +29,13 @@ echo "==> BFF under test: $IMAGE_REF"
 # shellcheck source=stack_secrets.sh
 source ./stack_secrets.sh || exit 1
 # The seeded accounts have no known password and the Postman sandbox cannot sign EdDSA: their JWTs
-# are signed here and passed with --env-var (the Admin, user 1; the agent, user 2 of init-test.sql;
+# are signed here and passed with --env-var (the Admin, user 1; the agent, user 2 and the mayor, user 3 of init-test.sql;
 # a token claiming Core's kid but signed with another key, which the BFF must refuse).
 JWT_ADMIN="$ADMIN_JWT"
 JWT_AGENT="$(sign_jwt 2 user 3600)" || exit 1
+JWT_MAIRE="$(sign_jwt 3 maire 3600)" || exit 1
 JWT_FORGED="$(sign_jwt 1 admin 3600 "$(openssl genpkey -algorithm ed25519 2>/dev/null)")" || exit 1
-export JWT_ADMIN JWT_AGENT JWT_FORGED
+export JWT_ADMIN JWT_AGENT JWT_MAIRE JWT_FORGED
 
 # The newman container (non-root) writes its junit report here; the CI job publishes it.
 rm -rf "$REPORT_DIR" && mkdir -p "$REPORT_DIR" && chmod a+rwx "$REPORT_DIR"
@@ -59,8 +60,15 @@ EXIT_CODE=$?
 echo "==> [3/4] Report (logs)..."
 docker compose -f "$COMPOSE_FILE" logs "$SERVICE_NAME"
 
+# Passkey journey with a software authenticator (newman cannot sign a WebAuthn answer), only when newman passed.
+if [ "$EXIT_CODE" -eq 0 ]; then
+  echo "==> [3/4] Passkey journey..."
+  docker compose -f "$COMPOSE_FILE" --profile journey run --rm passkey-journey
+  EXIT_CODE=$?
+fi
+
 echo "==> [4/4] Removing the containers..."
-docker compose -f "$COMPOSE_FILE" down -v
+docker compose -f "$COMPOSE_FILE" --profile journey down -v --remove-orphans
 
 echo "----------------------------------------"
 echo "Final exit code: $EXIT_CODE"
