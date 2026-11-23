@@ -41,6 +41,11 @@ const mockedResetUserPassword = jest.mocked(coreAdminUsersClient.adminResetUserP
 const mockedGetPolicy = jest.mocked(coreTwoFactorPolicyClient.getTwoFactorPolicy);
 const mockedUpdatePolicy = jest.mocked(coreTwoFactorPolicyClient.updateTwoFactorPolicy);
 const mockedResetUserTwoFactor = jest.mocked(coreAdminUsersClient.adminResetUserTwoFactor);
+const mockedGetUser = jest.mocked(coreAdminUsersClient.adminGetUser);
+const mockedRevokeUserSessions = jest.mocked(coreAdminUsersClient.adminRevokeUserSessions);
+const mockedRevokeUserSession = jest.mocked(coreAdminUsersClient.adminRevokeUserSession);
+const mockedSuspendUser = jest.mocked(coreAdminUsersClient.adminSuspendUser);
+const mockedReactivateUser = jest.mocked(coreAdminUsersClient.adminReactivateUser);
 const mockedPatchGroup = jest.mocked(coreGroupsClient.patchGroup);
 const mockedGetGroupUsers = jest.mocked(coreGroupsClient.getGroupUsers);
 const mockedAddUserToGroup = jest.mocked(coreGroupsClient.addUserToGroup);
@@ -353,6 +358,83 @@ describe('Administration routes', () => {
         expect(invalid.status).toBe(400);
     });
 
+    it('MAIR-904 relays the state, role and order filters of the user list', async () => {
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUserRow({ account_status: 'suspended', active_sessions: 0, last_login_at: null, two_factor: { methods: [], last_verified_at: null } } as never)])));
+
+        const response = await request(app)
+            .get('/admin/users?page=2&page_size=6&account_status=suspended&role_id=3&sort=-name')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+        const invalid = await request(app)
+            .get('/admin/users?account_status=deleted')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.users[0].account_status).toBe('suspended');
+        expect(mockedListUsers).toHaveBeenCalledWith(
+            { page: 2, page_size: 6, account_status: 'suspended', role_id: 3, sort: '-name' },
+            expect.anything(),
+        );
+        expect(invalid.status).toBe(400);
+    });
+
+    it('MAIR-584 lists the sessions of a user, whitelisted', async () => {
+        const session = { id: '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70', device_info: 'Firefox', ip_address: '203.0.113.24', created_at: '2026-11-20T08:00:00Z', expires_at: '2026-11-27T08:00:00Z', revoked_at: null };
+        mockedGetUser.mockResolvedValue(axiosResponse({ user: { first_name: 'A' }, role: null, roles: [], groups: [], sessions: [{ ...session, token_hash: 'never relayed' }] } as never));
+
+        const response = await request(app).get('/admin/users/42/sessions').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ sessions: [session] });
+        expect(mockedGetUser).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-584 signs a user out of one device or of every device', async () => {
+        mockedRevokeUserSession.mockResolvedValue(axiosResponse(undefined, 204));
+        mockedRevokeUserSessions.mockResolvedValue(axiosResponse(undefined, 204));
+        const sid = '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70';
+
+        const one = await request(app).delete(`/admin/users/42/sessions/${sid}`).set('Authorization', `Bearer ${tokenFor(1)}`);
+        const all = await request(app).delete('/admin/users/42/sessions').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const invalid = await request(app).delete('/admin/users/42/sessions/not-a-session').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect([one.status, all.status, invalid.status]).toEqual([204, 204, 400]);
+        expect(mockedRevokeUserSession).toHaveBeenCalledWith(42, sid, expect.anything());
+        expect(mockedRevokeUserSessions).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-584 relays the 404 of an ended session', async () => {
+        mockedRevokeUserSession.mockRejectedValue(coreError(404, 'Unknown session'));
+
+        const response = await request(app)
+            .delete('/admin/users/42/sessions/4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(404);
+        expect(JSON.stringify(response.body)).not.toContain('Unknown session');
+    });
+
+    it('MAIR-904 suspends and reactivates a user, relays the 409 of one\'s own account', async () => {
+        mockedSuspendUser.mockResolvedValueOnce(axiosResponse(undefined, 204)).mockRejectedValueOnce(coreError(409));
+        mockedReactivateUser.mockResolvedValue(axiosResponse(undefined, 204));
+
+        const suspended = await request(app).post('/admin/users/42/suspend').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const own = await request(app).post('/admin/users/1/suspend').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const reactivated = await request(app).post('/admin/users/42/reactivate').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect([suspended.status, own.status, reactivated.status]).toEqual([204, 409, 204]);
+        expect(mockedSuspendUser).toHaveBeenCalledWith(42, expect.anything());
+        expect(mockedReactivateUser).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-904 refuses the suspension to a non-administrator, before any Core call', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
+
+        const response = await request(app).post('/admin/users/42/suspend').set('Authorization', `Bearer ${tokenFor(2)}`);
+
+        expect(response.status).toBe(403);
+        expect(mockedSuspendUser).not.toHaveBeenCalled();
+    });
+
     it('rejects an invalid new password', async () => {
         const response = await request(app)
             .patch('/admin/users/42/password')
@@ -401,7 +483,9 @@ describe('Administration routes', () => {
 
         expect(response.status).toBe(200);
         expect(mockedListUsers).toHaveBeenCalledWith({ group_id: 4, page_size: 500 }, expect.anything());
-        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles' && field !== 'role')));
+        // A member carries its identity, not the administration fields of the list (role, state, sessions, second factor).
+        const memberFields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'phone_country', 'status', 'is_archived'];
+        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => memberFields.includes(field))));
     });
 
     it('does not add a member who already belongs to the group', async () => {

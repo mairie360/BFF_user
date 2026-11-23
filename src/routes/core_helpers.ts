@@ -13,6 +13,7 @@ import type {
     PasskeyRegisterView,
     PasskeySetupCompletedView,
     PasskeySetupView,
+    PasskeyRenameView,
     PasskeyView,
     RefreshResponseView,
     ResetPasswordResponseView,
@@ -109,6 +110,11 @@ export async function startPasskeyRegistration(caller: UpstreamRequestOptions): 
 /** Passkey creation by a signed-in agent, step 2: stores the passkey under the label. */
 export async function finishPasskeyRegistration(view: PasskeyRegisterView, caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyView>> {
     return corePasskeysClient.registerPasskey(view, caller);
+}
+
+/** Rename of one of the caller's passkeys (MAIR-811): the name the agent keeps after the creation. */
+export async function renamePasskey(passkeyId: number, view: PasskeyRenameView, caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyView>> {
+    return corePasskeysClient.renameMyPasskey(passkeyId, view, caller);
 }
 
 /** Mandatory enrolment, step 1 (MAIR-808): the `2fa_setup_required` token yields the secret to register. */

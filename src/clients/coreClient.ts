@@ -53,6 +53,10 @@ export const coreAdminUsersClient = {
     adminDeleteUser: coreApi.adminDeleteUser,
     adminResetUserPassword: coreApi.adminResetUserPassword,
     adminResetUserTwoFactor: coreApi.adminResetUserTwoFactor,
+    adminRevokeUserSessions: coreApi.adminRevokeUserSessions,
+    adminRevokeUserSession: coreApi.adminRevokeUserSession,
+    adminSuspendUser: coreApi.adminSuspendUser,
+    adminReactivateUser: coreApi.adminReactivateUser,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
 };
@@ -61,12 +65,22 @@ export const coreAdminUsersClient = {
 export const corePasskeysClient = {
     passkeyRegisterOptions: coreApi.passkeyRegisterOptions,
     registerPasskey: coreApi.registerPasskey,
+    renameMyPasskey: coreApi.renameMyPasskey,
 };
 
 // Instance policy of the second factor (MAIR-808).
 export const coreTwoFactorPolicyClient = {
     getTwoFactorPolicy: coreApi.getTwoFactorPolicy,
     updateTwoFactorPolicy: coreApi.updateTwoFactorPolicy,
+};
+
+// Services of the mairie and the service of an agent (MAIR-923).
+export const coreAdminServicesClient = {
+    adminListServices: coreApi.adminListServices,
+    adminCreateService: coreApi.adminCreateService,
+    adminUpdateService: coreApi.adminUpdateService,
+    adminDeleteService: coreApi.adminDeleteService,
+    adminSetUserService: coreApi.adminSetUserService,
 };
 
 export const coreAdminRolesClient = {

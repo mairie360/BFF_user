@@ -95,6 +95,16 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | PATCH | `/admin/users/{userId}/password` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | POST | `/admin/users/{userId}/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | DELETE | `/admin/users/{userId}/roles/{roleId}` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| GET | `/admin/users/{userId}/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
+| DELETE | `/admin/users/{userId}/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| DELETE | `/admin/users/{userId}/sessions/{sessionId}` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| POST | `/admin/users/{userId}/suspend` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| PUT | `/admin/users/{userId}/service` | `AdminUserServiceBody` | 200, 201, 204, 400, 401, 403, 404, 429, 500, 502, 503 |
+| GET | `/admin/services` | — | 200, 201, 204, 400, 401, 403, 404, 429, 500, 502, 503 |
+| POST | `/admin/services` | `AdminServiceWriteBody` | 200, 201, 204, 400, 401, 403, 404, 409, 429, 500, 502, 503 |
+| PATCH | `/admin/services/{serviceId}` | `AdminServiceRenameBody` | 200, 201, 204, 400, 401, 403, 404, 409, 429, 500, 502, 503 |
+| DELETE | `/admin/services/{serviceId}` | — | 200, 201, 204, 400, 401, 403, 404, 429, 500, 502, 503 |
+| POST | `/admin/users/{userId}/reactivate` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | GET | `/admin/projects-without-group` | — | 200, 401, 403, 429, 500, 502, 503 |
 | GET | `/admin/roles` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
@@ -117,6 +127,11 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 
 `GET /admin/groups` et `GET /admin/sessions/history` renvoient une page de la liste de Core, choisie par le front avec `limit` (1 à 500) et `offset` (0 à 1000000), les bornes de Core API : une valeur hors bornes donne un 400, et sans eux Core renvoie ses 100 premiers éléments. Les vérifications faites par le BFF lui-même (les groupes de `/me`, la lecture des membres avant d'ajouter ou de retirer un membre d'un groupe) lisent la plus grande page de Core, 500 éléments.
 
+
+
+L’administration V2 (MAIR-584, MAIR-904) : `GET /admin/users` accepte aussi `account_status` (`active`, `invited`, `inactive` = archivé, `suspended`), `role_id` et `sort` (`name`, `-name`), transmis à Core, et chaque ligne porte `account_status`, `active_sessions` (sessions ouvertes), `last_login_at` et `two_factor` (`methods`, `last_verified_at`, jamais un secret). `GET /admin/users/{userId}/sessions` renvoie les 100 dernières sessions de l’utilisateur (lues dans sa fiche Core), `DELETE /admin/users/{userId}/sessions[/{sessionId}]` le déconnecte de tous ses appareils ou d’un seul, `POST /admin/users/{userId}/suspend` / `reactivate` suspendent le compte (sessions fermées, connexion refusée) et lèvent la suspension ; Core refuse son propre compte avec un 409.
+
+Modules des rôles, services et couleurs des groupes (MAIR-916, MAIR-923) : les écritures de rôle acceptent `modules` (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), `GET /admin/roles` les renvoie et `GET /me` / `/session/me` répondent les `modules` de la session pour la navigation partagée. `GET` / `POST /admin/services`, `PATCH` / `DELETE /admin/services/{serviceId}` gèrent les services de la mairie (nom unique, 409), `PUT /admin/users/{userId}/service` rattache un agent à l’un d’eux (`service_id`, `null` le détache) ; les lignes de l’administration portent `service`. Les groupes prennent une `color` de la palette de la charte (`blue`, `teal`, `green`, `orange`, `purple`, `pink`, `neutral`, `null` = couleur par défaut) et répondent `project_count`.
 
 ## Session, permissions et erreurs
 

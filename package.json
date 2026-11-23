@@ -15,7 +15,7 @@
     "@asteasolutions/zod-to-openapi": "9.1.0",
     "@mairie360/bff-project-openapi": "0.0.0-dev.60b586276b65d18033c72688055bb99c8346673a",
     "@mairie360/bffs-lib": "2.8.0",
-    "@mairie360/core-api-openapi": "0.0.0-dev-6b58da9",
+    "@mairie360/core-api-openapi": "0.0.0-dev-6c41e06",
     "axios": "^1.13.6",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.0",

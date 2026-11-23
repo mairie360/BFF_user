@@ -295,6 +295,12 @@ const policyHandlers = {
       check(request({ headers: data.admin, body: {} }), {
         'passkey creation options 200': (r) => r.status === 200 && !!r.json('options.publicKey.challenge'),
       })),
+  // MAIR-811: k6 holds no real passkey: an unknown id answers the 404 of Core, relayed.
+  'PATCH /user/me/passkeys/{passkeyId}': ({ request, data }) =>
+    check(
+      request({ path: { passkeyId: 999999999 }, headers: data.admin, body: { label: 'k6' }, params: { responseCallback: http.expectedStatuses(404) } }),
+      { 'rename unknown passkey 404': (r) => r.status === 404 },
+    ),
   'POST /user/me/passkeys': ({ request, data }) =>
     withPolicy(data, PASSKEYS_ALLOWED, () => {
       fixture('POST', policyCoverage.url('POST /user/me/passkeys/options'), {}, data.admin);
@@ -448,6 +454,41 @@ const handlers = {
       },
     }),
 
+  // --- Admin: services of the mairie (MAIR-923) ---
+  // Each write handler creates and deletes its own service, so the path order of `crud` does not matter.
+  'GET /admin/services': ({ request, data }) =>
+    check(request({ headers: data.admin }), {
+      'services 200': (r) => r.status === 200 && Array.isArray((json(r) || {}).services),
+    }),
+  'POST /admin/services': ({ request, data }) => {
+    const response = request({ body: { name: unique('perf-service') }, headers: data.admin });
+    check(response, { 'create service 201': (r) => r.status === 201 });
+    const id = (json(response) || {}).id;
+    if (id !== undefined) fixture('DELETE', coverage.url('DELETE /admin/services/{serviceId}', { serviceId: id }), undefined, data.admin);
+  },
+  'PATCH /admin/services/{serviceId}': ({ request, data }) => {
+    const id = json(fixture('POST', coverage.url('POST /admin/services'), { name: unique('perf-service-rename') }, data.admin)).id;
+    check(request({ path: { serviceId: id }, body: { name: unique('perf-service-renamed') }, headers: data.admin }), {
+      'rename service 200': (r) => r.status === 200,
+    });
+    fixture('DELETE', coverage.url('DELETE /admin/services/{serviceId}', { serviceId: id }), undefined, data.admin);
+  },
+  'DELETE /admin/services/{serviceId}': ({ request, data }) => {
+    const id = json(fixture('POST', coverage.url('POST /admin/services'), { name: unique('perf-service-delete') }, data.admin)).id;
+    check(request({ path: { serviceId: id }, headers: data.admin }), { 'delete service 204': (r) => r.status === 204 });
+  },
+  'PUT /admin/users/{userId}/service': ({ request, data }) => {
+    const email = `${unique('perf-service-agent')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Service', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    const id = json(fixture('POST', coverage.url('POST /admin/services'), { name: unique('perf-service-agent') }, data.admin)).id;
+    check(request({ path: { userId: need(userId, 'agent of the service') }, body: { service_id: id }, headers: data.admin }), {
+      'set user service 204': (r) => r.status === 204,
+    });
+    fixture('DELETE', coverage.url('DELETE /admin/services/{serviceId}', { serviceId: id }), undefined, data.admin);
+    dropAccount({ userId }, data);
+  },
+
   // --- Admin: roles ---
   'GET /admin/roles': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'roles 200': (r) => r.status === 200 }),
@@ -546,6 +587,50 @@ const handlers = {
     const userId = findUserId(email, data);
     check(request({ path: { userId: need(userId, 'account to reset') }, headers: data.admin }), {
       'admin reset 2fa 204': (r) => r.status === 204,
+    });
+    dropAccount({ userId }, data);
+  },
+
+  // MAIR-584 / MAIR-904: sessions of a user and suspension, each on its own throwaway account.
+  'GET /admin/users/{userId}/sessions': ({ request, data }) => {
+    check(request({ path: { userId: 2 }, headers: data.admin }), {
+      'admin user sessions 200': (r) => r.status === 200 && Array.isArray(r.json('sessions')),
+    });
+  },
+
+  'DELETE /admin/users/{userId}/sessions': ({ request, data }) => {
+    const email = `${unique('perf-close-all')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Close', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    check(request({ path: { userId: need(userId, 'account to sign out') }, headers: data.admin }), {
+      'admin close sessions 204': (r) => r.status === 204,
+    });
+    dropAccount({ userId }, data);
+  },
+
+  'DELETE /admin/users/{userId}/sessions/{sessionId}': ({ request, data }) => {
+    // A session of nobody: Core answers 404, the route and the proxying are what is measured.
+    const res = request({ path: { userId: 1, sessionId: '00000000-0000-4000-8000-000000000000' }, headers: data.admin, params: { responseCallback: http.expectedStatuses(404) } });
+    check(res, { 'admin close one session 404': (r) => r.status === 404 });
+  },
+
+  'POST /admin/users/{userId}/suspend': ({ request, data }) => {
+    const email = `${unique('perf-suspend')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Suspend', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    check(request({ path: { userId: need(userId, 'account to suspend') }, headers: data.admin }), {
+      'admin suspend 204': (r) => r.status === 204,
+    });
+    dropAccount({ userId }, data);
+  },
+
+  'POST /admin/users/{userId}/reactivate': ({ request, data }) => {
+    const email = `${unique('perf-reactivate')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Reactivate', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    fixture('POST', `${coverage.url('POST /admin/users')}/${userId}/suspend`, undefined, data.admin);
+    check(request({ path: { userId: need(userId, 'account to reactivate') }, headers: data.admin }), {
+      'admin reactivate 204': (r) => r.status === 204,
     });
     dropAccount({ userId }, data);
   },

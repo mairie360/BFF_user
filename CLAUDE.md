@@ -72,6 +72,14 @@ One exception: `GET /admin/projects-without-group` (groups tab of the administra
 read per call, 503 when missing, not required at startup). It forwards the caller's session after `requireAdmin`; the
 test stacks run `project-api` and `bff-project` images for it.
 
+The administration V2 (MAIR-584, MAIR-904): `GET /admin/users` relays `account_status`, `role_id` and `sort` to Core and its rows
+carry `account_status`, `active_sessions`, `last_login_at` and `two_factor`; `GET /admin/users/{userId}/sessions` reads the sessions of
+Core's user record, `DELETE /admin/users/{userId}/sessions[/{sessionId}]` and `POST /admin/users/{userId}/suspend|reactivate` relay
+Core's admin routes (newman folder « Administration: sessions and suspension of a user »). MAIR-916 / MAIR-923: the role writes take `modules`
+(relayed by `GET /admin/roles`, and the session's `modules` by `/me`), `/admin/services` (CRUD) and `PUT /admin/users/{userId}/service` relay
+Core's services, the admin rows carry `service`, groups take a `color` of the charter palette and answer `project_count` (newman folder
+« Administration: services, role modules and group colours »).
+
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
 `PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,
@@ -135,7 +143,9 @@ and the legacy `/me` resolve.
   429 and every 401 are kept, its 503 (no WebAuthn relying party) too so the front can fall back to the password. Managing the
   passkeys of the account is `BFF_Settings`'. The Login screen also creates a passkey through this BFF (answers `{ options }`, then
   the registration): `POST /user/me/passkeys/options` and `POST /user/me/passkeys { label, credential }` with the session of the agent
-  (`201` with `provider`, the name of the passkey manager Core deduced, `null` when unknown: the front offers it as the name), and, for
+  (`201` with `provider`, the name of the passkey manager Core deduced, `null` when unknown: the front offers it as the name), then
+  `PATCH /user/me/passkeys/{passkeyId} { label }` (MAIR-811: the name the agent keeps, relayed to Core `PATCH /api/v1/user/me/passkeys/{id}/`,
+  `200` with the passkey, Core 400 / 404 kept), and, for
   the mandatory enrolment of an agent that has no session yet, the public `POST /auth/passkey/setup/options { token }` and
   `POST /auth/passkey/setup { token, label, credential }` (the passkey satisfies the policy and the session opens in cookies like a
   login, no backup codes). Same refusals as the sign-in (403 policy, 409 already protected or credential already registered, 429, 503

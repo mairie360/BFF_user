@@ -95,6 +95,16 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | PATCH | `/admin/users/{userId}/password` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | POST | `/admin/users/{userId}/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | DELETE | `/admin/users/{userId}/roles/{roleId}` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| GET | `/admin/users/{userId}/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
+| DELETE | `/admin/users/{userId}/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| DELETE | `/admin/users/{userId}/sessions/{sessionId}` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| POST | `/admin/users/{userId}/suspend` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| PUT | `/admin/users/{userId}/service` | `AdminUserServiceBody` | 200, 201, 204, 400, 401, 403, 404, 429, 500, 502, 503 |
+| GET | `/admin/services` | — | 200, 201, 204, 400, 401, 403, 404, 429, 500, 502, 503 |
+| POST | `/admin/services` | `AdminServiceWriteBody` | 200, 201, 204, 400, 401, 403, 404, 409, 429, 500, 502, 503 |
+| PATCH | `/admin/services/{serviceId}` | `AdminServiceRenameBody` | 200, 201, 204, 400, 401, 403, 404, 409, 429, 500, 502, 503 |
+| DELETE | `/admin/services/{serviceId}` | — | 200, 201, 204, 400, 401, 403, 404, 429, 500, 502, 503 |
+| POST | `/admin/users/{userId}/reactivate` | — | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
 | GET | `/admin/projects-without-group` | — | 200, 401, 403, 429, 500, 502, 503 |
 | GET | `/admin/roles` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/roles` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
@@ -117,6 +127,11 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 
 `GET /admin/groups` and `GET /admin/sessions/history` return one page of Core's list, chosen by the front with `limit` (1 to 500) and `offset` (0 to 1000000), Core API's own bounds: a value outside them is a 400, and without them Core answers its first 100 items. The checks the BFF makes itself (the groups of `/me`, the membership read before adding or removing a group member) read Core's largest page, 500 items.
 
+
+
+The administration V2 (MAIR-584, MAIR-904): `GET /admin/users` also takes `account_status` (`active`, `invited`, `inactive` = archived, `suspended`), `role_id` and `sort` (`name`, `-name`), relayed to Core, and every row carries `account_status`, `active_sessions` (open sessions), `last_login_at` and `two_factor` (`methods`, `last_verified_at`, never a secret). `GET /admin/users/{userId}/sessions` returns the latest 100 sessions of the user (from Core's user record), `DELETE /admin/users/{userId}/sessions[/{sessionId}]` signs the user out of every device or of one, `POST /admin/users/{userId}/suspend` / `reactivate` suspend the account (its sessions closed, sign-in refused) and end the suspension; Core refuses one's own account with 409.
+
+Role modules, services and group colours (MAIR-916, MAIR-923): the role writes take `modules` (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), `GET /admin/roles` returns them and `GET /me` / `/session/me` answer the session's `modules` for the shared navigation. `GET` / `POST /admin/services`, `PATCH` / `DELETE /admin/services/{serviceId}` manage the services of the mairie (unique name, 409), `PUT /admin/users/{userId}/service` attaches an agent to one (`service_id`, `null` detaches); the admin rows carry `service`. Groups take a `color` of the charter palette (`blue`, `teal`, `green`, `orange`, `purple`, `pink`, `neutral`, `null` = default) and answer `project_count`.
 
 ## Session, permissions and errors
 

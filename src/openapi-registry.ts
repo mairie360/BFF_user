@@ -112,6 +112,14 @@ export const PasskeyResponse = z.object({
     last_used_at: z.string().nullable().openapi({ description: '`null` until the passkey signs in.', example: null }),
 }).openapi('PasskeyResponse');
 
+export const PasskeyRenameViewSchema = z.object({
+    label: PasskeyRegisterViewSchema.shape.label.openapi({ description: 'New name of the passkey. The Login screen proposes the `provider` Core answered at the creation.', example: 'Google Password Manager' }),
+}).openapi('PasskeyRenameView');
+
+export const PasskeyIdParams = z.object({
+    passkeyId: z.coerce.number().int().positive().max(2147483647).openapi({ description: 'Numeric id of one of the caller\'s passkeys (the `id` of the creation answer).', example: 7 }),
+}).openapi('PasskeyIdParams');
+
 export const PasskeySetupViewSchema = z.object({
     token: z.string().min(1).max(512).openapi({ description: 'Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.', example: 'example-two-factor-token' }),
     label: PasskeyRegisterViewSchema.shape.label,
@@ -290,6 +298,7 @@ registry.register('LoginTwoFactorView', LoginTwoFactorViewSchema);
 registry.register('PasskeyLoginView', PasskeyLoginViewSchema);
 registry.register('PasskeyRegisterView', PasskeyRegisterViewSchema);
 registry.register('PasskeySetupView', PasskeySetupViewSchema);
+registry.register('PasskeyRenameView', PasskeyRenameViewSchema);
 registry.register('TwoFactorSetupTokenView', TwoFactorSetupTokenViewSchema);
 registry.register('TwoFactorSetupConfirmView', TwoFactorSetupConfirmViewSchema);
 registry.register('ForceChangePasswordView', ForceChangePasswordViewSchema);
