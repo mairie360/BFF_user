@@ -32,6 +32,8 @@ const CORE = {
   passkeySetupOptions: '/api/v1/auth/passkey/setup/options', passkeySetup: '/api/v1/auth/passkey/setup',
   myPasskeyOptions: '/api/v1/user/me/passkeys/options/', myPasskeys: '/api/v1/user/me/passkeys/', myPasskey: '/api/v1/user/me/passkeys/{id}/',
   adminServices: '/api/v1/admin/services/', adminService: '/api/v1/admin/services/{serviceId}', adminUserService: '/api/v1/admin/users/{userId}/service',
+  securityAlerts: '/api/v1/admin/security-alerts/', connectionLogs: '/api/v1/admin/users/{userId}/connection-logs',
+  sessionReport: '/api/v1/sessions/report', mySecurityAlert: '/api/v1/user/me/security-alert/', acknowledgeAlert: '/api/v1/user/me/security-alert/{alertId}/acknowledge/',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -42,6 +44,9 @@ const FIRST_CONNECTION_TOKEN = '3f2504e0-4f89-11d3-9a0c-0305e82c3301';
 /** Reset token of the e-mail: ResetPasswordView.token is a UUID. */
 const RESET_TOKEN = '11111111-2222-4333-8444-555555555555';
 const SESSION = sessionToken(ADMIN_ID);
+const securityAlertOfAgent = { id: 12, level: 'possible', ip_address: '198.51.100.23', device_info: 'Firefox', created_at: '2026-11-23T08:12:00+00:00' };
+const securityAlert = { ...securityAlertOfAgent, acknowledged_at: null, user: { id: 42, first_name: 'Camille', last_name: 'Martin' } };
+const connectionLog = { action: 'SUSPICIOUS_IP_CHANGE', session_id: '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70', ip_address: '198.51.100.23', device_info: 'Firefox', occurred_at: '2026-11-23T08:12:00+00:00' };
 
 let app: Express;
 
@@ -319,6 +324,70 @@ describe('BFF User with a contract-driven Core API mock', () => {
         expect(response.status).toBe(400);
       }
       expect(coreApi.calls(CORE.myPasskeys)).toHaveLength(0);
+    });
+
+    // MAIR-773: the front proxies report a use of the session, the Login screen reads and acknowledges the alert.
+    test('MAIR-773 relays the report of a session with the caller\'s session, never more than the contract', async () => {
+      coreApi.on('post', CORE.sessionReport, { body: { revoked: true, internal: 'never relayed' } });
+
+      const response = await request(app).post('/user/me/sessions/report').set('Authorization', `Bearer ${SESSION}`)
+        .send({ level: 'possible', ip_address: '198.51.100.23', device_info: 'Firefox', user_id: 2 });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ revoked: true });
+      const [call] = coreApi.calls(CORE.sessionReport);
+      expect(call.body).toEqual({ level: 'possible', ip_address: '198.51.100.23', device_info: 'Firefox' });
+      expect(call.headers.authorization).toBe(`Bearer ${SESSION}`);
+      expectBffContract('post', '/user/me/sessions/report', response);
+    });
+
+    test('MAIR-773 rejects an invalid report, and one without session, before calling Core API', async () => {
+      const refused = await Promise.all([
+        request(app).post('/user/me/sessions/report').set('Authorization', `Bearer ${SESSION}`).send({ level: 'stolen', ip_address: '198.51.100.23' }),
+        request(app).post('/user/me/sessions/report').set('Authorization', `Bearer ${SESSION}`).send({ level: 'possible', ip_address: 'not-an-address' }),
+        request(app).post('/user/me/sessions/report').set('Authorization', `Bearer ${SESSION}`).send({ level: 'possible', ip_address: '198.51.100.23', device_info: 'x'.repeat(256) }),
+        request(app).post('/user/me/sessions/report').send({ level: 'possible', ip_address: '198.51.100.23' }),
+      ]);
+
+      expect(refused.map((response) => response.status)).toEqual([400, 400, 400, 401]);
+      expect(coreApi.calls(CORE.sessionReport)).toHaveLength(0);
+    });
+
+    test('MAIR-773 keeps the Core 400 of a report (JWT without session id)', async () => {
+      coreApi.on('post', CORE.sessionReport, coreError(400, 'The JWT carries no session id.'));
+
+      const response = await request(app).post('/user/me/sessions/report').set('Authorization', `Bearer ${SESSION}`).send({ level: 'possible', ip_address: '198.51.100.23' });
+
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(response.body)).not.toContain('session id');
+    });
+
+    test('MAIR-773 relays the pending alert, and 204 when there is none', async () => {
+      coreApi.on('get', CORE.mySecurityAlert, { body: { ...securityAlertOfAgent, internal: 'never relayed' } });
+      const pending = await request(app).get('/user/me/security-alert').set('Authorization', `Bearer ${SESSION}`);
+      expect(pending.status).toBe(200);
+      expect(pending.body).toEqual(securityAlertOfAgent);
+      expectBffContract('get', '/user/me/security-alert', pending);
+
+      coreApi.on('get', CORE.mySecurityAlert, { status: 204 });
+      const none = await request(app).get('/user/me/security-alert').set('Authorization', `Bearer ${SESSION}`);
+      expect(none.status).toBe(204);
+    });
+
+    test('MAIR-773 acknowledges the alert, keeps the Core 404 and rejects an invalid id', async () => {
+      coreApi.on('post', CORE.acknowledgeAlert, { status: 204 });
+      const acknowledged = await request(app).post('/user/me/security-alert/12/acknowledge').set('Authorization', `Bearer ${SESSION}`);
+      expect(acknowledged.status).toBe(204);
+      const [call] = coreApi.calls(CORE.acknowledgeAlert);
+      expect(call.url.pathname).toBe('/api/v1/user/me/security-alert/12/acknowledge/');
+
+      coreApi.on('post', CORE.acknowledgeAlert, coreError(404, 'Unknown alert'));
+      const unknown = await request(app).post('/user/me/security-alert/13/acknowledge').set('Authorization', `Bearer ${SESSION}`);
+      expect(unknown.status).toBe(404);
+      expectBffContract('post', '/user/me/security-alert/{alertId}/acknowledge', unknown);
+
+      const invalid = await request(app).post('/user/me/security-alert/abc/acknowledge').set('Authorization', `Bearer ${SESSION}`);
+      expect(invalid.status).toBe(400);
     });
 
     // MAIR-811: the name the agent keeps after the creation (the manager Core deduced, by default).
@@ -971,6 +1040,9 @@ describe('BFF User with a contract-driven Core API mock', () => {
       { route: 'PUT /admin/users/7/service', body: { service_id: 3 }, upstream: called('PUT', coreApiUrls.getAdminSetUserServiceUrl(7)), template: CORE.adminUserService, reply: { status: 204 }, status: 204 },
       { route: 'PUT /admin/users/7/service', body: { service_id: null }, upstream: called('PUT', coreApiUrls.getAdminSetUserServiceUrl(7)), template: CORE.adminUserService, reply: { status: 204 }, status: 204 },
       { route: 'PATCH /admin/groups/5', body: { color: 'teal' }, upstream: called('PATCH', coreApiUrls.getPatchGroupUrl(5)), template: CORE.group, reply: { body: group(5, { color: 'teal', project_count: 2 }) }, status: 200, responseBody: { group: group(5, { color: 'teal', project_count: 2 }) } },
+      // MAIR-773: the stolen-session alerts of the instance and the sign-in journal of an agent.
+      { route: 'GET /admin/security-alerts', upstream: called('GET', coreApiUrls.getListSecurityAlertsUrl()), template: CORE.securityAlerts, reply: { body: [securityAlert] }, status: 200, responseBody: [securityAlert] },
+      { route: 'GET /admin/users/7/connection-logs', upstream: called('GET', coreApiUrls.getAdminGetUserConnectionLogsUrl(7)), template: CORE.connectionLogs, reply: { body: [connectionLog] }, status: 200, responseBody: [connectionLog] },
     ];
 
     test.each(cases)('$route checks the admin role then calls $upstream with the session', async ({ route, body, upstream, template, reply, status, responseBody }) => {

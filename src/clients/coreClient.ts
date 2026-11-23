@@ -59,6 +59,16 @@ export const coreAdminUsersClient = {
     adminReactivateUser: coreApi.adminReactivateUser,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
+    adminGetUserConnectionLogs: coreApi.adminGetUserConnectionLogs,
+};
+
+// Stolen-session alerts (MAIR-773): the report of the front proxies, the agent's pending alert, and
+// the alerts of the administration.
+export const coreSecurityAlertsClient = {
+    reportSessionUse: coreApi.reportSessionUse,
+    getMySecurityAlert: coreApi.getMySecurityAlert,
+    acknowledgeMySecurityAlert: coreApi.acknowledgeMySecurityAlert,
+    listSecurityAlerts: coreApi.listSecurityAlerts,
 };
 
 // Passkeys of the signed-in agent (MAIR-810): the creation, relayed for the Login screen.

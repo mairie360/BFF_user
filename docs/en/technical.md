@@ -122,6 +122,11 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | GET | `/admin/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | GET | `/admin/sessions/history` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/sessions/revoke` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| GET | `/admin/security-alerts` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
+| GET | `/admin/users/{userId}/connection-logs` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
+| POST | `/user/me/sessions/report` | `ReportSessionView` | 200, 400, 401, 429, 500, 502, 503 |
+| GET | `/user/me/security-alert` | — | 200, 204, 401, 429, 500, 502, 503 |
+| POST | `/user/me/security-alert/{alertId}/acknowledge` | — | 204, 400, 401, 404, 429, 500, 502, 503 |
 | GET | `/me` | — | 200, 401, 502 |
 | GET | `/session/me` | — | 200, 401, 502 |
 
@@ -130,6 +135,8 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 
 
 The administration V2 (MAIR-584, MAIR-904): `GET /admin/users` also takes `account_status` (`active`, `invited`, `inactive` = archived, `suspended`), `role_id` and `sort` (`name`, `-name`), relayed to Core, and every row carries `account_status`, `active_sessions` (open sessions), `last_login_at` and `two_factor` (`methods`, `last_verified_at`, never a secret). `GET /admin/users/{userId}/sessions` returns the latest 100 sessions of the user (from Core's user record), `DELETE /admin/users/{userId}/sessions[/{sessionId}]` signs the user out of every device or of one, `POST /admin/users/{userId}/suspend` / `reactivate` suspend the account (its sessions closed, sign-in refused) and end the suspension; Core refuses one's own account with 409.
+
+Stolen sessions (MAIR-773): the fronts' proxies report a use of the session from another device with `POST /user/me/sessions/report` (`level` = `certain` / `possible` / `ip_change`, `ip_address`, `device_info`), relayed to Core with the session: `certain` and `possible` close it (`revoked: true`) and alert the agent and the administrators. `GET /user/me/security-alert` returns the agent's latest unread alert (`204` when none) and `POST /user/me/security-alert/{alertId}/acknowledge` marks it read, for the « Activité inhabituelle » screen of Login. `GET /admin/security-alerts` (30 days, with the agent) and `GET /admin/users/{userId}/connection-logs` (latest 100 lines) feed the Security tab of the administration.
 
 Role modules, services and group colours (MAIR-916, MAIR-923): the role writes take `modules` (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), `GET /admin/roles` returns them and `GET /me` / `/session/me` answer the session's `modules` for the shared navigation. `GET` / `POST /admin/services`, `PATCH` / `DELETE /admin/services/{serviceId}` manage the services of the mairie (unique name, 409), `PUT /admin/users/{userId}/service` attaches an agent to one (`service_id`, `null` detaches); the admin rows carry `service`. Groups take a `color` of the charter palette (`blue`, `teal`, `green`, `orange`, `purple`, `pink`, `neutral`, `null` = default) and answer `project_count`.
 

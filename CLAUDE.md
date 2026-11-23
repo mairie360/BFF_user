@@ -80,6 +80,12 @@ Core's admin routes (newman folder « Administration: sessions and suspension of
 Core's services, the admin rows carry `service`, groups take a `color` of the charter palette and answer `project_count` (newman folder
 « Administration: services, role modules and group colours »).
 
+Stolen sessions (MAIR-773): `POST /user/me/sessions/report` (the fronts' proxies, with the session they checked), `GET
+/user/me/security-alert` (204 when none) and `POST /user/me/security-alert/{alertId}/acknowledge` (Login screen « Activité
+inhabituelle ») relay Core's report, pending alert and acknowledgement; `GET /admin/security-alerts` and `GET
+/admin/users/{userId}/connection-logs` its administration reads (`coreSecurityAlertsClient`). Newman folder « Stolen session
+alerts (MAIR-773) ».
+
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
 `PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,

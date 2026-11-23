@@ -311,3 +311,32 @@ registry.register('RefreshResponse', RefreshResponse);
 registry.register('LogoutView', LogoutViewSchema);
 registry.register('LogoutResponse', LogoutResponse);
 registry.register('UserIdParams', UserIdParams);
+
+// Stolen-session alerts (MAIR-773).
+export const SuspicionLevelSchema = z.enum(['certain', 'possible', 'ip_change']).openapi('SuspicionLevel', {
+    description: '`certain`: the session is bound to a device key and the request came without a valid proof. `possible`: an '
+        + 'unbound session was used from another network. `ip_change`: a bound session changed network with a valid proof.',
+    example: 'possible',
+});
+
+export const ReportSessionViewSchema = registry.register('ReportSessionView', z.object({
+    level: SuspicionLevelSchema,
+    ip_address: z.union([z.ipv4(), z.ipv6()]).openapi({ description: 'Address of the browser that sent the request, as the front proxy saw it.', example: '203.0.113.7' }),
+    device_info: z.string().max(255).optional().openapi({ description: 'User agent of that browser.', example: 'Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0' }),
+}));
+
+export const ReportSessionResponseSchema = registry.register('ReportSessionResponse', z.object({
+    revoked: z.boolean().openapi({ description: 'The session was active and is now closed: send the agent back to the sign-in.', example: true }),
+}));
+
+export const SecurityAlertSchema = registry.register('SecurityAlert', z.object({
+    id: z.number().int().openapi({ example: 12 }),
+    level: z.enum(['certain', 'possible']).openapi({ example: 'certain' }),
+    ip_address: z.string().nullable().openapi({ description: 'Address the session was used from (the front shows only its beginning).', example: '203.0.113.7' }),
+    device_info: z.string().nullable().openapi({ example: 'Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0' }),
+    created_at: z.string().openapi({ description: 'RFC 3339 date of the use.', example: '2026-11-23T08:12:00+00:00' }),
+}));
+
+export const AlertIdParams = z.object({
+    alertId: z.coerce.number().int().positive().max(9007199254740991).openapi({ description: 'Id of the alert (`id` of `GET /user/me/security-alert`).', example: 12 }),
+}).openapi('AlertIdParams');
