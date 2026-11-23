@@ -467,11 +467,22 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', details: [] } });
     });
 
+    test('MAIR-757 keeps the Core API 400 of a password its policy refuses', async () => {
+      coreApi.on('post', CORE.forceChangePassword, coreError(400, 'Invalid `new_password`: must not be a commonly used password'));
+
+      const response = await request(app).post('/auth/force_change_password').send({ ...payload, new_password: 'Unbelievable' });
+
+      expect(response.status).toBe(400);
+      expectBffContract('post', '/auth/force_change_password', response);
+      expect(response.body.error.code).toBe('BAD_REQUEST');
+      expect(coreApi.requests).toHaveLength(1);
+    });
+
     test.each([
       ['an invalid payload', { token: '' }, 400],
       ['an empty password', { token: FIRST_CONNECTION_TOKEN, new_password: '' }, 400],
       ['a one-character password', { token: FIRST_CONNECTION_TOKEN, new_password: 'x' }, 400],
-      ['a 7-character password', { token: FIRST_CONNECTION_TOKEN, new_password: 'Short-7' }, 400],
+      ['an 11-character password (MAIR-757)', { token: FIRST_CONNECTION_TOKEN, new_password: 'Velo-2026-x' }, 400],
     ])('rejects %s before calling Core API', async (_label, body, status) => {
       const response = await request(app).post('/auth/force_change_password').send(body);
 
@@ -618,7 +629,7 @@ describe('BFF User with a contract-driven Core API mock', () => {
 
     test.each([
       ['a token that is not a UUID', { ...payload, token: 'abc' }],
-      ['a 7-character password', { ...payload, new_password: 'Short-7' }],
+      ['an 11-character password (MAIR-757)', { ...payload, new_password: 'Velo-2026-x' }],
       ['a missing device_info', { token: RESET_TOKEN, new_password: 'Updated-456!' }],
     ])('rejects %s before calling Core API', async (_label, body) => {
       const response = await request(app).post('/auth/reset_password').send(body);

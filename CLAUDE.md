@@ -123,7 +123,7 @@ and the legacy `/me` resolve.
   cookies (`src/utils/cookieUtils.ts`): `accessToken` (path `/`) and `refreshToken` (path `/auth`).
   No token goes to the response body or a response header (MAIR-397); the body is
   `{ message }`. Login bodies are validated with Zod (unknown fields stripped) before reaching Core.
-  `/auth/force_change_password` requires an 8-255 character password, like the admin routes.
+  `/auth/force_change_password` requires a 12-255 character password, like the admin routes and `/auth/reset_password` (Core API's CNIL 2022 policy: Core also refuses common passwords and the account's e-mail or names with a `400`).
 - **`/auth/forgot_password`** / **`/auth/reset_password`** (MAIR-527, public): forgot forwards `{ email }` to Core
   and answers the same empty 200 for a known or unknown address (Core 400 / 429 kept); reset forwards
   `{ token (UUID), new_password, device_info }` and opens the session with `sendSession` like login (Core 400 / 401

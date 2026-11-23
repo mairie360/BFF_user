@@ -292,7 +292,7 @@ describe('POST /auth/reset_password', () => {
 
     it.each([
         ['a token that is not a UUID', { ...reset, token: 'not-a-token' }],
-        ['a 7-character password', { ...reset, new_password: 'Short-7' }],
+        ['an 11-character password (MAIR-757)', { ...reset, new_password: 'Velo-2026-x' }],
         ['a password longer than 255 characters', { ...reset, new_password: 'x'.repeat(256) }],
         ['a missing device_info', { token: RESET_TOKEN, new_password: 'Updated-456!' }],
         ['a device_info longer than 512 characters', { ...reset, device_info: 'x'.repeat(513) }],

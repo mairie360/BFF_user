@@ -446,7 +446,7 @@ export interface paths {
                         "application/json": components["schemas"]["TwoFactorRequiredResponse"];
                     };
                 };
-                /** @description Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character) */
+                /** @description Invalid payload (`token` not a UUID, `new_password` not 12 to 255 characters or refused by the Core API password policy, `device_info` longer than 512 characters, or a control character) */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -6862,8 +6862,8 @@ export interface components {
         };
         ForceChangePasswordView: {
             /**
-             * @description New password of the user (8 to 255 characters).
-             * @example NouveauMotDePasse123
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy: 400 otherwise).
+             * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
             /**
@@ -6887,8 +6887,8 @@ export interface components {
              */
             token: string;
             /**
-             * @description New password of the user (8 to 255 characters).
-             * @example NouveauMotDePasse123
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy: 400 otherwise).
+             * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
             /**
@@ -7231,7 +7231,7 @@ export interface components {
          */
         AdministrationGroupColor: "blue" | "teal" | "green" | "orange" | "purple" | "pink" | "neutral" | null;
         AdminUserPasswordResetBody: {
-            /** @example Temporary-Passw0rd */
+            /** @example Temporary-Ecole-Pont-2026 */
             new_password: string;
         };
         AdminUserCreateBody: {
@@ -7244,7 +7244,7 @@ export interface components {
             first_name: string;
             /** @example Doe */
             last_name: string;
-            /** @example Temporary-Passw0rd */
+            /** @example Temporary-Ecole-Pont-2026 */
             password: string;
             /** @example 06 12 34 56 78 */
             phone_number?: string | null;

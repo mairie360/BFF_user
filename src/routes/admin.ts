@@ -17,7 +17,7 @@ import {
 } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { CoreApiRateLimited, ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiRateLimited, ErrorResponse, PASSWORD_MIN_LENGTH, registry } from '../openapi-registry';
 import {
     CORE_LARGEST_PAGE,
     CORE_MAX_LIMIT,
@@ -102,7 +102,7 @@ const GroupPatchBody = z.object({
     message: 'At least one field is required',
 }).openapi('AdminGroupPatchBody');
 const UserPasswordResetBody = z.object({
-    new_password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
+    new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({ example: 'Temporary-Ecole-Pont-2026' }),
 }).openapi('AdminUserPasswordResetBody');
 // Request bodies mirror the Core API views they are forwarded to (@mairie360/core-api-openapi); unknown
 // fields are stripped. The examples are valid values, so a generated request (Swagger UI, ZAP) is accepted.
@@ -120,7 +120,7 @@ const UserCreateBody = z.object({
     email: Email,
     first_name: PersonName.openapi({ example: 'Jane' }),
     last_name: PersonName.openapi({ example: 'Doe' }),
-    password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
+    password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({ example: 'Temporary-Ecole-Pont-2026' }),
     phone_number: PhoneNumber.nullable().optional(),
     phone_country: PhoneCountry.nullable().optional(),
 }).openapi('AdminUserCreateBody');
