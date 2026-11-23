@@ -43,7 +43,7 @@ export const groupMembers = (users: number[]): GetGroupUsersResultView => ({ use
 export const postGroupResult = (id: number): PostGroupResultView => ({ id });
 
 export function role(id: number, overrides: Partial<Role> = {}): Role {
-  return { id, name: `Rôle ${id}`, description: `Description du rôle ${id}`, ...overrides };
+  return { id, name: `Rôle ${id}`, description: `Description du rôle ${id}`, can_be_deleted: true, modules: ['dashboard'], ...overrides };
 }
 
 export const rolesResult = (roles: Role[]): AdminGetRolesResultView => ({ roles });
@@ -75,12 +75,17 @@ export function meResponse(overrides: Partial<GetMeResponseView> = {}): GetMeRes
     roles: role ? [role] : [],
     status: 'active',
     groups: [group(1)],
+    // MAIR-916: the modules the role opens, in navigation order (Admin opens every one).
+    modules: role === 'Admin' ? ['dashboard', 'projects', 'calendar', 'messages', 'training', 'admin', 'settings'] : ['dashboard'],
     ...overrides,
   };
 }
 
 export function userResponse(overrides: Partial<GetUserResponseView> = {}): GetUserResponseView {
-  return { ...meResponse(), is_archived: false, ...overrides };
+  // `modules` is only answered by /user/me/ (MAIR-916).
+  const user: Partial<GetMeResponseView> = meResponse();
+  delete user.modules;
+  return { ...(user as GetMeResponseView), is_archived: false, ...overrides };
 }
 
 export const loginResponse = (refresh_token = 'opaque-refresh-token'): LoginResponseView => ({ refresh_token });
@@ -102,6 +107,7 @@ export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRo
     active_sessions: 0,
     last_login_at: null,
     two_factor: { methods: [], last_verified_at: null },
+    service: null,
     ...overrides,
   };
 }

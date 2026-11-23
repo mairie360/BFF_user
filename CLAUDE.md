@@ -75,7 +75,10 @@ test stacks run `project-api` and `bff-project` images for it.
 The administration V2 (MAIR-584, MAIR-904): `GET /admin/users` relays `account_status`, `role_id` and `sort` to Core and its rows
 carry `account_status`, `active_sessions`, `last_login_at` and `two_factor`; `GET /admin/users/{userId}/sessions` reads the sessions of
 Core's user record, `DELETE /admin/users/{userId}/sessions[/{sessionId}]` and `POST /admin/users/{userId}/suspend|reactivate` relay
-Core's admin routes (newman folder « Administration: sessions and suspension of a user »).
+Core's admin routes (newman folder « Administration: sessions and suspension of a user »). MAIR-916 / MAIR-923: the role writes take `modules`
+(relayed by `GET /admin/roles`, and the session's `modules` by `/me`), `/admin/services` (CRUD) and `PUT /admin/users/{userId}/service` relay
+Core's services, the admin rows carry `service`, groups take a `color` of the charter palette and answer `project_count` (newman folder
+« Administration: services, role modules and group colours »).
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from

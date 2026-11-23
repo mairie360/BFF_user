@@ -3562,6 +3562,630 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/users/{userId}/service": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Attach a user to a service of the mairie, or detach them with `service_id: null` (MAIR-923) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminUserServiceBody"];
+                };
+            };
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the services of the mairie with their agent counts (MAIR-923) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Administration data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationServices"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a service of the mairie (MAIR-923); its name is unique whatever its case */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminServiceWriteBody"];
+                };
+            };
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Service created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationService"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/services/{serviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a service of the mairie (MAIR-923); its agents are left without a service */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serviceId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename a service of the mairie (MAIR-923) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serviceId: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminServiceRenameBody"];
+                };
+            };
+            responses: {
+                /** @description Service renamed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationService"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/admin/roles": {
         parameters: {
             query?: never;
@@ -4684,7 +5308,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Update the name or the description of a group */
+        /** Update the name, the description or the colour of a group */
         patch: {
             parameters: {
                 query?: never;
@@ -6234,6 +6858,46 @@ export interface components {
             name: string;
             description: string;
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders of the role open, in navigation order (MAIR-916). The Admin role always opens `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
+        };
+        /**
+         * @description Module of the shared navigation.
+         * @example projects
+         * @enum {string}
+         */
+        AdministrationRoleModule: "dashboard" | "projects" | "calendar" | "messages" | "training" | "admin" | "settings";
+        AdministrationServiceRef: {
+            /** @example 3 */
+            id: number;
+            /** @example Roads */
+            name: string;
+        };
+        AdministrationService: {
+            /** @example 3 */
+            id: number;
+            /** @example Roads */
+            name: string;
+            /**
+             * @description Creation date, RFC 3339 UTC.
+             * @example 2026-11-20T08:00:00Z
+             */
+            created_at: string;
+            /**
+             * @description Active agents attached to the service.
+             * @example 12
+             */
+            agents: number;
+        };
+        AdministrationServices: {
+            /** @description Every service of the mairie, by name. */
+            services: components["schemas"]["AdministrationService"][];
         };
         AdministrationUser: {
             id: number;
@@ -6265,6 +6929,13 @@ export interface components {
              */
             last_login_at: string | null;
             two_factor: components["schemas"]["AdministrationUserTwoFactor"];
+            /** @description Service of the mairie the agent belongs to (MAIR-923), null when none. */
+            service?: {
+                /** @example 3 */
+                id: number;
+                /** @example Roads */
+                name: string;
+            } | null;
         };
         /** @description Second factor of the user (security tab of the administration), never a secret. */
         AdministrationUserTwoFactor: {
@@ -6294,6 +6965,17 @@ export interface components {
             name: string;
             description: string | null;
             owner_id: number;
+            /**
+             * @description Colour of the group card (MAIR-923); null for the default one.
+             * @example teal
+             * @enum {string|null}
+             */
+            color?: "blue" | "teal" | "green" | "orange" | "purple" | "pink" | "neutral" | null;
+            /**
+             * @description Projects linked to the group.
+             * @example 2
+             */
+            project_count?: number;
         };
         AdministrationGroupMember: {
             id: number;
@@ -6424,7 +7106,14 @@ export interface components {
             name?: string;
             /** @example Group edited by the ZAP scan */
             description?: string;
+            color?: components["schemas"]["AdministrationGroupColor"];
         };
+        /**
+         * @description Colour of the group card, from the charter palette.
+         * @example teal
+         * @enum {string|null}
+         */
+        AdministrationGroupColor: "blue" | "teal" | "green" | "orange" | "purple" | "pink" | "neutral" | null;
         AdminUserPasswordResetBody: {
             /** @example Temporary-Passw0rd */
             new_password: string;
@@ -6474,6 +7163,14 @@ export interface components {
             description: string;
             /** @example true */
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
         };
         AdminRoleReplaceBody: {
             /** @example Scan role */
@@ -6482,6 +7179,14 @@ export interface components {
             description: string;
             /** @example true */
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
         };
         AdminRolePatchBody: {
             /** @example Scan role */
@@ -6490,18 +7195,46 @@ export interface components {
             description?: string | null;
             /** @example true */
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
         };
         AdminGroupCreateBody: {
             /** @example Culture */
             name: string;
             /** @example Culture department */
             description: string;
+            color?: components["schemas"]["AdministrationGroupColor"];
         };
         AdminGroupUserBody: {
             /** @example 42 */
             user_id: number;
             /** @description Must match the path groupId when sent */
             group_id?: number;
+        };
+        AdminServiceIdParams: {
+            /** @example 3 */
+            serviceId: number;
+        };
+        AdminServiceWriteBody: {
+            /** @example Roads */
+            name: string;
+        };
+        AdminServiceRenameBody: {
+            /** @example Scan service */
+            name: string;
+        };
+        AdminUserServiceBody: {
+            /**
+             * @description Id of a service of `GET /admin/services`, or `null` to detach the agent.
+             * @example 3
+             */
+            service_id: number | null;
         };
         AdminSessionRevokeBody: {
             /** @example opaque-revoked-token */
@@ -6529,6 +7262,15 @@ export interface components {
                 id?: number;
                 name: string;
             })[];
+            /**
+             * @description Modules the role of the session opens (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), in navigation order. Absent when Core does not send them.
+             * @example [
+             *       "dashboard",
+             *       "projects",
+             *       "admin"
+             *     ]
+             */
+            modules?: string[];
         };
         LoginSessionResponse: {
             /** @example Logged in successfully */

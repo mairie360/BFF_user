@@ -58,7 +58,9 @@ describe('GET /session/me', () => {
         const user: Partial<ReturnType<typeof meResponse>> = { ...me };
         delete user.groups;
         delete user.roles;
-        expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
+        delete user.modules;
+        // MAIR-916: the modules of the session's role, relayed for the shared navigation.
+        expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'], modules: ['dashboard'] });
         expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
         expect(mockedGetGroups).toHaveBeenCalledWith({ limit: 500 }, { baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
     });
@@ -113,7 +115,7 @@ describe('GET /session/me', () => {
         const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
 
         expect(response.status).toBe(200);
-        expect(Object.keys(response.body).sort()).toEqual(['groups', 'roles', 'user']);
+        expect(Object.keys(response.body).sort()).toEqual(['groups', 'modules', 'roles', 'user']);
         expect(response.body.user).not.toHaveProperty('password_hash');
         expect(response.body.user).not.toHaveProperty('is_archived');
         expect(response.body.groups[0]).not.toHaveProperty('internal_note');
