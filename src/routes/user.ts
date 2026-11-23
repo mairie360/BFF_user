@@ -6,12 +6,14 @@ import {
     CoreApiRateLimited,
     ErrorResponse,
     PasskeyRegisterOptionsResponse,
+    PasskeyIdParams,
     PasskeyRegisterViewSchema,
+    PasskeyRenameViewSchema,
     PasskeyResponse,
     registry,
     UserIdParams,
 } from '../openapi-registry';
-import { fetchUserAbout, finishPasskeyRegistration, startPasskeyRegistration } from './core_helpers';
+import { fetchUserAbout, finishPasskeyRegistration, renamePasskey, startPasskeyRegistration } from './core_helpers';
 import { passkeysUnavailable } from './passkey_errors';
 import { whitelist } from './admin_helpers';
 
@@ -129,6 +131,30 @@ registry.registerPath({
     },
 });
 
+registry.registerPath({
+    method: 'patch',
+    path: '/user/me/passkeys/{passkeyId}',
+    tags: ['Users'],
+    summary: 'Rename one of my passkeys',
+    description: 'Forwards the new label to Core API `PATCH /api/v1/user/me/passkeys/{id}/`, with the caller\'s session (MAIR-811). The Login screen '
+        + 'creates the passkey, then shows the `provider` Core deduced as its name: the name the agent keeps is saved here. A passkey of another '
+        + 'account answers 404, like an unknown one. No e-mail is sent.',
+    request: {
+        params: PasskeyIdParams,
+        body: { required: true, content: { 'application/json': { schema: PasskeyRenameViewSchema } } },
+    },
+    responses: {
+        200: { description: 'Passkey renamed.', content: { 'application/json': { schema: PasskeyResponse } } },
+        400: { description: 'Invalid id or label (empty, more than 100 characters, control character).', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Missing, invalid or expired session.', content: { 'application/json': { schema: ErrorResponse } } },
+        404: { description: 'No such passkey among the caller\'s.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: CoreApiRateLimited,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'CORE_API_URL is not set.', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
 router.post('/me/passkeys/options', async (req: Request, res: Response) => {
     let data: unknown;
     try {
@@ -148,6 +174,18 @@ router.post('/me/passkeys', async (req: Request, res: Response) => {
         return res.status(201).json(whitelist(PasskeyResponse, data));
     } catch (error) {
         throw passkeysUnavailable(error) ?? upstreamError('CORE_API', error, [400, 401, 403, 409, 429]);
+    }
+});
+
+router.patch('/me/passkeys/:passkeyId', async (req: Request, res: Response) => {
+    const { passkeyId } = parseRequest(PasskeyIdParams, req.params, 'params');
+    const body = parseRequest(PasskeyRenameViewSchema, req.body, 'body');
+
+    try {
+        const { data } = await renamePasskey(passkeyId, { label: body.label }, asCaller('CORE_API', req));
+        return res.status(200).json(whitelist(PasskeyResponse, data));
+    } catch (error) {
+        throw upstreamError('CORE_API', error, [400, 401, 404]);
     }
 });
 
