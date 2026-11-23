@@ -65,6 +65,7 @@ export const coreAdminUsersClient = {
 export const corePasskeysClient = {
     passkeyRegisterOptions: coreApi.passkeyRegisterOptions,
     registerPasskey: coreApi.registerPasskey,
+    renameMyPasskey: coreApi.renameMyPasskey,
 };
 
 // Instance policy of the second factor (MAIR-808).

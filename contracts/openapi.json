@@ -230,6 +230,21 @@
           "credential"
         ]
       },
+      "PasskeyRenameView": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "New name of the passkey. The Login screen proposes the `provider` Core answered at the creation.",
+            "example": "Google Password Manager"
+          }
+        },
+        "required": [
+          "label"
+        ]
+      },
       "TwoFactorSetupTokenView": {
         "type": "object",
         "properties": {
@@ -3657,6 +3672,122 @@
           },
           "503": {
             "description": "Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/me/passkeys/{passkeyId}": {
+      "patch": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Rename one of my passkeys",
+        "description": "Forwards the new label to Core API `PATCH /api/v1/user/me/passkeys/{id}/`, with the caller's session (MAIR-811). The Login screen creates the passkey, then shows the `provider` Core deduced as its name: the name the agent keeps is saved here. A passkey of another account answers 404, like an unknown one. No e-mail is sent.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647,
+              "description": "Numeric id of one of the caller's passkeys (the `id` of the creation answer).",
+              "example": 7
+            },
+            "required": true,
+            "description": "Numeric id of one of the caller's passkeys (the `id` of the creation answer).",
+            "name": "passkeyId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyRenameView"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Passkey renamed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid id or label (empty, more than 100 characters, control character).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such passkey among the caller's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable or invalid upstream answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CORE_API_URL is not set.",
             "content": {
               "application/json": {
                 "schema": {

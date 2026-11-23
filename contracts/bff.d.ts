@@ -1740,6 +1740,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/user/me/passkeys/{passkeyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename one of my passkeys
+         * @description Forwards the new label to Core API `PATCH /api/v1/user/me/passkeys/{id}/`, with the caller's session (MAIR-811). The Login screen creates the passkey, then shows the `provider` Core deduced as its name: the name the agent keeps is saved here. A passkey of another account answers 404, like an unknown one. No e-mail is sent.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Numeric id of one of the caller's passkeys (the `id` of the creation answer). */
+                    passkeyId: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyRenameView"];
+                };
+            };
+            responses: {
+                /** @description Passkey renamed. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyResponse"];
+                    };
+                };
+                /** @description Invalid id or label (empty, more than 100 characters, control character). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description No such passkey among the caller's. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/admin/projects-without-group": {
         parameters: {
             query?: never;
@@ -6724,6 +6833,13 @@ export interface components {
             credential: {
                 [key: string]: unknown;
             };
+        };
+        PasskeyRenameView: {
+            /**
+             * @description New name of the passkey. The Login screen proposes the `provider` Core answered at the creation.
+             * @example Google Password Manager
+             */
+            label: string;
         };
         TwoFactorSetupTokenView: {
             /**

@@ -295,6 +295,12 @@ const policyHandlers = {
       check(request({ headers: data.admin, body: {} }), {
         'passkey creation options 200': (r) => r.status === 200 && !!r.json('options.publicKey.challenge'),
       })),
+  // MAIR-811: k6 holds no real passkey: an unknown id answers the 404 of Core, relayed.
+  'PATCH /user/me/passkeys/{passkeyId}': ({ request, data }) =>
+    check(
+      request({ path: { passkeyId: 999999999 }, headers: data.admin, body: { label: 'k6' }, params: { responseCallback: http.expectedStatuses(404) } }),
+      { 'rename unknown passkey 404': (r) => r.status === 404 },
+    ),
   'POST /user/me/passkeys': ({ request, data }) =>
     withPolicy(data, PASSKEYS_ALLOWED, () => {
       fixture('POST', policyCoverage.url('POST /user/me/passkeys/options'), {}, data.admin);
