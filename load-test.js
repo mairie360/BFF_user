@@ -550,6 +550,50 @@ const handlers = {
     dropAccount({ userId }, data);
   },
 
+  // MAIR-584 / MAIR-904: sessions of a user and suspension, each on its own throwaway account.
+  'GET /admin/users/{userId}/sessions': ({ request, data }) => {
+    check(request({ path: { userId: 2 }, headers: data.admin }), {
+      'admin user sessions 200': (r) => r.status === 200 && Array.isArray(r.json('sessions')),
+    });
+  },
+
+  'DELETE /admin/users/{userId}/sessions': ({ request, data }) => {
+    const email = `${unique('perf-close-all')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Close', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    check(request({ path: { userId: need(userId, 'account to sign out') }, headers: data.admin }), {
+      'admin close sessions 204': (r) => r.status === 204,
+    });
+    dropAccount({ userId }, data);
+  },
+
+  'DELETE /admin/users/{userId}/sessions/{sessionId}': ({ request, data }) => {
+    // A session of nobody: Core answers 404, the route and the proxying are what is measured.
+    const res = request({ path: { userId: 1, sessionId: '00000000-0000-4000-8000-000000000000' }, headers: data.admin, params: { responseCallback: http.expectedStatuses(404) } });
+    check(res, { 'admin close one session 404': (r) => r.status === 404 });
+  },
+
+  'POST /admin/users/{userId}/suspend': ({ request, data }) => {
+    const email = `${unique('perf-suspend')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Suspend', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    check(request({ path: { userId: need(userId, 'account to suspend') }, headers: data.admin }), {
+      'admin suspend 204': (r) => r.status === 204,
+    });
+    dropAccount({ userId }, data);
+  },
+
+  'POST /admin/users/{userId}/reactivate': ({ request, data }) => {
+    const email = `${unique('perf-reactivate')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Reactivate', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    fixture('POST', `${coverage.url('POST /admin/users')}/${userId}/suspend`, undefined, data.admin);
+    check(request({ path: { userId: need(userId, 'account to reactivate') }, headers: data.admin }), {
+      'admin reactivate 204': (r) => r.status === 204,
+    });
+    dropAccount({ userId }, data);
+  },
+
   // --- Session reads ---
   // A random seeded agent, member of 4 perf groups.
   'GET /me': ({ request }) =>

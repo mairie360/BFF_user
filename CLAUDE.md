@@ -72,6 +72,11 @@ One exception: `GET /admin/projects-without-group` (groups tab of the administra
 read per call, 503 when missing, not required at startup). It forwards the caller's session after `requireAdmin`; the
 test stacks run `project-api` and `bff-project` images for it.
 
+The administration V2 (MAIR-584, MAIR-904): `GET /admin/users` relays `account_status`, `role_id` and `sort` to Core and its rows
+carry `account_status`, `active_sessions`, `last_login_at` and `two_factor`; `GET /admin/users/{userId}/sessions` reads the sessions of
+Core's user record, `DELETE /admin/users/{userId}/sessions[/{sessionId}]` and `POST /admin/users/{userId}/suspend|reactivate` relay
+Core's admin routes (newman folder « Administration: sessions and suspension of a user »).
+
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
 `GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
 `PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,
