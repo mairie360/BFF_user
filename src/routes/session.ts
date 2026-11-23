@@ -8,6 +8,7 @@ import { whitelist } from './admin_helpers';
 type UserWithRoles = {
     roles?: unknown;
     role?: unknown;
+    modules?: unknown;
 };
 
 const router = Router();
@@ -21,6 +22,11 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
     }),
     groups: z.array(z.object({ id: z.number(), name: z.string(), owner_id: z.number(), description: z.string().nullable().optional() })),
     roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() })])),
+    // MAIR-916: modules the role of the session opens, in navigation order; the shared navigation hides the others.
+    modules: z.array(z.string()).optional().openapi({
+        description: 'Modules the role of the session opens (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), in navigation order. Absent when Core does not send them.',
+        example: ['dashboard', 'projects', 'admin'],
+    }),
 }));
 for (const path of ['/me', '/session/me']) {
     registry.registerPath({ method: 'get', path, summary: 'Get the identity, groups and roles of the session', responses: {
@@ -53,6 +59,7 @@ router.get('/me', noStore, requireSession, async (req: Request, res: Response) =
         user: userResponse.data,
         groups: groupsResponse.data?.groups,
         roles,
+        ...(Array.isArray(userWithRoles.modules) ? { modules: userWithRoles.modules } : {}),
     }));
 });
 

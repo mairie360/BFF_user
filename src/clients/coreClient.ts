@@ -73,6 +73,15 @@ export const coreTwoFactorPolicyClient = {
     updateTwoFactorPolicy: coreApi.updateTwoFactorPolicy,
 };
 
+// Services of the mairie and the service of an agent (MAIR-923).
+export const coreAdminServicesClient = {
+    adminListServices: coreApi.adminListServices,
+    adminCreateService: coreApi.adminCreateService,
+    adminUpdateService: coreApi.adminUpdateService,
+    adminDeleteService: coreApi.adminDeleteService,
+    adminSetUserService: coreApi.adminSetUserService,
+};
+
 export const coreAdminRolesClient = {
     adminGetRole: coreApi.adminGetRole,
     adminPostRole: coreApi.adminPostRole,
