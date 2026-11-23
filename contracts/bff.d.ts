@@ -446,7 +446,7 @@ export interface paths {
                         "application/json": components["schemas"]["TwoFactorRequiredResponse"];
                     };
                 };
-                /** @description Invalid payload (`token` not a UUID, `new_password` not 8 to 255 characters, `device_info` longer than 512 characters, or a control character) */
+                /** @description Invalid payload (`token` not a UUID, `new_password` not 12 to 255 characters or refused by the Core API password policy, `device_info` longer than 512 characters, or a control character) */
                 400: {
                     headers: {
                         [name: string]: unknown;
