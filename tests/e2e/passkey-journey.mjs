@@ -170,6 +170,13 @@ async function sessionJourney() {
     && created.json?.label === 'journey' && created.json.provider === null && Number.isInteger(created.json.id), `${created.status} ${created.text}`);
   const passkeyId = created.json?.id;
 
+  // MAIR-811: the Login screen saves the name the agent keeps after the creation.
+  const renamed = await bff('PATCH', `/user/me/passkeys/${passkeyId}`, { token: JWT_AGENT, body: { label: 'Ordinateur de la mairie' } });
+  check('the passkey takes the name the agent keeps (200), the rest unchanged', renamed.status === 200
+    && renamed.json?.id === passkeyId && renamed.json.label === 'Ordinateur de la mairie' && renamed.json.provider === null, `${renamed.status} ${renamed.text}`);
+  const foreign = await bff('PATCH', `/user/me/passkeys/${passkeyId}`, { token: JWT_ADMIN, body: { label: 'Volée' } });
+  check('another account cannot rename it (404)', foreign.status === 404, `${foreign.status} ${foreign.text}`);
+
   const first = await signIn(authenticator);
   const accessToken = cookieValue(first.answer, 'accessToken');
   check('the passkey signs in: session cookies like the password login, no token in the body', first.answer.status === 200

@@ -30,7 +30,7 @@ const CORE = {
   sessions: '/api/v1/sessions/', sessionsHistory: '/api/v1/sessions/history', sessionsRefresh: '/api/v1/sessions/refresh', sessionsRevoke: '/api/v1/sessions/revoke', sessionsLogout: '/api/v1/sessions/logout', authLogout: '/api/v1/auth/logout',
   passkeyOptions: '/api/v1/auth/passkey/options', passkey: '/api/v1/auth/passkey',
   passkeySetupOptions: '/api/v1/auth/passkey/setup/options', passkeySetup: '/api/v1/auth/passkey/setup',
-  myPasskeyOptions: '/api/v1/user/me/passkeys/options/', myPasskeys: '/api/v1/user/me/passkeys/',
+  myPasskeyOptions: '/api/v1/user/me/passkeys/options/', myPasskeys: '/api/v1/user/me/passkeys/', myPasskey: '/api/v1/user/me/passkeys/{id}/',
   health: '/health',
 } as const;
 const bffContract = OpenApiContract.load(path.join(__dirname, '..', 'contracts', 'openapi.json'));
@@ -318,6 +318,52 @@ describe('BFF User with a contract-driven Core API mock', () => {
         expect(response.status).toBe(400);
       }
       expect(coreApi.calls(CORE.myPasskeys)).toHaveLength(0);
+    });
+
+    // MAIR-811: the name the agent keeps after the creation (the manager Core deduced, by default).
+    test('MAIR-811 with the session: renames the passkey and answers the stored passkey only', async () => {
+      coreApi.on('patch', CORE.myPasskey, { body: { ...stored, label: 'Ordinateur de la mairie', secret: 'never relayed' } });
+
+      const response = await request(app).patch(`/user/me/passkeys/${stored.id}`).set('Authorization', `Bearer ${SESSION}`).send({ label: 'Ordinateur de la mairie', role: 'Admin' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ ...stored, label: 'Ordinateur de la mairie' });
+      const [call] = coreApi.calls(CORE.myPasskey);
+      expect(call.url.pathname).toBe(`/api/v1/user/me/passkeys/${stored.id}/`);
+      expect(call.body).toEqual({ label: 'Ordinateur de la mairie' });
+      expect(call.headers.authorization).toBe(`Bearer ${SESSION}`);
+      expectBffContract('patch', '/user/me/passkeys/{passkeyId}', response);
+    });
+
+    test.each([400, 404])('MAIR-811 with the session: keeps the Core %i of the rename', async (status) => {
+      coreApi.on('patch', CORE.myPasskey, coreError(status, 'Passkey not found.'));
+
+      const response = await request(app).patch('/user/me/passkeys/7').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x' });
+
+      expect(response.status).toBe(status);
+      expect(JSON.stringify(response.body)).not.toContain('Passkey not found.');
+      expectBffContract('patch', '/user/me/passkeys/{passkeyId}', response);
+    });
+
+    test('MAIR-811 a Core failure of the rename is a 502', async () => {
+      coreApi.on('patch', CORE.myPasskey, coreError(500, 'boom'));
+
+      const response = await request(app).patch('/user/me/passkeys/7').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x' });
+
+      expect(response.status).toBe(502);
+    });
+
+    test('MAIR-811 rejects an invalid id or label, and no session, before calling Core API', async () => {
+      const refused = await Promise.all([
+        request(app).patch('/user/me/passkeys/abc').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x' }),
+        request(app).patch('/user/me/passkeys/0').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x' }),
+        request(app).patch('/user/me/passkeys/7').set('Authorization', `Bearer ${SESSION}`).send({ label: '' }),
+        request(app).patch('/user/me/passkeys/7').set('Authorization', `Bearer ${SESSION}`).send({ label: 'x'.repeat(101) }),
+        request(app).patch('/user/me/passkeys/7').send({ label: 'x' }),
+      ]);
+
+      expect(refused.map((response) => response.status)).toEqual([400, 400, 400, 400, 401]);
+      expect(coreApi.calls(CORE.myPasskey)).toHaveLength(0);
     });
 
     test('with the enrolment token: relays the challenge anonymously, token included', async () => {
