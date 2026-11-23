@@ -1,4 +1,4 @@
-import { AdministrationProjectsWithoutGroupSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
+import { AdministrationProjectsWithoutGroupSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, AdministrationUserSessionsSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -50,6 +50,10 @@ const GroupUserParams = z.object({
 }).openapi('AdminGroupUserParams');
 // DELETE routes get their own example ids (seeded by init-test.sql): a scan replaying the examples
 // must not delete the resource that the other routes of the same path read or update.
+const UserSessionParams = z.object({
+    userId: z.coerce.number().int().positive(),
+    sessionId: z.string().uuid().openapi({ description: 'Id of a session of the user (`id` in `GET /admin/users/{userId}/sessions`).', example: '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70' }),
+}).openapi('AdminUserSessionParams');
 const DeletedUserIdParams = z.object({
     userId: z.coerce.number().int().positive().openapi({ example: 11 }),
 });
@@ -63,6 +67,11 @@ const UserListQuery = z.object({
     page: z.coerce.number().int().positive().default(1),
     page_size: z.coerce.number().int().min(1).max(20).default(20),
     search: z.string().trim().max(100).optional(),
+    // MAIR-904: filters and order of the V2 list, relayed to Core.
+    account_status: z.enum(['active', 'invited', 'inactive', 'suspended']).optional()
+        .openapi({ description: 'State of the account: active, invited (never signed in), inactive (archived) or suspended.', example: 'suspended' }),
+    role_id: z.coerce.number().int().positive().optional().openapi({ description: 'Holders of this role only.', example: 2 }),
+    sort: z.enum(['name', '-name']).optional().openapi({ description: 'Order by name, ascending (default) or descending.', example: '-name' }),
 }).openapi('AdminUserListQuery');
 // Page of a Core list, chosen by the front and forwarded as is; the bounds are Core's. Without them, Core
 // answers its first page of 100 items.
@@ -372,7 +381,14 @@ registry.registerPath({
 router.get('/users', async (req: Request, res: Response) => {
     const query = parseRequest(UserListQuery, req.query, 'query');
     const caller = asCaller('CORE_API', req);
-    const params = { page: query.page, page_size: query.page_size, ...(query.search ? { search: query.search } : {}) };
+    const params = {
+        page: query.page,
+        page_size: query.page_size,
+        ...(query.search ? { search: query.search } : {}),
+        ...(query.account_status ? { account_status: query.account_status } : {}),
+        ...(query.role_id ? { role_id: query.role_id } : {}),
+        ...(query.sort ? { sort: query.sort } : {}),
+    };
 
     const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminListUsers(params, caller), { declared: READ_STATUSES, retry: true });
     return res.status(200).json(whitelist(AdministrationUsersPageSchema, response.data));
@@ -470,6 +486,110 @@ router.delete('/users/:userId/2fa', async (req: Request, res: Response) => {
 
     try {
         await coreAdminUsersClient.adminResetUserTwoFactor(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/users/{userId}/sessions',
+    tags: ['Administration'],
+    summary: 'Sessions of a user (MAIR-584)',
+    description: 'The latest 100 sessions of the user, active and ended, newest first (Core `GET /api/v1/admin/users/{userId}/`). '
+        + 'The user record of the administration lists them; the history shows the last 30 days.',
+    request: { params: UserIdParams },
+    responses: { ...coreResponses, 200: { description: 'Sessions of the user', content: { 'application/json': { schema: AdministrationUserSessionsSchema } } } },
+});
+
+router.get('/users/:userId/sessions', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminGetUser(userId, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationUserSessionsSchema, { sessions: response.data.sessions }));
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/users/{userId}/sessions',
+    tags: ['Administration'],
+    summary: 'Sign a user out of every device (MAIR-584)',
+    description: 'Closes every active session of the user: their JWTs stop working at once in every API. Idempotent. Audited by Core.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/sessions', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminRevokeUserSessions(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/users/{userId}/sessions/{sessionId}',
+    tags: ['Administration'],
+    summary: 'Sign a user out of one device (MAIR-584)',
+    description: 'Closes one active session of the user; the others stay open. 404 when the session is unknown, '
+        + 'belongs to another user or has already ended. Audited by Core.',
+    request: { params: UserSessionParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/sessions/:sessionId', async (req: Request, res: Response) => {
+    const { userId, sessionId } = parseRequest(UserSessionParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminRevokeUserSession(userId, sessionId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/users/{userId}/suspend',
+    tags: ['Administration'],
+    summary: 'Suspend a user (MAIR-904)',
+    description: 'The account becomes `suspended` and every session of the user is closed; the agent cannot sign in until '
+        + 'reactivated. Roles, groups and second factor are kept. Idempotent. 409 for one\'s own account or the last '
+        + 'active administrator.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.post('/users/:userId/suspend', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminSuspendUser(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/users/{userId}/reactivate',
+    tags: ['Administration'],
+    summary: 'Reactivate a suspended user (MAIR-904)',
+    description: 'Ends the suspension: the agent can sign in again with the roles, groups and second factor it had. Idempotent.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.post('/users/:userId/reactivate', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminReactivateUser(userId, asCaller('CORE_API', req));
         return res.status(204).send();
     } catch (error) {
         throw upstreamError('CORE_API', error, WRITE_STATUSES);

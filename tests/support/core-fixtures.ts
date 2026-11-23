@@ -95,9 +95,13 @@ export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRo
     email: 'admin@mairie360.fr',
     phone_number: null,
     status: 'active',
+    account_status: 'active',
     is_archived: false,
     role,
     roles: role ? [role] : [],
+    active_sessions: 0,
+    last_login_at: null,
+    two_factor: { methods: [], last_verified_at: null },
     ...overrides,
   };
 }

@@ -551,6 +551,34 @@
                 "name"
               ]
             }
+          },
+          "account_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "invited",
+              "inactive",
+              "suspended"
+            ],
+            "description": "State shown by the administration: active, invited (never signed in), inactive (archived) or suspended.",
+            "example": "active"
+          },
+          "active_sessions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sessions still open (neither revoked nor expired): the user is shown online when above 0.",
+            "example": 2
+          },
+          "last_login_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last sign-in (opening of the latest session), RFC 3339 UTC, null when the user never signed in.",
+            "example": "2026-11-20T08:42:11Z"
+          },
+          "two_factor": {
+            "$ref": "#/components/schemas/AdministrationUserTwoFactor"
           }
         },
         "required": [
@@ -561,8 +589,46 @@
           "phone_number",
           "status",
           "is_archived",
-          "roles"
+          "roles",
+          "account_status",
+          "active_sessions",
+          "last_login_at",
+          "two_factor"
         ]
+      },
+      "AdministrationUserTwoFactor": {
+        "type": "object",
+        "properties": {
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "totp",
+                "passkey",
+                "backup_codes"
+              ]
+            },
+            "description": "Second-factor methods the user enrolled; empty when none.",
+            "example": [
+              "totp",
+              "backup_codes"
+            ]
+          },
+          "last_verified_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Latest successful second-factor verification, RFC 3339 UTC, or null.",
+            "example": "2026-11-20T08:42:30Z"
+          }
+        },
+        "required": [
+          "methods",
+          "last_verified_at"
+        ],
+        "description": "Second factor of the user (security tab of the administration), never a secret."
       },
       "AdministrationUsersPage": {
         "type": "object",
@@ -696,6 +762,21 @@
           "created_at",
           "expires_at",
           "revoked_at"
+        ]
+      },
+      "AdministrationUserSessions": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationSession"
+            },
+            "description": "The latest 100 sessions of the user, newest first; active ones have `revoked_at` null and `expires_at` in the future."
+          }
+        },
+        "required": [
+          "sessions"
         ]
       },
       "TwoFactorPolicy": {
@@ -906,6 +987,32 @@
           "search": {
             "type": "string",
             "maxLength": 100
+          },
+          "account_status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "invited",
+              "inactive",
+              "suspended"
+            ],
+            "description": "State of the account: active, invited (never signed in), inactive (archived) or suspended.",
+            "example": "suspended"
+          },
+          "role_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Holders of this role only.",
+            "example": 2
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "name",
+              "-name"
+            ],
+            "description": "Order by name, ascending (default) or descending.",
+            "example": "-name"
           }
         }
       },
@@ -3413,6 +3520,50 @@
             "required": false,
             "name": "search",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "invited",
+                "inactive",
+                "suspended"
+              ],
+              "description": "State of the account: active, invited (never signed in), inactive (archived) or suspended.",
+              "example": "suspended"
+            },
+            "required": false,
+            "description": "State of the account: active, invited (never signed in), inactive (archived) or suspended.",
+            "name": "account_status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Holders of this role only.",
+              "example": 2
+            },
+            "required": false,
+            "description": "Holders of this role only.",
+            "name": "role_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "-name"
+              ],
+              "description": "Order by name, ascending (default) or descending.",
+              "example": "-name"
+            },
+            "required": false,
+            "description": "Order by name, ascending (default) or descending.",
+            "name": "sort",
+            "in": "query"
           }
         ],
         "responses": {
@@ -4081,6 +4232,681 @@
         ],
         "summary": "Reset the second factor of a user",
         "description": "Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/sessions": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Sessions of a user (MAIR-584)",
+        "description": "The latest 100 sessions of the user, active and ended, newest first (Core `GET /api/v1/admin/users/{userId}/`). The user record of the administration lists them; the history shows the last 30 days.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessions of the user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministrationUserSessions"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Sign a user out of every device (MAIR-584)",
+        "description": "Closes every active session of the user: their JWTs stop working at once in every API. Idempotent. Audited by Core.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/sessions/{sessionId}": {
+      "delete": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Sign a user out of one device (MAIR-584)",
+        "description": "Closes one active session of the user; the others stay open. 404 when the session is unknown, belongs to another user or has already ended. Audited by Core.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Id of a session of the user (`id` in `GET /admin/users/{userId}/sessions`).",
+              "example": "4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70"
+            },
+            "required": true,
+            "description": "Id of a session of the user (`id` in `GET /admin/users/{userId}/sessions`).",
+            "name": "sessionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/suspend": {
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Suspend a user (MAIR-904)",
+        "description": "The account becomes `suspended` and every session of the user is closed; the agent cannot sign in until reactivated. Roles, groups and second factor are kept. Idempotent. 409 for one's own account or the last active administrator.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/users/{userId}/reactivate": {
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Reactivate a suspended user (MAIR-904)",
+        "description": "Ends the suspension: the agent can sign in again with the roles, groups and second factor it had. Idempotent.",
         "parameters": [
           {
             "schema": {

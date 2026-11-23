@@ -53,6 +53,10 @@ export const coreAdminUsersClient = {
     adminDeleteUser: coreApi.adminDeleteUser,
     adminResetUserPassword: coreApi.adminResetUserPassword,
     adminResetUserTwoFactor: coreApi.adminResetUserTwoFactor,
+    adminRevokeUserSessions: coreApi.adminRevokeUserSessions,
+    adminRevokeUserSession: coreApi.adminRevokeUserSession,
+    adminSuspendUser: coreApi.adminSuspendUser,
+    adminReactivateUser: coreApi.adminReactivateUser,
     adminAddRoleToUser: coreApi.adminAddRoleToUser,
     adminDeleteUserRole: coreApi.adminDeleteUserRole,
 };
