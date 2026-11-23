@@ -508,12 +508,99 @@
               "boolean",
               "null"
             ]
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationRoleModule"
+            },
+            "description": "Modules the holders of the role open, in navigation order (MAIR-916). The Admin role always opens `admin`.",
+            "example": [
+              "dashboard",
+              "projects"
+            ]
           }
         },
         "required": [
           "id",
           "name",
           "description"
+        ]
+      },
+      "AdministrationRoleModule": {
+        "type": "string",
+        "enum": [
+          "dashboard",
+          "projects",
+          "calendar",
+          "messages",
+          "training",
+          "admin",
+          "settings"
+        ],
+        "description": "Module of the shared navigation.",
+        "example": "projects"
+      },
+      "AdministrationServiceRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 3
+          },
+          "name": {
+            "type": "string",
+            "example": "Roads"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AdministrationService": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 3
+          },
+          "name": {
+            "type": "string",
+            "example": "Roads"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "Creation date, RFC 3339 UTC.",
+            "example": "2026-11-20T08:00:00Z"
+          },
+          "agents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Active agents attached to the service.",
+            "example": 12
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "agents"
+        ]
+      },
+      "AdministrationServices": {
+        "type": "object",
+        "properties": {
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationService"
+            },
+            "description": "Every service of the mairie, by name."
+          }
+        },
+        "required": [
+          "services"
         ]
       },
       "AdministrationUser": {
@@ -594,6 +681,27 @@
           },
           "two_factor": {
             "$ref": "#/components/schemas/AdministrationUserTwoFactor"
+          },
+          "service": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "id": {
+                "type": "number",
+                "example": 3
+              },
+              "name": {
+                "type": "string",
+                "example": "Roads"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "description": "Service of the mairie the agent belongs to (MAIR-923), null when none."
           }
         },
         "required": [
@@ -692,6 +800,30 @@
           },
           "owner_id": {
             "type": "number"
+          },
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "blue",
+              "teal",
+              "green",
+              "orange",
+              "purple",
+              "pink",
+              "neutral",
+              null
+            ],
+            "description": "Colour of the group card (MAIR-923); null for the default one.",
+            "example": "teal"
+          },
+          "project_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Projects linked to the group.",
+            "example": 2
           }
         },
         "required": [
@@ -1046,8 +1178,29 @@
             "maxLength": 2000,
             "pattern": "^[^<>]*$",
             "example": "Group edited by the ZAP scan"
+          },
+          "color": {
+            "$ref": "#/components/schemas/AdministrationGroupColor"
           }
         }
+      },
+      "AdministrationGroupColor": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "blue",
+          "teal",
+          "green",
+          "orange",
+          "purple",
+          "pink",
+          "neutral",
+          null
+        ],
+        "description": "Colour of the group card, from the charter palette.",
+        "example": "teal"
       },
       "AdminUserPasswordResetBody": {
         "type": "object",
@@ -1208,6 +1361,18 @@
               "null"
             ],
             "example": true
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationRoleModule"
+            },
+            "maxItems": 7,
+            "description": "Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.",
+            "example": [
+              "dashboard",
+              "projects"
+            ]
           }
         },
         "required": [
@@ -1237,6 +1402,18 @@
               "null"
             ],
             "example": true
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationRoleModule"
+            },
+            "maxItems": 7,
+            "description": "Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.",
+            "example": [
+              "dashboard",
+              "projects"
+            ]
           }
         },
         "required": [
@@ -1272,6 +1449,18 @@
               "null"
             ],
             "example": true
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdministrationRoleModule"
+            },
+            "maxItems": 7,
+            "description": "Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.",
+            "example": [
+              "dashboard",
+              "projects"
+            ]
           }
         }
       },
@@ -1290,6 +1479,9 @@
             "maxLength": 2000,
             "pattern": "^[^<>]*$",
             "example": "Culture department"
+          },
+          "color": {
+            "$ref": "#/components/schemas/AdministrationGroupColor"
           }
         },
         "required": [
@@ -1313,6 +1505,66 @@
         },
         "required": [
           "user_id"
+        ]
+      },
+      "AdminServiceIdParams": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "example": 3
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "AdminServiceWriteBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Roads"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "AdminServiceRenameBody": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^<>]*$",
+            "example": "Scan service"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "AdminUserServiceBody": {
+        "type": "object",
+        "properties": {
+          "service_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "Id of a service of `GET /admin/services`, or `null` to detach the agent.",
+            "example": 3
+          }
+        },
+        "required": [
+          "service_id"
         ]
       },
       "AdminSessionRevokeBody": {
@@ -1432,6 +1684,18 @@
                 }
               ]
             }
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Modules the role of the session opens (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), in navigation order. Absent when Core does not send them.",
+            "example": [
+              "dashboard",
+              "projects",
+              "admin"
+            ]
           }
         },
         "required": [
@@ -5453,6 +5717,652 @@
         }
       }
     },
+    "/admin/users/{userId}/service": {
+      "put": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Attach a user to a service of the mairie, or detach them with `service_id: null` (MAIR-923)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUserServiceBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/services": {
+      "get": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "List the services of the mairie with their agent counts (MAIR-923)",
+        "responses": {
+          "200": {
+            "description": "Administration data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministrationServices"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Create a service of the mairie (MAIR-923); its name is unique whatever its case",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminServiceWriteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Service created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministrationService"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/services/{serviceId}": {
+      "patch": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Rename a service of the mairie (MAIR-923)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 3
+            },
+            "required": true,
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminServiceRenameBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Service renamed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdministrationService"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict with the current state of the resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Administration"
+        ],
+        "summary": "Delete a service of the mairie (MAIR-923); its agents are left without a service",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 11
+            },
+            "required": true,
+            "name": "serviceId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response of Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created by Core API",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreResponse"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No content returned by Core API"
+          },
+          "400": {
+            "description": "Core API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Core API rate limit reached: retry after the Retry-After header (seconds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error; the cause is only logged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Core API unavailable, failed or answered an undeclared error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/roles": {
       "get": {
         "tags": [
@@ -6544,7 +7454,7 @@
         "tags": [
           "Administration"
         ],
-        "summary": "Update the name or the description of a group",
+        "summary": "Update the name, the description or the colour of a group",
         "parameters": [
           {
             "schema": {

@@ -1,4 +1,4 @@
-import { AdministrationProjectsWithoutGroupSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, AdministrationUserSessionsSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
+import { AdministrationProjectsWithoutGroupSchema, AdministrationServiceSchema, AdministrationServicesSchema, GroupColorSchema, RoleModuleSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, AdministrationUserSessionsSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -23,6 +23,7 @@ import {
     CORE_MAX_LIMIT,
     CORE_MAX_OFFSET,
     coreAdminRolesClient,
+    coreAdminServicesClient,
     coreAdminUsersClient,
     coreGroupsClient,
     coreSessionsClient,
@@ -40,6 +41,7 @@ const MAX_GROUP_MEMBERS = 500;
 const UserIdParams = z.object({ userId: z.coerce.number().int().positive() }).openapi('AdminUserIdParams');
 const RoleIdParams = z.object({ roleId: z.coerce.number().int().positive() }).openapi('AdminRoleIdParams');
 const GroupIdParams = z.object({ groupId: z.coerce.number().int().positive() }).openapi('AdminGroupIdParams');
+const ServiceIdParams = z.object({ serviceId: z.coerce.number().int().positive().openapi({ example: 3 }) }).openapi('AdminServiceIdParams');
 const UserRoleParams = z.object({
     userId: z.coerce.number().int().positive(),
     roleId: z.coerce.number().int().positive(),
@@ -62,6 +64,9 @@ const DeletedRoleIdParams = z.object({
 });
 const DeletedGroupIdParams = z.object({
     groupId: z.coerce.number().int().positive().openapi({ example: 11 }),
+});
+const DeletedServiceIdParams = z.object({
+    serviceId: z.coerce.number().int().positive().openapi({ example: 11 }),
 });
 const UserListQuery = z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -91,7 +96,9 @@ const GroupDescription = noMarkup(z.string().trim().max(2_000)).openapi({ exampl
 const GroupPatchBody = z.object({
     name: GroupName.optional().openapi({ example: 'Scan group' }),
     description: GroupDescription.optional().openapi({ example: 'Group edited by the ZAP scan' }),
-}).refine((value) => value.name !== undefined || value.description !== undefined, {
+    // MAIR-923: `null` gives back the default colour.
+    color: GroupColorSchema.nullable().optional(),
+}).refine((value) => value.name !== undefined || value.description !== undefined || value.color !== undefined, {
     message: 'At least one field is required',
 }).openapi('AdminGroupPatchBody');
 const UserPasswordResetBody = z.object({
@@ -136,22 +143,34 @@ const RoleWriteBody = z.object({
     name: RoleName,
     description: RoleDescription,
     can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+    modules: z.array(RoleModuleSchema).max(7).optional().openapi({ description: 'Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.', example: ['dashboard', 'projects'] }),
 }).openapi('AdminRoleWriteBody');
 // Not RoleWriteBody.extend(): it would be published as an allOf, which generated clients fill poorly.
 const RoleReplaceBody = z.object({
     name: RoleName.openapi({ example: 'Scan role' }),
     description: RoleDescription.openapi({ example: 'Role edited by the ZAP scan' }),
     can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+    modules: z.array(RoleModuleSchema).max(7).optional().openapi({ description: 'Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.', example: ['dashboard', 'projects'] }),
 }).openapi('AdminRoleReplaceBody');
 const RolePatchBody = z.object({
     name: RoleName.nullable().optional().openapi({ example: 'Scan role' }),
     description: RoleDescription.nullable().optional().openapi({ example: 'Role edited by the ZAP scan' }),
     can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+    modules: z.array(RoleModuleSchema).max(7).optional().openapi({ description: 'Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.', example: ['dashboard', 'projects'] }),
 }).refine(atLeastOneField, { message: 'At least one field is required' }).openapi('AdminRolePatchBody');
 const GroupCreateBody = z.object({
     name: GroupName,
     description: GroupDescription,
+    color: GroupColorSchema.nullable().optional(),
 }).openapi('AdminGroupCreateBody');
+// Services of the mairie (MAIR-923).
+const ServiceName = noMarkup(z.string().trim().min(1).max(64)).openapi({ example: 'Roads' });
+const ServiceWriteBody = z.object({ name: ServiceName }).openapi('AdminServiceWriteBody');
+// Update examples name another service than the seeded one, so a replayed example never hits a taken name.
+const ServiceRenameBody = z.object({ name: ServiceName.openapi({ example: 'Scan service' }) }).openapi('AdminServiceRenameBody');
+const UserServiceBody = z.object({
+    service_id: z.number().int().positive().nullable().openapi({ description: 'Id of a service of `GET /admin/services`, or `null` to detach the agent.', example: 3 }),
+}).openapi('AdminUserServiceBody');
 const GroupUserBody = z.object({
     user_id: z.number().int().positive().openapi({ example: 42 }),
     group_id: z.number().int().positive().optional().openapi({ description: 'Must match the path groupId when sent' }),
@@ -184,6 +203,10 @@ registry.register('AdminRoleReplaceBody', RoleReplaceBody);
 registry.register('AdminRolePatchBody', RolePatchBody);
 registry.register('AdminGroupCreateBody', GroupCreateBody);
 registry.register('AdminGroupUserBody', GroupUserBody);
+registry.register('AdminServiceIdParams', ServiceIdParams);
+registry.register('AdminServiceWriteBody', ServiceWriteBody);
+registry.register('AdminServiceRenameBody', ServiceRenameBody);
+registry.register('AdminUserServiceBody', UserServiceBody);
 registry.register('AdminSessionRevokeBody', SessionRevokeBody);
 registry.register('CoreResponse', CoreResponse);
 
@@ -670,6 +693,101 @@ router.delete('/users/:userId/roles/:roleId', async (req: Request, res: Response
 });
 
 registry.registerPath({
+    method: 'put',
+    path: '/admin/users/{userId}/service',
+    tags: ['Administration'],
+    summary: 'Attach a user to a service of the mairie, or detach them with `service_id: null` (MAIR-923)',
+    request: { params: UserIdParams, body: jsonBodyRequest(UserServiceBody) },
+    responses: coreResponses,
+});
+
+router.put('/users/:userId/service', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    const body = parseRequest(UserServiceBody, req.body, 'body');
+
+    try {
+        const response = await coreAdminServicesClient.adminSetUserService(userId, body, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, READ_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/services',
+    tags: ['Administration'],
+    summary: 'List the services of the mairie with their agent counts (MAIR-923)',
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: AdministrationServicesSchema } } } },
+});
+
+router.get('/services', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreAdminServicesClient.adminListServices(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, AdministrationServicesSchema);
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/services',
+    tags: ['Administration'],
+    summary: 'Create a service of the mairie (MAIR-923); its name is unique whatever its case',
+    request: { body: jsonBodyRequest(ServiceWriteBody) },
+    responses: { ...coreWriteResponses, 201: { description: 'Service created', content: { 'application/json': { schema: AdministrationServiceSchema } } } },
+});
+
+router.post('/services', async (req: Request, res: Response) => {
+    const body = parseRequest(ServiceWriteBody, req.body, 'body');
+
+    try {
+        const response = await coreAdminServicesClient.adminCreateService(body, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response, AdministrationServiceSchema);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'patch',
+    path: '/admin/services/{serviceId}',
+    tags: ['Administration'],
+    summary: 'Rename a service of the mairie (MAIR-923)',
+    request: { params: ServiceIdParams, body: jsonBodyRequest(ServiceRenameBody) },
+    responses: { ...coreWriteResponses, 200: { description: 'Service renamed', content: { 'application/json': { schema: AdministrationServiceSchema } } } },
+});
+
+router.patch('/services/:serviceId', async (req: Request, res: Response) => {
+    const { serviceId } = parseRequest(ServiceIdParams, req.params, 'params');
+    const body = parseRequest(ServiceRenameBody, req.body, 'body');
+
+    try {
+        const response = await coreAdminServicesClient.adminUpdateService(serviceId, body, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response, AdministrationServiceSchema);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/services/{serviceId}',
+    tags: ['Administration'],
+    summary: 'Delete a service of the mairie (MAIR-923); its agents are left without a service',
+    request: { params: DeletedServiceIdParams },
+    responses: coreResponses,
+});
+
+router.delete('/services/:serviceId', async (req: Request, res: Response) => {
+    const { serviceId } = parseRequest(ServiceIdParams, req.params, 'params');
+
+    try {
+        const response = await coreAdminServicesClient.adminDeleteService(serviceId, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, READ_STATUSES);
+    }
+});
+
+registry.registerPath({
     method: 'get',
     path: '/admin/roles',
     tags: ['Administration'],
@@ -820,7 +938,7 @@ registry.registerPath({
     method: 'patch',
     path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Update the name or the description of a group',
+    summary: 'Update the name, the description or the colour of a group',
     request: {
         params: GroupIdParams,
         body: {

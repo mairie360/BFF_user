@@ -454,6 +454,41 @@ const handlers = {
       },
     }),
 
+  // --- Admin: services of the mairie (MAIR-923) ---
+  // Each write handler creates and deletes its own service, so the path order of `crud` does not matter.
+  'GET /admin/services': ({ request, data }) =>
+    check(request({ headers: data.admin }), {
+      'services 200': (r) => r.status === 200 && Array.isArray((json(r) || {}).services),
+    }),
+  'POST /admin/services': ({ request, data }) => {
+    const response = request({ body: { name: unique('perf-service') }, headers: data.admin });
+    check(response, { 'create service 201': (r) => r.status === 201 });
+    const id = (json(response) || {}).id;
+    if (id !== undefined) fixture('DELETE', coverage.url('DELETE /admin/services/{serviceId}', { serviceId: id }), undefined, data.admin);
+  },
+  'PATCH /admin/services/{serviceId}': ({ request, data }) => {
+    const id = json(fixture('POST', coverage.url('POST /admin/services'), { name: unique('perf-service-rename') }, data.admin)).id;
+    check(request({ path: { serviceId: id }, body: { name: unique('perf-service-renamed') }, headers: data.admin }), {
+      'rename service 200': (r) => r.status === 200,
+    });
+    fixture('DELETE', coverage.url('DELETE /admin/services/{serviceId}', { serviceId: id }), undefined, data.admin);
+  },
+  'DELETE /admin/services/{serviceId}': ({ request, data }) => {
+    const id = json(fixture('POST', coverage.url('POST /admin/services'), { name: unique('perf-service-delete') }, data.admin)).id;
+    check(request({ path: { serviceId: id }, headers: data.admin }), { 'delete service 204': (r) => r.status === 204 });
+  },
+  'PUT /admin/users/{userId}/service': ({ request, data }) => {
+    const email = `${unique('perf-service-agent')}@perf.mairie360.fr`;
+    fixture('POST', coverage.url('POST /admin/users'), { email, first_name: 'Perf', last_name: 'Service', password: USER_PASSWORD }, data.admin);
+    const userId = findUserId(email, data);
+    const id = json(fixture('POST', coverage.url('POST /admin/services'), { name: unique('perf-service-agent') }, data.admin)).id;
+    check(request({ path: { userId: need(userId, 'agent of the service') }, body: { service_id: id }, headers: data.admin }), {
+      'set user service 204': (r) => r.status === 204,
+    });
+    fixture('DELETE', coverage.url('DELETE /admin/services/{serviceId}', { serviceId: id }), undefined, data.admin);
+    dropAccount({ userId }, data);
+  },
+
   // --- Admin: roles ---
   'GET /admin/roles': ({ request, data }) =>
     check(request({ headers: data.admin }), { 'roles 200': (r) => r.status === 200 }),
