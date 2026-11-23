@@ -81,3 +81,29 @@ export const AdministrationProjectsWithoutGroupSchema = registry.register('Admin
     total: z.number().int().nonnegative(),
     projects: z.array(AdministrationProjectWithoutGroupSchema).openapi({ description: 'Newest first; empty when every project has a group' }),
 }));
+
+// Stolen-session alerts of the instance and the sign-in journal of an agent (MAIR-773).
+export const AdministrationSecurityAlertSchema = registry.register('AdministrationSecurityAlert', z.object({
+  id: z.number().int().openapi({ example: 12 }),
+  level: z.enum(['certain', 'possible']).openapi({ example: 'certain' }),
+  ip_address: z.string().nullable().openapi({ example: '203.0.113.7' }),
+  device_info: z.string().nullable().openapi({ example: 'Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0' }),
+  created_at: z.string().openapi({ description: 'RFC 3339 date of the use.', example: '2026-11-23T08:12:00+00:00' }),
+  acknowledged_at: z.string().nullable().openapi({ description: 'When the agent read the alert at sign-in, null until then.', example: null }),
+  user: z.object({
+    id: z.number().int().openapi({ example: 42 }),
+    first_name: z.string().openapi({ example: 'Camille' }),
+    last_name: z.string().openapi({ example: 'Martin' }),
+  }),
+}));
+export const AdministrationSecurityAlertsSchema = registry.register('AdministrationSecurityAlerts', z.array(AdministrationSecurityAlertSchema)
+  .openapi({ description: 'Alerts of the last 30 days, newest first (500 at most).' }));
+export const AdministrationConnectionLogSchema = registry.register('AdministrationConnectionLog', z.object({
+  action: z.string().openapi({ description: '`LOGIN`, `LOGOUT`, `REFRESH`, `EXPIRED`, `CLEANUP`, `STOLEN_SESSION_ATTEMPT`, `SUSPICIOUS_IP_CHANGE` or `IP_CHANGE`.', example: 'LOGIN' }),
+  session_id: z.string().nullable().openapi({ example: '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70' }),
+  ip_address: z.string().nullable().openapi({ example: '203.0.113.7' }),
+  device_info: z.string().nullable().openapi({ example: 'Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0' }),
+  occurred_at: z.string().nullable().openapi({ example: '2026-11-23T08:12:00+00:00' }),
+}));
+export const AdministrationConnectionLogsSchema = registry.register('AdministrationConnectionLogs', z.array(AdministrationConnectionLogSchema)
+  .openapi({ description: 'Latest 100 lines of the sign-in journal of the agent, newest first.' }));

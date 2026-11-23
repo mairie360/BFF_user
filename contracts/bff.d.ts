@@ -1849,6 +1849,297 @@ export interface paths {
         };
         trace?: never;
     };
+    "/user/me/sessions/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a use of the session from another device
+         * @description Called by the front proxies with the session they checked (MAIR-773), forwarded to Core API `POST /api/v1/sessions/report`. `certain` and `possible` close the session (`revoked: true` when it was active) and alert the agent and the administrators; `ip_change` is only logged.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReportSessionView"];
+                };
+            };
+            responses: {
+                /** @description The use is recorded. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReportSessionResponse"];
+                    };
+                };
+                /** @description Invalid body, or a session token without session id. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/security-alert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My pending security alert
+         * @description The latest alert of a session of the caller used from another device that the caller has not read yet (Core `GET /api/v1/user/me/security-alert/`, MAIR-773). The Login screen shows it right after the sign-in. `204` when there is none.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The pending alert. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecurityAlert"];
+                    };
+                };
+                /** @description No pending alert. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/security-alert/{alertId}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark my security alert as read
+         * @description Forwarded to Core API `POST /api/v1/user/me/security-alert/{alertId}/acknowledge/` (MAIR-773): the Login screen no longer shows the alert. An unknown alert, another account's or one already read answers 404.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Id of the alert (`id` of `GET /user/me/security-alert`). */
+                    alertId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The alert is read. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid alert id. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description No unread alert of the caller has this id. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/projects-without-group": {
         parameters: {
             query?: never;
@@ -6567,6 +6858,262 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/security-alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent security alerts (MAIR-773)
+         * @description Uses of a session from another device that closed it, over the last 30 days, newest first (Core `GET /api/v1/admin/security-alerts/`): agent, level, address and device of the use, and when the agent read it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The alerts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationSecurityAlerts"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/connection-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign-in journal of a user (MAIR-773)
+         * @description The latest 100 lines of the sign-in journal of the user, newest first (Core `GET /api/v1/admin/users/{userId}/connection-logs`): sign-ins, refreshes, logouts and the uses of a session from another device. 404 for an unknown or archived user.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The journal */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationConnectionLogs"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -6963,6 +7510,53 @@ export interface components {
              */
             userId: number;
         };
+        ReportSessionView: {
+            level: components["schemas"]["SuspicionLevel"];
+            /**
+             * @description Address of the browser that sent the request, as the front proxy saw it.
+             * @example 203.0.113.7
+             */
+            ip_address: string;
+            /**
+             * @description User agent of that browser.
+             * @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+             */
+            device_info?: string;
+        };
+        /**
+         * @description `certain`: the session is bound to a device key and the request came without a valid proof. `possible`: an unbound session was used from another network. `ip_change`: a bound session changed network with a valid proof.
+         * @example possible
+         * @enum {string}
+         */
+        SuspicionLevel: "certain" | "possible" | "ip_change";
+        ReportSessionResponse: {
+            /**
+             * @description The session was active and is now closed: send the agent back to the sign-in.
+             * @example true
+             */
+            revoked: boolean;
+        };
+        SecurityAlert: {
+            /** @example 12 */
+            id: number;
+            /**
+             * @example certain
+             * @enum {string}
+             */
+            level: "certain" | "possible";
+            /**
+             * @description Address the session was used from (the front shows only its beginning).
+             * @example 203.0.113.7
+             */
+            ip_address: string | null;
+            /** @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 */
+            device_info: string | null;
+            /**
+             * @description RFC 3339 date of the use.
+             * @example 2026-11-23T08:12:00+00:00
+             */
+            created_at: string;
+        };
         CheckApisResponse: {
             /** @enum {string} */
             status: "OK" | "Error";
@@ -7176,6 +7770,56 @@ export interface components {
             /** @description Newest first; empty when every project has a group */
             projects: components["schemas"]["AdministrationProjectWithoutGroup"][];
         };
+        AdministrationSecurityAlert: {
+            /** @example 12 */
+            id: number;
+            /**
+             * @example certain
+             * @enum {string}
+             */
+            level: "certain" | "possible";
+            /** @example 203.0.113.7 */
+            ip_address: string | null;
+            /** @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 */
+            device_info: string | null;
+            /**
+             * @description RFC 3339 date of the use.
+             * @example 2026-11-23T08:12:00+00:00
+             */
+            created_at: string;
+            /**
+             * @description When the agent read the alert at sign-in, null until then.
+             * @example null
+             */
+            acknowledged_at: string | null;
+            user: {
+                /** @example 42 */
+                id: number;
+                /** @example Camille */
+                first_name: string;
+                /** @example Martin */
+                last_name: string;
+            };
+        };
+        /** @description Alerts of the last 30 days, newest first (500 at most). */
+        AdministrationSecurityAlerts: components["schemas"]["AdministrationSecurityAlert"][];
+        AdministrationConnectionLog: {
+            /**
+             * @description `LOGIN`, `LOGOUT`, `REFRESH`, `EXPIRED`, `CLEANUP`, `STOLEN_SESSION_ATTEMPT`, `SUSPICIOUS_IP_CHANGE` or `IP_CHANGE`.
+             * @example LOGIN
+             */
+            action: string;
+            /** @example 4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70 */
+            session_id: string | null;
+            /** @example 203.0.113.7 */
+            ip_address: string | null;
+            /** @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 */
+            device_info: string | null;
+            /** @example 2026-11-23T08:12:00+00:00 */
+            occurred_at: string | null;
+        };
+        /** @description Latest 100 lines of the sign-in journal of the agent, newest first. */
+        AdministrationConnectionLogs: components["schemas"]["AdministrationConnectionLog"][];
         AdminUserIdParams: {
             userId: number;
         };

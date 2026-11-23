@@ -1,4 +1,4 @@
-import { AdministrationProjectsWithoutGroupSchema, AdministrationServiceSchema, AdministrationServicesSchema, GroupColorSchema, RoleModuleSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, AdministrationUserSessionsSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
+import { AdministrationConnectionLogsSchema, AdministrationSecurityAlertsSchema, AdministrationProjectsWithoutGroupSchema, AdministrationServiceSchema, AdministrationServicesSchema, GroupColorSchema, RoleModuleSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, AdministrationUserSessionsSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -26,6 +26,7 @@ import {
     coreAdminServicesClient,
     coreAdminUsersClient,
     coreGroupsClient,
+    coreSecurityAlertsClient,
     coreSessionsClient,
     coreTwoFactorPolicyClient,
     coreUsersClient,
@@ -1145,6 +1146,39 @@ router.put('/two-factor-policy', async (req: Request, res: Response) => {
     } catch (error) {
         throw upstreamError('CORE_API', error, READ_STATUSES);
     }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/security-alerts',
+    tags: ['Administration'],
+    summary: 'Recent security alerts (MAIR-773)',
+    description: 'Uses of a session from another device that closed it, over the last 30 days, newest first (Core '
+        + '`GET /api/v1/admin/security-alerts/`): agent, level, address and device of the use, and when the agent read it.',
+    responses: { ...coreResponses, 200: { description: 'The alerts', content: { 'application/json': { schema: AdministrationSecurityAlertsSchema } } } },
+});
+
+router.get('/security-alerts', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreSecurityAlertsClient.listSecurityAlerts(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationSecurityAlertsSchema, response.data));
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/users/{userId}/connection-logs',
+    tags: ['Administration'],
+    summary: 'Sign-in journal of a user (MAIR-773)',
+    description: 'The latest 100 lines of the sign-in journal of the user, newest first (Core '
+        + '`GET /api/v1/admin/users/{userId}/connection-logs`): sign-ins, refreshes, logouts and the uses of a session from '
+        + 'another device. 404 for an unknown or archived user.',
+    request: { params: UserIdParams },
+    responses: { ...coreResponses, 200: { description: 'The journal', content: { 'application/json': { schema: AdministrationConnectionLogsSchema } } } },
+});
+
+router.get('/users/:userId/connection-logs', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminGetUserConnectionLogs(userId, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationConnectionLogsSchema, response.data));
 });
 
 export default router;

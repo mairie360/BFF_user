@@ -1,7 +1,8 @@
-import { asCaller, noStore, parseRequest, requireSession, upstreamError } from '@mairie360/bffs-lib';
+import { asCaller, callUpstream, noStore, parseRequest, requireSession, upstreamError } from '@mairie360/bffs-lib';
 import { Request, Response, Router } from 'express';
 import {
     AboutResponseViewSchema,
+    AlertIdParams,
     CoreApiNotConfigured,
     CoreApiRateLimited,
     ErrorResponse,
@@ -11,8 +12,12 @@ import {
     PasskeyRenameViewSchema,
     PasskeyResponse,
     registry,
+    ReportSessionResponseSchema,
+    ReportSessionViewSchema,
+    SecurityAlertSchema,
     UserIdParams,
 } from '../openapi-registry';
+import { coreSecurityAlertsClient } from '../clients/coreClient';
 import { fetchUserAbout, finishPasskeyRegistration, renamePasskey, startPasskeyRegistration } from './core_helpers';
 import { passkeysUnavailable } from './passkey_errors';
 import { whitelist } from './admin_helpers';
@@ -184,6 +189,98 @@ router.patch('/me/passkeys/:passkeyId', async (req: Request, res: Response) => {
     try {
         const { data } = await renamePasskey(passkeyId, { label: body.label }, asCaller('CORE_API', req));
         return res.status(200).json(whitelist(PasskeyResponse, data));
+    } catch (error) {
+        throw upstreamError('CORE_API', error, [400, 401, 404]);
+    }
+});
+
+// Stolen sessions (MAIR-773).
+registry.registerPath({
+    method: 'post',
+    path: '/user/me/sessions/report',
+    tags: ['Users'],
+    summary: 'Report a use of the session from another device',
+    description: 'Called by the front proxies with the session they checked (MAIR-773), forwarded to Core API '
+        + '`POST /api/v1/sessions/report`. `certain` and `possible` close the session (`revoked: true` when it was active) and alert '
+        + 'the agent and the administrators; `ip_change` is only logged.',
+    request: { body: { required: true, content: { 'application/json': { schema: ReportSessionViewSchema } } } },
+    responses: {
+        200: { description: 'The use is recorded.', content: { 'application/json': { schema: ReportSessionResponseSchema } } },
+        400: { description: 'Invalid body, or a session token without session id.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Missing, invalid or expired session.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: CoreApiRateLimited,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: CoreApiNotConfigured,
+    },
+});
+
+router.post('/me/sessions/report', async (req: Request, res: Response) => {
+    const body = parseRequest(ReportSessionViewSchema, req.body, 'body');
+
+    try {
+        const { data } = await coreSecurityAlertsClient.reportSessionUse(
+            { level: body.level, ip_address: body.ip_address, device_info: body.device_info ?? '' },
+            asCaller('CORE_API', req),
+        );
+        return res.status(200).json(whitelist(ReportSessionResponseSchema, data));
+    } catch (error) {
+        throw upstreamError('CORE_API', error, [400, 401]);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/user/me/security-alert',
+    tags: ['Users'],
+    summary: 'My pending security alert',
+    description: 'The latest alert of a session of the caller used from another device that the caller has not read yet (Core '
+        + '`GET /api/v1/user/me/security-alert/`, MAIR-773). The Login screen shows it right after the sign-in. `204` when there is none.',
+    responses: {
+        200: { description: 'The pending alert.', content: { 'application/json': { schema: SecurityAlertSchema } } },
+        204: { description: 'No pending alert.' },
+        401: { description: 'Missing, invalid or expired session.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: CoreApiRateLimited,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: CoreApiNotConfigured,
+    },
+});
+
+router.get('/me/security-alert', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreSecurityAlertsClient.getMySecurityAlert(asCaller('CORE_API', req)), { declared: [401], retry: true });
+    if (response.status === 204 || !response.data) {
+        return res.status(204).send();
+    }
+    return res.status(200).json(whitelist(SecurityAlertSchema, response.data));
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/user/me/security-alert/{alertId}/acknowledge',
+    tags: ['Users'],
+    summary: 'Mark my security alert as read',
+    description: 'Forwarded to Core API `POST /api/v1/user/me/security-alert/{alertId}/acknowledge/` (MAIR-773): the Login screen no longer '
+        + 'shows the alert. An unknown alert, another account\'s or one already read answers 404.',
+    request: { params: AlertIdParams },
+    responses: {
+        204: { description: 'The alert is read.' },
+        400: { description: 'Invalid alert id.', content: { 'application/json': { schema: ErrorResponse } } },
+        401: { description: 'Missing, invalid or expired session.', content: { 'application/json': { schema: ErrorResponse } } },
+        404: { description: 'No unread alert of the caller has this id.', content: { 'application/json': { schema: ErrorResponse } } },
+        429: CoreApiRateLimited,
+        500: { description: 'Server error', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API unavailable or invalid upstream answer', content: { 'application/json': { schema: ErrorResponse } } },
+        503: CoreApiNotConfigured,
+    },
+});
+
+router.post('/me/security-alert/:alertId/acknowledge', async (req: Request, res: Response) => {
+    const { alertId } = parseRequest(AlertIdParams, req.params, 'params');
+
+    try {
+        await coreSecurityAlertsClient.acknowledgeMySecurityAlert(alertId, asCaller('CORE_API', req));
+        return res.status(204).send();
     } catch (error) {
         throw upstreamError('CORE_API', error, [400, 401, 404]);
     }

@@ -122,12 +122,19 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | GET | `/admin/sessions` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | GET | `/admin/sessions/history` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
 | POST | `/admin/sessions/revoke` | application/json | 200, 201, 204, 400, 401, 403, 404, 409, 500, 502 |
+| GET | `/admin/security-alerts` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
+| GET | `/admin/users/{userId}/connection-logs` | — | 200, 201, 204, 400, 401, 403, 404, 500, 502 |
+| POST | `/user/me/sessions/report` | `ReportSessionView` | 200, 400, 401, 429, 500, 502, 503 |
+| GET | `/user/me/security-alert` | — | 200, 204, 401, 429, 500, 502, 503 |
+| POST | `/user/me/security-alert/{alertId}/acknowledge` | — | 204, 400, 401, 404, 429, 500, 502, 503 |
 | GET | `/me` | — | 200, 401, 502 |
 | GET | `/session/me` | — | 200, 401, 502 |
 
 `GET /admin/groups` et `GET /admin/sessions/history` renvoient une page de la liste de Core, choisie par le front avec `limit` (1 à 500) et `offset` (0 à 1000000), les bornes de Core API : une valeur hors bornes donne un 400, et sans eux Core renvoie ses 100 premiers éléments. Les vérifications faites par le BFF lui-même (les groupes de `/me`, la lecture des membres avant d'ajouter ou de retirer un membre d'un groupe) lisent la plus grande page de Core, 500 éléments.
 
 
+
+Sessions volées (MAIR-773) : les proxys des fronts signalent l’usage d’une session depuis un autre appareil avec `POST /user/me/sessions/report` (`level` = `certain` / `possible` / `ip_change`, `ip_address`, `device_info`), relayé à Core avec la session : `certain` et `possible` la ferment (`revoked: true`) et préviennent l’agent et les administrateurs. `GET /user/me/security-alert` renvoie la dernière alerte non lue de l’agent (`204` s’il n’y en a pas) et `POST /user/me/security-alert/{alertId}/acknowledge` la marque lue, pour l’écran « Activité inhabituelle » de Login. `GET /admin/security-alerts` (30 jours, avec l’agent) et `GET /admin/users/{userId}/connection-logs` (100 dernières lignes) alimentent l’onglet Sécurité de l’administration.
 
 L’administration V2 (MAIR-584, MAIR-904) : `GET /admin/users` accepte aussi `account_status` (`active`, `invited`, `inactive` = archivé, `suspended`), `role_id` et `sort` (`name`, `-name`), transmis à Core, et chaque ligne porte `account_status`, `active_sessions` (sessions ouvertes), `last_login_at` et `two_factor` (`methods`, `last_verified_at`, jamais un secret). `GET /admin/users/{userId}/sessions` renvoie les 100 dernières sessions de l’utilisateur (lues dans sa fiche Core), `DELETE /admin/users/{userId}/sessions[/{sessionId}]` le déconnecte de tous ses appareils ou d’un seul, `POST /admin/users/{userId}/suspend` / `reactivate` suspendent le compte (sessions fermées, connexion refusée) et lèvent la suspension ; Core refuse son propre compte avec un 409.
 
