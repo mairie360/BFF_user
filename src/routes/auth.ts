@@ -312,7 +312,7 @@ registry.registerPath({
     security: [],
     tags: ['Authentication'],
     summary: 'Renews the access JWT',
-    description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.',
+    description: 'Exchanges the refresh token of the session (body field, else the HttpOnly `refreshToken` cookie set at sign-in) for a new access JWT (Core POST /api/v1/sessions/refresh), without a session: an expired JWT can be renewed. Core rotates the refresh token: like /auth/login, the new JWT and the new refresh token are only delivered in the HttpOnly accessToken and refreshToken cookies. Failed attempts are rate limited per refresh token, and per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For. The request\'s User-Agent is sent to Core as the device of the renewal: Core writes it to the sign-in journal and the alert e-mails when a replaced refresh token is reused, which closes the whole session (401). A token another front of the same browser replaced a few seconds ago answers 409: nothing changed, replay the request with the cookies that renewal set.',
     request: {
         body: {
             required: false,
@@ -342,7 +342,15 @@ registry.registerPath({
             },
         },
         401: {
-            description: 'Refresh token unknown, revoked or expired',
+            description: 'Refresh token unknown, revoked or expired, or replaced by a renewal more than 10 seconds ago: Core then closes the whole session (reuse of a stolen token) and e-mails the agent and the administrators',
+            content: {
+                'application/json': {
+                    schema: ErrorResponse,
+                },
+            },
+        },
+        409: {
+            description: 'Refresh token replaced by a concurrent renewal of the same session less than 10 seconds ago (Core `refresh_superseded`): nothing changed and no cookie is set; replay the request with the cookies that renewal set instead of signing the user out.',
             content: {
                 'application/json': {
                     schema: ErrorResponse,
@@ -851,7 +859,7 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
         }
 
         try {
-            const coreResponse = await refreshSession(refreshToken, req);
+            const coreResponse = await refreshSession(refreshToken, req, req.get('user-agent'));
             const authorizationHeader = coreResponse.headers?.authorization ?? coreResponse.headers?.Authorization;
 
             // Same delivery as /auth/login: the HttpOnly cookies only. Core rotates the refresh token (>= 2.0.0):
@@ -864,7 +872,9 @@ export function createAuthRouter(limiters: AuthRateLimiters = createAuthRateLimi
 
             return res.status(200).json({ message: 'JWT refreshed successfully' });
         } catch (error) {
-            throw upstreamError('CORE_API', error, [400, 401, 429]);
+            // 409: another front renewed the same session a few seconds ago (Core's `refresh_superseded`). The
+            // cookies are left as they are: the browser already holds the ones that renewal set.
+            throw upstreamError('CORE_API', error, [400, 401, 409, 429]);
         }
     });
 
