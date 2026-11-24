@@ -741,6 +741,27 @@ describe('BFF User with a contract-driven Core API mock', () => {
       expect(response.headers['set-cookie']).toBeUndefined();
     });
 
+    test('MAIR-776 relays a refresh token superseded by a concurrent renewal as a 409 without touching the cookies', async () => {
+      coreApi.on('post', CORE.sessionsRefresh, coreError(409, 'refresh_superseded'));
+
+      const response = await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=opaque-refresh-token');
+
+      expect(response.status).toBe(409);
+      expectBffContract('post', '/auth/refresh', response);
+      expect(response.body.error.code).toBe('CONFLICT');
+      expect(response.headers['set-cookie']).toBeUndefined();
+    });
+
+    test('MAIR-776 sends the browser User-Agent to Core as the device of the renewal', async () => {
+      coreApi.on('post', CORE.sessionsRefresh, { body: { refresh_token: 'rotated-refresh-token' }, headers: { Authorization: 'Bearer refreshed.jwt.token' } });
+      const userAgent = `Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 ${'x'.repeat(600)}`;
+
+      const response = await request(app).post('/auth/refresh').set('User-Agent', userAgent).send(payload);
+
+      expect(response.status).toBe(200);
+      expect(coreApi.requests[0].body).toEqual({ ...payload, device_info: userAgent.slice(0, 512) });
+    });
+
     test.each([
       ['a Core API 500', coreError(500, 'An error occurred while accessing the database.')],
       ['a dropped connection', { dropConnection: true }],

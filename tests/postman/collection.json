@@ -1214,13 +1214,18 @@
           "response": []
         },
         {
-          "name": "The rotated-out refresh token is rejected",
+          "name": "MAIR-776 Another front renewing with the rotated-out token is told it was superseded",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "User-Agent",
+                "value": "newman-776-second-front",
                 "type": "text"
               }
             ],
@@ -1250,14 +1255,19 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 401\", function () {",
-                  "    pm.response.to.have.status(401);",
+                  "// Replayed within 10 seconds of the rotation: a concurrent renewal by another front, not a theft.",
+                  "pm.test(\"Status is 409\", function () {",
+                  "    pm.response.to.have.status(409);",
                   "});",
-                  "pm.test(\"Body is the error envelope\", function () {",
+                  "pm.test(\"Body is the CONFLICT error envelope\", function () {",
                   "    const body = pm.response.json();",
                   "    pm.expect(body.error, 'error').to.be.an('object');",
-                  "    pm.expect(body.error.code).to.be.a('string');",
+                  "    pm.expect(body.error.code).to.eql('CONFLICT');",
                   "    pm.expect(body.error.message).to.be.a('string');",
+                  "});",
+                  "pm.test(\"No cookie is set: the browser keeps the one the other renewal set\", function () {",
+                  "    const setCookies = pm.response.headers.all().filter((h) => h.key.toLowerCase() === 'set-cookie');",
+                  "    pm.expect(setCookies).to.be.empty;",
                   "});"
                 ]
               }
@@ -1266,7 +1276,7 @@
           "response": []
         },
         {
-          "name": "The renewed JWT opens the session",
+          "name": "The renewed JWT opens the session (MAIR-776: the concurrent renewal did not sign the agent out)",
           "request": {
             "method": "GET",
             "header": [

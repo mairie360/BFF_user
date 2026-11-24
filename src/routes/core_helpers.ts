@@ -137,9 +137,21 @@ export async function confirmLoginEnrolment(
  * Renews the access JWT from a refresh token alone: Core serves POST /api/v1/sessions/refresh outside
  * its JWT middleware (>= 1.2.0), so no session is forwarded and an expired JWT is not needed.
  * Core >= 2.0.0 rotates the refresh token: the one sent stops working and the body carries its replacement.
+ * A token another renewal replaced a few seconds ago answers 409 `refresh_superseded`: nothing changed, the caller
+ * reads the cookie that renewal set.
  */
-export async function refreshSession(refreshToken: string, client: AnonymousClient): Promise<AxiosResponse<RefreshResponseView>> {
-    return coreSessionsClient.refresh({ refresh_token: refreshToken }, asAnonymousClient('CORE_API', client));
+export async function refreshSession(
+    refreshToken: string,
+    client: AnonymousClient,
+    deviceInfo?: string,
+): Promise<AxiosResponse<RefreshResponseView>> {
+    // The browser's User-Agent goes with it: Core writes it to the sign-in journal and the alert e-mails when the token
+    // turns out to be reused (Core's limit is 512 characters).
+    const device = deviceInfo?.slice(0, 512);
+    return coreSessionsClient.refresh(
+        device ? { refresh_token: refreshToken, device_info: device } : { refresh_token: refreshToken },
+        asAnonymousClient('CORE_API', client),
+    );
 }
 
 /**
