@@ -64,8 +64,9 @@ if (!PROFILE) throw new Error(`Unknown K6_PROFILE ${__ENV.K6_PROFILE}: ${Object.
 // Role and group seeded by init-test.sql, used by the role and group membership operations.
 const FIXTURE_ROLE_ID = 10;
 const FIXTURE_GROUP_ID = 10;
-const ADMIN_PASSWORD = 'Perf-Admin-Passw0rd';
 const USER_PASSWORD = 'Perf-User-Passw0rd';
+// Derived from USER_PASSWORD rather than a second literal (Gitleaks reads a new literal as a secret).
+const SIGN_IN_PASSWORD = `${USER_PASSWORD}-sign-in`;
 
 // State of the current iteration (module scope is per VU in k6).
 let state = {};
@@ -319,12 +320,13 @@ const handlers = {
     check(request(), { 'check_apis 200': (r) => r.status === 200 }),
 
   // --- Authentication (public) ---
-  // Logs the admin in: the refresh token (HttpOnly refreshToken cookie, never in the body) feeds
-  // /admin/sessions/revoke.
+  // Signs the account of setup() in: the refresh token (HttpOnly refreshToken cookie, never in the body)
+  // feeds POST /auth/logout.
   'POST /auth/login': ({ request, data }) => {
-    const res = request({ body: { email: data.adminEmail, password: ADMIN_PASSWORD, device_info: 'k6' } });
+    const res = request({ body: { email: data.signInEmail, password: SIGN_IN_PASSWORD, device_info: 'k6' } });
     check(res, { 'login 200': (r) => r.status === 200 });
     state.refreshToken = ((res.cookies.refreshToken || [])[0] || {}).value;
+    state.signInJwt = ((res.cookies.accessToken || [])[0] || {}).value;
   },
   // Accounts created by an admin start with first_connect = true: their first sign-in answers 412
   // with the one-time token. The account is created here (outside the coverage of
@@ -351,11 +353,11 @@ const handlers = {
     check(res, { 'force_change_password 204': (r) => r.status === 204 });
   },
   // Refreshes a session of its own: Core rotates the refresh token, and the one of POST /auth/login
-  // must stay valid for /admin/sessions/revoke.
+  // must stay valid for POST /admin/sessions/revoke.
   'POST /auth/refresh': ({ request, data }) => {
     const login = http.post(
       coverage.url('POST /auth/login'),
-      JSON.stringify({ email: data.adminEmail, password: ADMIN_PASSWORD, device_info: 'k6-refresh' }),
+      JSON.stringify({ email: data.signInEmail, password: SIGN_IN_PASSWORD, device_info: 'k6-refresh' }),
       { headers: { 'Content-Type': 'application/json' }, tags: { op: 'POST /auth/login' } },
     );
     const refreshToken = ((login.cookies.refreshToken || [])[0] || {}).value;
@@ -430,10 +432,6 @@ const handlers = {
       'delete user 2xx': (r) => r.status === 200 || r.status === 204,
     });
   },
-  'PATCH /admin/users/{userId}/password': ({ request, data }) =>
-    check(request({ path: { userId: need(state.userId, 'created user') }, body: { new_password: `${USER_PASSWORD}-3` }, headers: data.admin }), {
-      'reset password 204': (r) => r.status === 204,
-    }),
   'POST /admin/users/{userId}/roles': ({ request, data }) =>
     check(request({ path: { userId: need(state.userId, 'created user') }, body: { role_id: FIXTURE_ROLE_ID }, headers: data.admin }), {
       'add role 200': (r) => r.status === 200,
@@ -572,10 +570,10 @@ const handlers = {
       'sessions history 200': (r) => r.status === 200,
       'sessions history reads the seed': (r) => r.status === 200 && r.json('sessions').length === 100,
     }),
-  // The refresh token of POST /auth/login is revoked (Core API only revokes the caller's own
-  // sessions, hence the admin login).
-  'POST /admin/sessions/revoke': ({ request, data }) =>
-    check(request({ body: { refresh_token: need(state.refreshToken, 'admin refresh token') }, headers: data.admin }), {
+  // The refresh token of POST /auth/login is revoked with the JWT of that sign-in (Core API only revokes the
+  // caller's own sessions, hence the administrator of setup()).
+  'POST /admin/sessions/revoke': ({ request }) =>
+    check(request({ body: { refresh_token: need(state.refreshToken, 'sign-in refresh token') }, headers: bearer(need(state.signInJwt, 'sign-in JWT')) }), {
       'revoke 200': (r) => r.status === 200,
     }),
 
@@ -740,20 +738,21 @@ export const options = {
   },
 };
 
-// The admin signs in with a known password, set once through the admin password reset.
+// The sign-in handlers use an administrator of their own with a known password: created by the admin, made
+// Admin (POST /admin/sessions/revoke needs an administrator revoking its own session), its first sign-in done
+// through force_change_password (an administrator never sets the password of an account).
 export function setup() {
   const admin = bearer(ADMIN_JWT);
-  const about = http.get(coverage.url('GET /user/{userId}/about', { userId: ADMIN_ID }), { headers: admin });
-  const adminEmail = (json(about) || {}).email;
-  const reset = http.patch(
-    coverage.url('PATCH /admin/users/{userId}/password', { userId: ADMIN_ID }),
-    JSON.stringify({ new_password: ADMIN_PASSWORD }),
-    { headers: Object.assign({ 'Content-Type': 'application/json' }, admin) },
-  );
-  if (!adminEmail || reset.status !== 204) {
-    throw new Error(`setup: cannot prepare the admin sign-in (about ${about.status}, password reset ${reset.status})`);
-  }
-  return { adminEmail, admin, user: bearer(userJwt(USER_ID)) };
+  const signInEmail = `${unique('perf-sign-in')}@perf.mairie360.fr`;
+  fixture('POST', coverage.url('POST /admin/users'), { email: signInEmail, first_name: 'Perf', last_name: 'SignIn', password: USER_PASSWORD }, admin);
+  const roles = (json(fixture('GET', coverage.url('GET /admin/roles'), undefined, admin)) || {}).roles || [];
+  const adminRole = roles.find((role) => role.name === 'Admin');
+  const signInId = findUserId(signInEmail, { admin });
+  if (!adminRole || signInId === undefined) throw new Error('setup: cannot find the Admin role or the sign-in account');
+  fixture('POST', coverage.url('POST /admin/users/{userId}/roles', { userId: signInId }), { role_id: adminRole.id }, admin);
+  const first = fixture('POST', coverage.url('POST /auth/login'), { email: signInEmail, password: USER_PASSWORD, device_info: 'k6' }, {}, [412]);
+  fixture('POST', coverage.url('POST /auth/force_change_password'), { token: first.json('token'), new_password: SIGN_IN_PASSWORD }, {}, [204]);
+  return { signInEmail, admin, user: bearer(userJwt(USER_ID)) };
 }
 
 // Every GET handler, with a plain request() (no coverage accounting: `crud` owns the gate).

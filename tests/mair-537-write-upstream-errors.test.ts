@@ -53,7 +53,6 @@ const mocked = (fn: unknown) => fn as jest.Mock;
 const WRITE_ROUTES: WriteRoute[] = [
     { label: 'POST /admin/users', method: 'post', path: '/admin/users', body: { email: 'bob@mairie.test', first_name: 'Bob', last_name: 'Durand', password: 'MotDePasse123' }, write: mocked(coreAdminUsersClient.adminPostUser) },
     { label: 'PATCH /admin/users/:userId', method: 'patch', path: '/admin/users/7', body: { first_name: 'Alicia' }, write: mocked(coreAdminUsersClient.adminPatchUser) },
-    { label: 'PATCH /admin/users/:userId/password', method: 'patch', path: '/admin/users/7/password', body: { new_password: 'MotDePasse123' }, write: mocked(coreAdminUsersClient.adminResetUserPassword) },
     { label: 'DELETE /admin/users/:userId', method: 'delete', path: '/admin/users/7', write: mocked(coreAdminUsersClient.adminDeleteUser) },
     { label: 'POST /admin/users/:userId/roles', method: 'post', path: '/admin/users/7/roles', body: { role_id: 3 }, write: mocked(coreAdminUsersClient.adminAddRoleToUser) },
     { label: 'DELETE /admin/users/:userId/roles/:roleId', method: 'delete', path: '/admin/users/7/roles/3', write: mocked(coreAdminUsersClient.adminDeleteUserRole) },

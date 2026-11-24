@@ -55,7 +55,6 @@ Generated contract: [`contracts/openapi.json`](contracts/openapi.json) (36 opera
 | `POST` | `/admin/users` | Create a user through Core API |
 | `PATCH` | `/admin/users/{userId}` | Update a user through Core API |
 | `DELETE` | `/admin/users/{userId}` | Delete a user for good through Core API |
-| `PATCH` | `/admin/users/{userId}/password` | Change the password and revoke the user sessions |
 | `POST` | `/admin/users/{userId}/roles` | Add a role to a user through Core API |
 | `DELETE` | `/admin/users/{userId}/roles/{roleId}` | Remove a role from a user through Core API |
 | `GET` | `/admin/roles` | List the admin roles through Core API |
