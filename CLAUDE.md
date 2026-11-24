@@ -404,3 +404,19 @@ for that commit. `cicd.yml`, `promote-staging.yml` and `promote-prod.yml` pin th
 ## Shutdown
 
 `src/index.ts` wraps the server in the bffs-lib `gracefulShutdown`. On SIGTERM it drains the running requests, ends the SSE streams, flushes the telemetry and exits 0; after 10 s it exits 1. The image runs `tini` as PID 1 (`ENTRYPOINT`) so the signal reaches Node. The pod's `preStop` (5 s) and grace period (30 s) live in `Devops/Deploiment`. `tests/mair-682-graceful-shutdown.test.ts` starts the real entry point and sends it SIGTERM.
+
+## Agent dev loop
+
+`./agent_dev.sh` lets an agent run and observe the dev stack from a shell, without attaching to a terminal. `compose.agent.yml` is the overlay it adds (Postgres on `127.0.0.1:5432`, Redis on `127.0.0.1:6379`, bounded logs).
+
+```bash
+./agent_dev.sh up                 # build + start detached, wait for healthy, start `docker compose watch` in the background
+./agent_dev.sh wait               # after an edit: block until http://localhost:4000/health answers again (prints the app logs on timeout)
+./agent_dev.sh logs bff-user 100        # last 100 log lines (compile errors show up here)
+./agent_dev.sh sql "SELECT id, email FROM users LIMIT 5"
+./agent_dev.sh redis KEYS '*'
+./agent_dev.sh http GET /path     # authenticated call (admin EdDSA JWT, sub=1, signed with the stack's Ed25519 key)
+./agent_dev.sh status | restart | down [-v]
+```
+
+The loop is: edit, `wait`, `http`/`sql` to check the behaviour, `logs` when it fails. The watcher state and the stack's Ed25519 key pair (from `stack_secrets.sh`, reused until `down -v`) live in `.agent/` (gitignored). Needs `NODE_AUTH_TOKEN` exported (GitHub Packages), like `docker compose build`. Core API runs in the same stack on port 3000.

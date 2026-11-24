@@ -32,3 +32,6 @@ newman-reports/
 
 # GDPR usage simulation run (gdpr_simulation_test.sh, MAIR-497): personas, raw logs, never committed.
 /gdpr-simulation/
+
+# Agent dev loop state (watcher pid and log), see agent_dev.sh
+.agent/
