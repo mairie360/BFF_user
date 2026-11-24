@@ -45,7 +45,7 @@ const forgedHeaders: Array<[string, string]> = [
     ['an empty bearer', 'Bearer '],
     ['garbage', 'Bearer not.a.jwt'],
     ['another key', `Bearer ${sessionToken(1, { privateKey: foreignKeyPair.privateKey })}`],
-    // MAIR-680: once JWT_SECRET is gone, a historical HS256 token is refused whatever secret signed it.
+    // MAIR-680: a historical HS256 token is refused whatever secret signed it (bffs-lib >= 3).
     ['an HS256 token', `Bearer ${hs256Token(1, 'not-the-secret-of-this-deployment-0123')}`],
     ['an expired token', `Bearer ${expiredToken(1)}`],
     ['alg none', `Bearer ${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ sub: '1', exp: 4_102_444_800 })}.`],

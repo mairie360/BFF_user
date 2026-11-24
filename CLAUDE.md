@@ -30,7 +30,7 @@ npm run contracts:check     # fail if either is stale (CI gate)
 ```
 
 CI (`.github/workflows/contracts.yml`) runs `npm run contracts:check` then
-`npm test -- --runInBand` on Node 24.22.1 (`cicd.yml` uses `node_version: "24.22.1"` too). `cicd.yml` delegates to the reusable
+`npm test -- --runInBand` on Node 26.13.1 (`cicd.yml` uses `node_version: "26.13.1"` too). `cicd.yml` delegates to the reusable
 `mairie360/CICD` workflow.
 
 ### Private dependencies
@@ -104,8 +104,8 @@ production image runs `node dist/index.js` and nothing registers `ts-node` at ru
 
 `src/index.ts` starts with `import 'dotenv/config'` and, only when run as the entry point
 (`require.main === module`), calls `assertStartupConfiguration()`: `assertConfigured(['CORE_API'])` + a
-session key check (`sessionKeysFromEnv()` of the lib: `JWT_PUBLIC_KEY`, or `JWT_SECRET` during the HS256
-transition; an invalid PEM refuses too), so a misconfigured instance refuses to start. Tests import the app without it.
+session key check (`sessionKeysFromEnv()` of the lib: `JWT_PUBLIC_KEY` only, bffs-lib >= 3 ignores `JWT_SECRET`;
+an invalid PEM refuses too), so a misconfigured instance refuses to start. Tests import the app without it.
 
 ### App and entry point (MAIR-430)
 
@@ -198,7 +198,7 @@ and the legacy `/me` resolve.
   `{ message, session_revoked }`.
 - **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* with the lib's `verifySessionToken` — EdDSA signature against Core's public key `JWT_PUBLIC_KEY` (MAIR-680:
-  `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 only while `JWT_SECRET` is set), `exp`, `sub` — then reads the roles from Core
+  `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 always refused since bffs-lib 3), `exp`, `sub` — then reads the roles from Core
   `GET /api/v1/user/me/` and requires an administrator among `roles` (Core ≥ 2.0.0; `role` is only the first one), recognised with the lib's `isAdminRole` (`Admin`, `Administrateur`, `ROLE_ADMIN`, … a custom role never is). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
@@ -251,10 +251,8 @@ never add span attributes holding request values (ids, URLs, bodies, headers). T
 ## Environment variables
 
 `CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_PUBLIC_KEY` (MAIR-680: Core's Ed25519
-public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required to verify Core's EdDSA tokens, while during the HS256
-transition `JWT_SECRET` alone also passes the startup check; Core alone
-signs the session tokens), `JWT_SECRET` (HS256 transition only: while it is set, HS256 tokens signed with it are still
-accepted; remove it once `JWT_PUBLIC_KEY` is deployed), `COOKIE_DOMAIN` (omit for host-only
+public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required, the BFF does not
+start without it; Core alone signs the session tokens; bffs-lib >= 3 refuses HS256 tokens and ignores `JWT_SECRET`), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
 `AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`).
 
@@ -263,7 +261,7 @@ cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`
 `docker compose up` uses `development.Dockerfile` (`npm run start`, i.e. `tsx watch`; `develop.watch`
 sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, a fake Resend
 (WireMock, `tests/fake-resend/`, journal on `localhost:8025/__admin/requests`: Core ≥ MAIR-522 sends the password
-e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:24.22.1-alpine` (pinned by digest, like `development.Dockerfile`)
+e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:26.13.1-alpine` (pinned by digest, like `development.Dockerfile`)
 multi-stage build running `node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
 
 ## Tests with a contract-driven Core API mock
@@ -362,8 +360,8 @@ working Core. Every `*_test.sh` sources `stack_secrets.sh` (MAIR-474, MAIR-680):
 anywhere), `ADMIN_JWT` (`sub=1`, 4 h, EdDSA like Core) for the ZAP replacer and k6, and `sign_jwt` / `sign_jwt_file`
 (node, for the thousands of k6 tokens: k6 cannot sign Ed25519) for the other callers; the compose files refuse to
 start without them, and no key or token is committed. The core-api image of the stacks must be one that signs EdDSA
-(`dev-690f32b` or later). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
-shell provides the key pair (`source ./stack_secrets.sh` before `docker compose up`). They
+(`dev-690f32b` or later). The dev `docker-compose.yml` gives the BFF no `JWT_SECRET`: the shell must provide the key pair
+(`source ./stack_secrets.sh` before `docker compose up`), otherwise Core signs HS256 tokens the BFF refuses. They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
 the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
 ignores `100000`: a 500 / 502 answered during the scan fails it. In `crud`, handlers run path by

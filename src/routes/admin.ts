@@ -320,7 +320,7 @@ async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, 
         throw new HttpError(401, INVALID_SESSION_MESSAGE);
     }
 
-    // Core's public key `JWT_PUBLIC_KEY` (MAIR-680), plus `JWT_SECRET` while the HS256 transition lasts.
+    // Core's public key `JWT_PUBLIC_KEY` (MAIR-680); since bffs-lib 3, `JWT_SECRET` is ignored.
     let keys: SessionKeys | undefined;
     try {
         keys = sessionKeysFromEnv();
@@ -334,7 +334,7 @@ async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, 
         throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
-    // EdDSA signature with Core's key (`kid`, `iss`, `aud`), or HS256 only while JWT_SECRET is set, expiry and a
+    // EdDSA signature with Core's key (`kid`, `iss`, `aud`; HS256 is refused), expiry and a
     // positive integer `sub` (`@mairie360/bffs-lib`, the checks of Core): a forged or expired token gets its 401
     // without any Core call, and never learns which check failed.
     verifySessionToken(token, keys);
