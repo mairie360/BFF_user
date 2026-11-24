@@ -12,9 +12,10 @@ Business domain: Identity and administration.
 
 ## Available capabilities
 
-- Sign-in, first-sign-in password change and logout (no public self-registration: administrators create accounts).
+- Sign-in, first-sign-in password change, forgotten password (reset e-mail, then reset with the e-mailed token, which signs the user in) and logout (no public self-registration: administrators create accounts).
 - Session lookup with identity, groups and roles through `/me` and `/session/me`.
-- User, role, group, membership and session operations under `/bff/admin`.
+- User, role, group, membership and session operations under `/admin`.
+- List of the projects left without a group (`/admin/projects-without-group`, read from BFF_Project) for the groups tab.
 
 ## Typical workflow
 
@@ -30,11 +31,11 @@ This repository contains the BFF server and its contract. Associated web service
 
 ## Data and current state
 
-Core supplies identity and session operations. The BFF SQL repositories also read users and roles and perform some password and group mutations. The first-sign-in flow uses PostgreSQL and Redis. Data access is therefore a mixture of HTTP and direct database operations.
+Core API supplies identity, sessions, users, roles and groups: the BFF has no database or Redis access, and every read or write goes through Core API, first sign-in included. The only exception is the list of projects without a group, read from BFF_Project.
 
 ## Scope and limitations
 
-Monitoring, backups, application logs and system policy described in administration requirements are not guaranteed by this contract. SQL access requires a compatible schema, including `group_members`; this name differs from `group_users` used in other contracts.
+Monitoring, backups, application logs and system policy described in administration requirements are not guaranteed by this contract.
 
 ## Developing or operating this module
 

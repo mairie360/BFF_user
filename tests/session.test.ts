@@ -5,7 +5,7 @@ import express from 'express';
 import request from 'supertest';
 import sessionRouter from '../src/routes/session';
 import { coreGroupsClient, coreUsersClient } from '../src/clients/coreClient';
-import { JWT_SECRET, axiosResponse, group, groupsResult, meResponse, sessionToken } from './support/core-fixtures';
+import { axiosResponse, group, groupsResult, meResponse, sessionToken, useSessionPublicKey } from './support/core-fixtures';
 
 // Core API est simulée au niveau du client généré : chaque regroupement expose exactement les opérations de
 // getCoreAPIMairie360 (@mairie360/core-api-openapi), une opération renommée ou retirée par le contrat casse le test.
@@ -20,7 +20,7 @@ jest.mock('../src/clients/coreClient', () => {
 const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedGetGroups = jest.mocked(coreGroupsClient.getGroups);
 
-// Signed with the JWT_SECRET of the tests: `requireSession` verifies it before any Core call. One token per user
+// Signed with the test key of Core (EdDSA, MAIR-680): `requireSession` verifies it before any Core call. One token per user
 // (its `exp` follows the clock), so the token sent and the one expected upstream are the same.
 const tokens = new Map<number, string>();
 const tokenFor = (userId: number) => tokens.get(userId) ?? tokens.set(userId, sessionToken(userId)).get(userId)!;
@@ -41,7 +41,7 @@ describe('GET /session/me', () => {
         jest.clearAllMocks();
         // Read on every call (MAIR-431): no localhost default, no URL frozen at import.
         process.env.CORE_API_URL = 'http://core.test';
-        process.env.JWT_SECRET = JWT_SECRET;
+        useSessionPublicKey();
     });
 
     it('returns the current user with their groups and the role of GetMeResponseView', async () => {
@@ -58,7 +58,9 @@ describe('GET /session/me', () => {
         const user: Partial<ReturnType<typeof meResponse>> = { ...me };
         delete user.groups;
         delete user.roles;
-        expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'] });
+        delete user.modules;
+        // MAIR-916: the modules of the session's role, relayed for the shared navigation.
+        expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'], modules: ['dashboard'] });
         expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
         expect(mockedGetGroups).toHaveBeenCalledWith({ limit: 500 }, { baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });
     });
@@ -113,7 +115,7 @@ describe('GET /session/me', () => {
         const response = await request(app).get('/me').set('Authorization', `Bearer ${tokenFor(42)}`);
 
         expect(response.status).toBe(200);
-        expect(Object.keys(response.body).sort()).toEqual(['groups', 'roles', 'user']);
+        expect(Object.keys(response.body).sort()).toEqual(['groups', 'modules', 'roles', 'user']);
         expect(response.body.user).not.toHaveProperty('password_hash');
         expect(response.body.user).not.toHaveProperty('is_archived');
         expect(response.body.groups[0]).not.toHaveProperty('internal_note');

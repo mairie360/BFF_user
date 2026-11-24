@@ -1,4 +1,4 @@
-import { AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema } from './admin_schemas';
+import { AdministrationConnectionLogsSchema, AdministrationSecurityAlertsSchema, AdministrationProjectsWithoutGroupSchema, AdministrationServiceSchema, AdministrationServicesSchema, GroupColorSchema, RoleModuleSchema, AdministrationUsersPageSchema, AdministrationGroupSchema, AdministrationGroupMemberSchema, AdministrationRoleSchema, AdministrationSessionSchema, AdministrationUserSessionsSchema, TwoFactorPolicySchema, TwoFactorPolicyUpdateSchema } from './admin_schemas';
 import {
     asCaller,
     bearerToken,
@@ -7,24 +7,32 @@ import {
     INVALID_SESSION_MESSAGE,
     noStore,
     parseRequest,
+    sessionKeysFromEnv,
+    type SessionKeys,
     upstreamError,
     validationError,
     verifySessionToken,
+    canonicalRole,
+    isAdminRole,
 } from '@mairie360/bffs-lib';
 import { NextFunction, Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiRateLimited, ErrorResponse, PASSWORD_MIN_LENGTH, registry } from '../openapi-registry';
 import {
     CORE_LARGEST_PAGE,
     CORE_MAX_LIMIT,
     CORE_MAX_OFFSET,
     coreAdminRolesClient,
+    coreAdminServicesClient,
     coreAdminUsersClient,
     coreGroupsClient,
+    coreSecurityAlertsClient,
     coreSessionsClient,
+    coreTwoFactorPolicyClient,
     coreUsersClient,
 } from '../clients/coreClient';
 import { forwardCoreResponse, whitelist } from './admin_helpers';
+import { projectBff } from '../clients/projectBffClient';
 
 const router = Router();
 
@@ -34,6 +42,7 @@ const MAX_GROUP_MEMBERS = 500;
 const UserIdParams = z.object({ userId: z.coerce.number().int().positive() }).openapi('AdminUserIdParams');
 const RoleIdParams = z.object({ roleId: z.coerce.number().int().positive() }).openapi('AdminRoleIdParams');
 const GroupIdParams = z.object({ groupId: z.coerce.number().int().positive() }).openapi('AdminGroupIdParams');
+const ServiceIdParams = z.object({ serviceId: z.coerce.number().int().positive().openapi({ example: 3 }) }).openapi('AdminServiceIdParams');
 const UserRoleParams = z.object({
     userId: z.coerce.number().int().positive(),
     roleId: z.coerce.number().int().positive(),
@@ -44,6 +53,10 @@ const GroupUserParams = z.object({
 }).openapi('AdminGroupUserParams');
 // DELETE routes get their own example ids (seeded by init-test.sql): a scan replaying the examples
 // must not delete the resource that the other routes of the same path read or update.
+const UserSessionParams = z.object({
+    userId: z.coerce.number().int().positive(),
+    sessionId: z.string().uuid().openapi({ description: 'Id of a session of the user (`id` in `GET /admin/users/{userId}/sessions`).', example: '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70' }),
+}).openapi('AdminUserSessionParams');
 const DeletedUserIdParams = z.object({
     userId: z.coerce.number().int().positive().openapi({ example: 11 }),
 });
@@ -53,10 +66,18 @@ const DeletedRoleIdParams = z.object({
 const DeletedGroupIdParams = z.object({
     groupId: z.coerce.number().int().positive().openapi({ example: 11 }),
 });
+const DeletedServiceIdParams = z.object({
+    serviceId: z.coerce.number().int().positive().openapi({ example: 11 }),
+});
 const UserListQuery = z.object({
     page: z.coerce.number().int().positive().default(1),
     page_size: z.coerce.number().int().min(1).max(20).default(20),
     search: z.string().trim().max(100).optional(),
+    // MAIR-904: filters and order of the V2 list, relayed to Core.
+    account_status: z.enum(['active', 'invited', 'inactive', 'suspended']).optional()
+        .openapi({ description: 'State of the account: active, invited (never signed in), inactive (archived) or suspended.', example: 'suspended' }),
+    role_id: z.coerce.number().int().positive().optional().openapi({ description: 'Holders of this role only.', example: 2 }),
+    sort: z.enum(['name', '-name']).optional().openapi({ description: 'Order by name, ascending (default) or descending.', example: '-name' }),
 }).openapi('AdminUserListQuery');
 // Page of a Core list, chosen by the front and forwarded as is; the bounds are Core's. Without them, Core
 // answers its first page of 100 items.
@@ -76,11 +97,13 @@ const GroupDescription = noMarkup(z.string().trim().max(2_000)).openapi({ exampl
 const GroupPatchBody = z.object({
     name: GroupName.optional().openapi({ example: 'Scan group' }),
     description: GroupDescription.optional().openapi({ example: 'Group edited by the ZAP scan' }),
-}).refine((value) => value.name !== undefined || value.description !== undefined, {
+    // MAIR-923: `null` gives back the default colour.
+    color: GroupColorSchema.nullable().optional(),
+}).refine((value) => value.name !== undefined || value.description !== undefined || value.color !== undefined, {
     message: 'At least one field is required',
 }).openapi('AdminGroupPatchBody');
 const UserPasswordResetBody = z.object({
-    new_password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
+    new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({ example: 'Temporary-Ecole-Pont-2026' }),
 }).openapi('AdminUserPasswordResetBody');
 // Request bodies mirror the Core API views they are forwarded to (@mairie360/core-api-openapi); unknown
 // fields are stripped. The examples are valid values, so a generated request (Swagger UI, ZAP) is accepted.
@@ -98,12 +121,12 @@ const UserCreateBody = z.object({
     email: Email,
     first_name: PersonName.openapi({ example: 'Jane' }),
     last_name: PersonName.openapi({ example: 'Doe' }),
-    password: z.string().min(8).max(255).openapi({ example: 'Temporary-Passw0rd' }),
+    password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({ example: 'Temporary-Ecole-Pont-2026' }),
     phone_number: PhoneNumber.nullable().optional(),
     phone_country: PhoneCountry.nullable().optional(),
 }).openapi('AdminUserCreateBody');
 // The password is not accepted here: Core writes it without any length check, the
-// PATCH /bff/admin/users/{userId}/password route enforces the policy and revokes the sessions.
+// PATCH /admin/users/{userId}/password route enforces the policy and revokes the sessions.
 const UserPatchBody = z.object({
     email: Email.nullable().optional().openapi({ example: 'scan-target@mairie360.fr' }),
     first_name: PersonName.nullable().optional().openapi({ example: 'Scan' }),
@@ -121,22 +144,34 @@ const RoleWriteBody = z.object({
     name: RoleName,
     description: RoleDescription,
     can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+    modules: z.array(RoleModuleSchema).max(7).optional().openapi({ description: 'Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.', example: ['dashboard', 'projects'] }),
 }).openapi('AdminRoleWriteBody');
 // Not RoleWriteBody.extend(): it would be published as an allOf, which generated clients fill poorly.
 const RoleReplaceBody = z.object({
     name: RoleName.openapi({ example: 'Scan role' }),
     description: RoleDescription.openapi({ example: 'Role edited by the ZAP scan' }),
     can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+    modules: z.array(RoleModuleSchema).max(7).optional().openapi({ description: 'Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.', example: ['dashboard', 'projects'] }),
 }).openapi('AdminRoleReplaceBody');
 const RolePatchBody = z.object({
     name: RoleName.nullable().optional().openapi({ example: 'Scan role' }),
     description: RoleDescription.nullable().optional().openapi({ example: 'Role edited by the ZAP scan' }),
     can_be_deleted: z.boolean().nullable().optional().openapi({ example: true }),
+    modules: z.array(RoleModuleSchema).max(7).optional().openapi({ description: 'Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.', example: ['dashboard', 'projects'] }),
 }).refine(atLeastOneField, { message: 'At least one field is required' }).openapi('AdminRolePatchBody');
 const GroupCreateBody = z.object({
     name: GroupName,
     description: GroupDescription,
+    color: GroupColorSchema.nullable().optional(),
 }).openapi('AdminGroupCreateBody');
+// Services of the mairie (MAIR-923).
+const ServiceName = noMarkup(z.string().trim().min(1).max(64)).openapi({ example: 'Roads' });
+const ServiceWriteBody = z.object({ name: ServiceName }).openapi('AdminServiceWriteBody');
+// Update examples name another service than the seeded one, so a replayed example never hits a taken name.
+const ServiceRenameBody = z.object({ name: ServiceName.openapi({ example: 'Scan service' }) }).openapi('AdminServiceRenameBody');
+const UserServiceBody = z.object({
+    service_id: z.number().int().positive().nullable().openapi({ description: 'Id of a service of `GET /admin/services`, or `null` to detach the agent.', example: 3 }),
+}).openapi('AdminUserServiceBody');
 const GroupUserBody = z.object({
     user_id: z.number().int().positive().openapi({ example: 42 }),
     group_id: z.number().int().positive().optional().openapi({ description: 'Must match the path groupId when sent' }),
@@ -169,6 +204,10 @@ registry.register('AdminRoleReplaceBody', RoleReplaceBody);
 registry.register('AdminRolePatchBody', RolePatchBody);
 registry.register('AdminGroupCreateBody', GroupCreateBody);
 registry.register('AdminGroupUserBody', GroupUserBody);
+registry.register('AdminServiceIdParams', ServiceIdParams);
+registry.register('AdminServiceWriteBody', ServiceWriteBody);
+registry.register('AdminServiceRenameBody', ServiceRenameBody);
+registry.register('AdminUserServiceBody', UserServiceBody);
 registry.register('AdminSessionRevokeBody', SessionRevokeBody);
 registry.register('CoreResponse', CoreResponse);
 
@@ -178,7 +217,7 @@ function jsonBodyRequest(schema: z.ZodType) {
 
 const coreResponses = {
     200: {
-        description: 'Réponse du Core API',
+        description: 'Response of Core API',
         content: {
             'application/json': {
                 schema: CoreResponse,
@@ -186,7 +225,7 @@ const coreResponses = {
         },
     },
     201: {
-        description: 'Créé par le Core API',
+        description: 'Created by Core API',
         content: {
             'application/json': {
                 schema: CoreResponse,
@@ -194,10 +233,10 @@ const coreResponses = {
         },
     },
     204: {
-        description: 'Aucun contenu retourné par le Core API',
+        description: 'No content returned by Core API',
     },
     400: {
-        description: 'Erreur Core API',
+        description: 'Core API error',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -205,7 +244,7 @@ const coreResponses = {
         },
     },
     401: {
-        description: 'Non authentifié',
+        description: 'Not authenticated',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -213,7 +252,7 @@ const coreResponses = {
         },
     },
     403: {
-        description: 'Accès refusé',
+        description: 'Access denied',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -221,13 +260,14 @@ const coreResponses = {
         },
     },
     404: {
-        description: 'Introuvable',
+        description: 'Not found',
         content: {
             'application/json': {
                 schema: ErrorResponse,
             },
         },
     },
+    429: CoreApiRateLimited,
     500: {
         description: 'Unexpected server error; the cause is only logged',
         content: {
@@ -245,7 +285,7 @@ const coreResponses = {
         },
     },
     503: {
-        description: 'Instance misconfigured: CORE_API_URL or JWT_SECRET is not set',
+        description: 'Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid',
         content: {
             'application/json': {
                 schema: ErrorResponse,
@@ -271,25 +311,33 @@ const coreWriteResponses = {
 const READ_STATUSES = [400, 401, 403, 404] as const;
 const WRITE_STATUSES = [...READ_STATUSES, 409] as const;
 
-// Throws 401 (no or invalid session), 503 (JWT_SECRET or CORE_API_URL missing) or 403 (not an administrator).
-async function requireAdmin(req: Request): Promise<void> {
+// Throws 401 (no or invalid session), 503 (no session key or no CORE_API_URL) or 403 (none of the roles is allowed).
+// Roles are recognised with the lib's rule (`isAdminRole`, `canonicalRole`): "Administrateur" and `ROLE_ADMIN` are administrators.
+async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, refusal: string): Promise<void> {
     // The `Authorization: Bearer` header only (no cookie, no other header), verified locally below.
     const token = bearerToken(req);
     if (token === undefined) {
         throw new HttpError(401, INVALID_SESSION_MESSAGE);
     }
 
-    const secret = process.env.JWT_SECRET;
+    // Core's public key `JWT_PUBLIC_KEY` (MAIR-680); since bffs-lib 3, `JWT_SECRET` is ignored.
+    let keys: SessionKeys | undefined;
+    try {
+        keys = sessionKeysFromEnv();
+    } catch {
+        keys = undefined;
+    }
 
-    if (!secret) {
+    if (keys === undefined) {
         // A misconfigured instance, not a server bug: 503 like a missing upstream URL. The entry point refuses
-        // to start without JWT_SECRET, so this only happens when the app is mounted elsewhere (tests).
+        // to start without a session key, so this only happens when the app is mounted elsewhere (tests).
         throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
-    // HS256 signature with JWT_SECRET, expiry and a positive integer `sub` (`@mairie360/bffs-lib`, the checks of
-    // Core): a forged or expired token gets its 401 without any Core call, and never learns which check failed.
-    verifySessionToken(token, secret);
+    // EdDSA signature with Core's key (`kid`, `iss`, `aud`; HS256 is refused), expiry and a
+    // positive integer `sub` (`@mairie360/bffs-lib`, the checks of Core): a forged or expired token gets its 401
+    // without any Core call, and never learns which check failed.
+    verifySessionToken(token, keys);
 
     // The roles come from Core API (GET /api/v1/user/me/), the authority on roles. Idempotent read: retried once.
     // Core >= 2.0.0 lists every role in `roles` (`role` is only the first one) and, like its own admin guard,
@@ -297,16 +345,49 @@ async function requireAdmin(req: Request): Promise<void> {
     const caller = asCaller('CORE_API', req);
     const { data: { roles } } = await callUpstream('CORE_API', () => coreUsersClient.getMe(caller), { declared: READ_STATUSES, retry: true });
 
-    if (!Array.isArray(roles) || !roles.some((role) => typeof role === 'string' && role.trim().toLowerCase() === 'admin')) {
-        throw new HttpError(403, 'Administrator role required');
+    if (!Array.isArray(roles) || !roles.some(isAllowed)) {
+        throw new HttpError(403, refusal);
     }
 }
 
-// Every /bff/admin route requires the admin role, checked locally as defence in depth: Core API v1.1.1 only
+const requireAdmin = (req: Request) => requireRole(req, isAdminRole, 'Administrator role required');
+
+// Every /admin route requires a role checked locally (the admin role, except the projects without a group below) as defence in depth: Core API v1.1.1 only
 // protected its /admin routes with the JWT (AdminMiddleware disabled), and groups/sessions are not admin-only there.
 // The check runs before parameter validation so that nothing is revealed to an unauthorized caller.
 // Administration answers are session-bound: never cached by a proxy or the browser.
 router.use(noStore);
+
+// Projects left without a group (created before groups were required, or their group was deleted in Core API), for the
+// groups tab. Like BFF_Project, it accepts the Admin and Maire roles, while every other /admin route stays Admin only:
+// mounted before the admin guard below, with its own role check.
+registry.registerPath({
+    method: 'get',
+    path: '/admin/projects-without-group',
+    tags: ['Administration'],
+    summary: 'List the projects without a group through BFF_Project',
+    responses: {
+        200: { description: 'The projects without a group', content: { 'application/json': { schema: AdministrationProjectsWithoutGroupSchema } } },
+        401: { description: 'Not authenticated', content: { 'application/json': { schema: ErrorResponse } } },
+        403: { description: 'Access denied', content: { 'application/json': { schema: ErrorResponse } } },
+        429: { description: 'Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds)', content: { 'application/json': { schema: ErrorResponse } } },
+        500: { description: 'Unexpected server error; the cause is only logged', content: { 'application/json': { schema: ErrorResponse } } },
+        502: { description: 'Core API or BFF_Project unavailable, failed or answered an undeclared error', content: { 'application/json': { schema: ErrorResponse } } },
+        503: { description: 'Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid', content: { 'application/json': { schema: ErrorResponse } } },
+    },
+});
+
+router.get('/projects-without-group', async (req: Request, res: Response) => {
+    await requireRole(req, (role) => isAdminRole(role) || canonicalRole(role) === 'Maire', 'Administrator or mayor role required');
+    const { data } = await callUpstream(
+        'PROJECT_BFF',
+        () => projectBff.getProjectGroupsProjectsWithoutGroup(asCaller('PROJECT_BFF', req)),
+        { declared: [401, 403], retry: true },
+    );
+    const projects = data.projects.map(({ id, title, createdAt }) => ({ id, title, createdAt: createdAt ?? null }));
+    res.status(200).json({ total: projects.length, projects });
+});
+
 router.use(async (req: Request, _res: Response, next: NextFunction) => {
     await requireAdmin(req);
     next();
@@ -314,17 +395,24 @@ router.use(async (req: Request, _res: Response, next: NextFunction) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/users',
+    path: '/admin/users',
     tags: ['Administration'],
-    summary: 'Liste les utilisateurs administrables, 20 éléments maximum par page',
+    summary: 'List the manageable users, at most 20 items per page',
     request: { query: UserListQuery },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: AdministrationUsersPageSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: AdministrationUsersPageSchema } } } },
 });
 
 router.get('/users', async (req: Request, res: Response) => {
     const query = parseRequest(UserListQuery, req.query, 'query');
     const caller = asCaller('CORE_API', req);
-    const params = { page: query.page, page_size: query.page_size, ...(query.search ? { search: query.search } : {}) };
+    const params = {
+        page: query.page,
+        page_size: query.page_size,
+        ...(query.search ? { search: query.search } : {}),
+        ...(query.account_status ? { account_status: query.account_status } : {}),
+        ...(query.role_id ? { role_id: query.role_id } : {}),
+        ...(query.sort ? { sort: query.sort } : {}),
+    };
 
     const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminListUsers(params, caller), { declared: READ_STATUSES, retry: true });
     return res.status(200).json(whitelist(AdministrationUsersPageSchema, response.data));
@@ -332,9 +420,9 @@ router.get('/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/users',
+    path: '/admin/users',
     tags: ['Administration'],
-    summary: 'Crée un utilisateur via le Core API',
+    summary: 'Create a user through Core API',
     request: { body: jsonBodyRequest(UserCreateBody) },
     responses: coreWriteResponses,
 });
@@ -352,9 +440,9 @@ router.post('/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/users/{userId}',
+    path: '/admin/users/{userId}',
     tags: ['Administration'],
-    summary: 'Met à jour un utilisateur via le Core API',
+    summary: 'Update a user through Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserPatchBody) },
     responses: coreWriteResponses,
 });
@@ -374,9 +462,9 @@ router.patch('/users/:userId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/users/{userId}/password',
+    path: '/admin/users/{userId}/password',
     tags: ['Administration'],
-    summary: 'Modifie le mot de passe et révoque les sessions utilisateur',
+    summary: 'Change the password and revoke the user sessions',
     request: {
         params: UserIdParams,
         body: {
@@ -408,9 +496,135 @@ router.patch('/users/:userId/password', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/users/{userId}',
+    path: '/admin/users/{userId}/2fa',
     tags: ['Administration'],
-    summary: 'Supprime définitivement un utilisateur via le Core API',
+    summary: 'Reset the second factor of a user',
+    description: 'Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. '
+        + 'Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/2fa', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminResetUserTwoFactor(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/users/{userId}/sessions',
+    tags: ['Administration'],
+    summary: 'Sessions of a user (MAIR-584)',
+    description: 'The latest 100 sessions of the user, active and ended, newest first (Core `GET /api/v1/admin/users/{userId}/`). '
+        + 'The user record of the administration lists them; the history shows the last 30 days.',
+    request: { params: UserIdParams },
+    responses: { ...coreResponses, 200: { description: 'Sessions of the user', content: { 'application/json': { schema: AdministrationUserSessionsSchema } } } },
+});
+
+router.get('/users/:userId/sessions', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminGetUser(userId, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationUserSessionsSchema, { sessions: response.data.sessions }));
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/users/{userId}/sessions',
+    tags: ['Administration'],
+    summary: 'Sign a user out of every device (MAIR-584)',
+    description: 'Closes every active session of the user: their JWTs stop working at once in every API. Idempotent. Audited by Core.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/sessions', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminRevokeUserSessions(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/users/{userId}/sessions/{sessionId}',
+    tags: ['Administration'],
+    summary: 'Sign a user out of one device (MAIR-584)',
+    description: 'Closes one active session of the user; the others stay open. 404 when the session is unknown, '
+        + 'belongs to another user or has already ended. Audited by Core.',
+    request: { params: UserSessionParams },
+    responses: coreWriteResponses,
+});
+
+router.delete('/users/:userId/sessions/:sessionId', async (req: Request, res: Response) => {
+    const { userId, sessionId } = parseRequest(UserSessionParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminRevokeUserSession(userId, sessionId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/users/{userId}/suspend',
+    tags: ['Administration'],
+    summary: 'Suspend a user (MAIR-904)',
+    description: 'The account becomes `suspended` and every session of the user is closed; the agent cannot sign in until '
+        + 'reactivated. Roles, groups and second factor are kept. Idempotent. 409 for one\'s own account or the last '
+        + 'active administrator.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.post('/users/:userId/suspend', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminSuspendUser(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/users/{userId}/reactivate',
+    tags: ['Administration'],
+    summary: 'Reactivate a suspended user (MAIR-904)',
+    description: 'Ends the suspension: the agent can sign in again with the roles, groups and second factor it had. Idempotent.',
+    request: { params: UserIdParams },
+    responses: coreWriteResponses,
+});
+
+router.post('/users/:userId/reactivate', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+
+    try {
+        await coreAdminUsersClient.adminReactivateUser(userId, asCaller('CORE_API', req));
+        return res.status(204).send();
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/users/{userId}',
+    tags: ['Administration'],
+    summary: 'Delete a user for good through Core API',
     request: { params: DeletedUserIdParams },
     responses: coreWriteResponses,
 });
@@ -431,9 +645,9 @@ router.delete('/users/:userId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/users/{userId}/roles',
+    path: '/admin/users/{userId}/roles',
     tags: ['Administration'],
-    summary: 'Ajoute un rôle à un utilisateur via le Core API',
+    summary: 'Add a role to a user through Core API',
     request: { params: UserIdParams, body: jsonBodyRequest(UserRoleBody) },
     responses: coreWriteResponses,
 });
@@ -461,9 +675,9 @@ router.post('/users/:userId/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/users/{userId}/roles/{roleId}',
+    path: '/admin/users/{userId}/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Retire un rôle à un utilisateur via le Core API',
+    summary: 'Remove a role from a user through Core API',
     request: { params: UserRoleParams },
     responses: coreWriteResponses,
 });
@@ -480,11 +694,106 @@ router.delete('/users/:userId/roles/:roleId', async (req: Request, res: Response
 });
 
 registry.registerPath({
-    method: 'get',
-    path: '/bff/admin/roles',
+    method: 'put',
+    path: '/admin/users/{userId}/service',
     tags: ['Administration'],
-    summary: 'Liste les rôles admin via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: RolesListSchema } } } },
+    summary: 'Attach a user to a service of the mairie, or detach them with `service_id: null` (MAIR-923)',
+    request: { params: UserIdParams, body: jsonBodyRequest(UserServiceBody) },
+    responses: coreResponses,
+});
+
+router.put('/users/:userId/service', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    const body = parseRequest(UserServiceBody, req.body, 'body');
+
+    try {
+        const response = await coreAdminServicesClient.adminSetUserService(userId, body, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, READ_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/services',
+    tags: ['Administration'],
+    summary: 'List the services of the mairie with their agent counts (MAIR-923)',
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: AdministrationServicesSchema } } } },
+});
+
+router.get('/services', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreAdminServicesClient.adminListServices(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return forwardCoreResponse(res, response, AdministrationServicesSchema);
+});
+
+registry.registerPath({
+    method: 'post',
+    path: '/admin/services',
+    tags: ['Administration'],
+    summary: 'Create a service of the mairie (MAIR-923); its name is unique whatever its case',
+    request: { body: jsonBodyRequest(ServiceWriteBody) },
+    responses: { ...coreWriteResponses, 201: { description: 'Service created', content: { 'application/json': { schema: AdministrationServiceSchema } } } },
+});
+
+router.post('/services', async (req: Request, res: Response) => {
+    const body = parseRequest(ServiceWriteBody, req.body, 'body');
+
+    try {
+        const response = await coreAdminServicesClient.adminCreateService(body, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response, AdministrationServiceSchema);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'patch',
+    path: '/admin/services/{serviceId}',
+    tags: ['Administration'],
+    summary: 'Rename a service of the mairie (MAIR-923)',
+    request: { params: ServiceIdParams, body: jsonBodyRequest(ServiceRenameBody) },
+    responses: { ...coreWriteResponses, 200: { description: 'Service renamed', content: { 'application/json': { schema: AdministrationServiceSchema } } } },
+});
+
+router.patch('/services/:serviceId', async (req: Request, res: Response) => {
+    const { serviceId } = parseRequest(ServiceIdParams, req.params, 'params');
+    const body = parseRequest(ServiceRenameBody, req.body, 'body');
+
+    try {
+        const response = await coreAdminServicesClient.adminUpdateService(serviceId, body, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response, AdministrationServiceSchema);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, WRITE_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'delete',
+    path: '/admin/services/{serviceId}',
+    tags: ['Administration'],
+    summary: 'Delete a service of the mairie (MAIR-923); its agents are left without a service',
+    request: { params: DeletedServiceIdParams },
+    responses: coreResponses,
+});
+
+router.delete('/services/:serviceId', async (req: Request, res: Response) => {
+    const { serviceId } = parseRequest(ServiceIdParams, req.params, 'params');
+
+    try {
+        const response = await coreAdminServicesClient.adminDeleteService(serviceId, asCaller('CORE_API', req));
+        return forwardCoreResponse(res, response);
+    } catch (error) {
+        throw upstreamError('CORE_API', error, READ_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/roles',
+    tags: ['Administration'],
+    summary: 'List the admin roles through Core API',
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: RolesListSchema } } } },
 });
 
 router.get('/roles', async (req: Request, res: Response) => {
@@ -494,9 +803,9 @@ router.get('/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/roles',
+    path: '/admin/roles',
     tags: ['Administration'],
-    summary: 'Crée un rôle via le Core API',
+    summary: 'Create a role through Core API',
     request: { body: jsonBodyRequest(RoleWriteBody) },
     responses: coreWriteResponses,
 });
@@ -514,9 +823,9 @@ router.post('/roles', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'put',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Remplace un rôle via le Core API',
+    summary: 'Replace a role through Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RoleReplaceBody) },
     responses: coreWriteResponses,
 });
@@ -536,9 +845,9 @@ router.put('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Met à jour un rôle via le Core API',
+    summary: 'Update a role through Core API',
     request: { params: RoleIdParams, body: jsonBodyRequest(RolePatchBody) },
     responses: coreWriteResponses,
 });
@@ -558,9 +867,9 @@ router.patch('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/roles/{roleId}',
+    path: '/admin/roles/{roleId}',
     tags: ['Administration'],
-    summary: 'Supprime un rôle via le Core API',
+    summary: 'Delete a role through Core API',
     request: { params: DeletedRoleIdParams },
     responses: coreWriteResponses,
 });
@@ -578,11 +887,11 @@ router.delete('/roles/:roleId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups',
+    path: '/admin/groups',
     tags: ['Administration'],
     summary: 'Lists the groups through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupsListSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: GroupsListSchema } } } },
 });
 
 router.get('/groups', async (req: Request, res: Response) => {
@@ -592,9 +901,9 @@ router.get('/groups', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/groups',
+    path: '/admin/groups',
     tags: ['Administration'],
-    summary: 'Crée un groupe via le Core API',
+    summary: 'Create a group through Core API',
     request: { body: jsonBodyRequest(GroupCreateBody) },
     responses: coreWriteResponses,
 });
@@ -612,11 +921,11 @@ router.post('/groups', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Récupère un groupe via le Core API',
+    summary: 'Get a group through Core API',
     request: { params: GroupIdParams },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupDetailSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: GroupDetailSchema } } } },
 });
 
 router.get('/groups/:groupId', async (req: Request, res: Response) => {
@@ -628,9 +937,9 @@ router.get('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'patch',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Met à jour le nom ou la description d’un groupe',
+    summary: 'Update the name, the description or the colour of a group',
     request: {
         params: GroupIdParams,
         body: {
@@ -656,9 +965,9 @@ router.patch('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/groups/{groupId}',
+    path: '/admin/groups/{groupId}',
     tags: ['Administration'],
-    summary: 'Supprime un groupe via le Core API',
+    summary: 'Delete a group through Core API',
     request: { params: DeletedGroupIdParams },
     responses: coreWriteResponses,
 });
@@ -676,11 +985,11 @@ router.delete('/groups/:groupId', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/groups/{groupId}/users',
+    path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
-    summary: 'Liste les utilisateurs d’un groupe via le Core API',
+    summary: 'List the users of a group through Core API',
     request: { params: GroupIdParams },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: GroupMembersSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: GroupMembersSchema } } } },
 });
 
 router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
@@ -698,9 +1007,9 @@ router.get('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/groups/{groupId}/users',
+    path: '/admin/groups/{groupId}/users',
     tags: ['Administration'],
-    summary: 'Ajoute un utilisateur à un groupe via le Core API',
+    summary: 'Add a user to a group through Core API',
     request: { params: GroupIdParams, body: jsonBodyRequest(GroupUserBody) },
     responses: coreWriteResponses,
 });
@@ -730,9 +1039,9 @@ router.post('/groups/:groupId/users', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'delete',
-    path: '/bff/admin/groups/{groupId}/users/{userId}',
+    path: '/admin/groups/{groupId}/users/{userId}',
     tags: ['Administration'],
-    summary: 'Retire un utilisateur d’un groupe via le Core API',
+    summary: 'Remove a user from a group through Core API',
     request: { params: GroupUserParams },
     responses: coreWriteResponses,
 });
@@ -755,10 +1064,10 @@ router.delete('/groups/:groupId/users/:userId', async (req: Request, res: Respon
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/sessions',
+    path: '/admin/sessions',
     tags: ['Administration'],
-    summary: 'Liste les sessions actives via le Core API',
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
+    summary: 'List the active sessions through Core API',
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions', async (req: Request, res: Response) => {
@@ -768,11 +1077,11 @@ router.get('/sessions', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'get',
-    path: '/bff/admin/sessions/history',
+    path: '/admin/sessions/history',
     tags: ['Administration'],
     summary: 'Reads the session history through Core API, one page chosen with `limit` / `offset`',
     request: { query: CorePageQuery },
-    responses: { ...coreResponses, 200: { description: 'Données de l’administration', content: { 'application/json': { schema: SessionsListSchema } } } },
+    responses: { ...coreResponses, 200: { description: 'Administration data', content: { 'application/json': { schema: SessionsListSchema } } } },
 });
 
 router.get('/sessions/history', async (req: Request, res: Response) => {
@@ -782,7 +1091,7 @@ router.get('/sessions/history', async (req: Request, res: Response) => {
 
 registry.registerPath({
     method: 'post',
-    path: '/bff/admin/sessions/revoke',
+    path: '/admin/sessions/revoke',
     tags: ['Administration'],
     summary: 'Revokes a session through Core API',
     description: 'Core POST /api/v1/sessions/revoke: Core only revokes a session of the caller (the refresh token must belong to the JWT user). '
@@ -800,6 +1109,76 @@ router.post('/sessions/revoke', async (req: Request, res: Response) => {
     } catch (error) {
         throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/two-factor-policy',
+    tags: ['Administration'],
+    summary: 'Reads the second-factor policy of the instance (MAIR-808)',
+    description: 'Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.',
+    responses: { ...coreResponses, 200: { description: 'The policy', content: { 'application/json': { schema: TwoFactorPolicySchema } } } },
+});
+
+router.get('/two-factor-policy', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreTwoFactorPolicyClient.getTwoFactorPolicy(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(TwoFactorPolicySchema, response.data));
+});
+
+registry.registerPath({
+    method: 'put',
+    path: '/admin/two-factor-policy',
+    tags: ['Administration'],
+    summary: 'Changes the second-factor policy of the instance (MAIR-808)',
+    description: 'Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a '
+        + 'usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay '
+        + 'allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.',
+    request: { body: jsonBodyRequest(TwoFactorPolicyUpdateSchema) },
+    responses: { ...coreResponses, 200: { description: 'The policy as saved', content: { 'application/json': { schema: TwoFactorPolicySchema } } } },
+});
+
+router.put('/two-factor-policy', async (req: Request, res: Response) => {
+    const body = parseRequest(TwoFactorPolicyUpdateSchema, req.body, 'body');
+
+    try {
+        const response = await coreTwoFactorPolicyClient.updateTwoFactorPolicy(body, asCaller('CORE_API', req));
+        return res.status(200).json(whitelist(TwoFactorPolicySchema, response.data));
+    } catch (error) {
+        throw upstreamError('CORE_API', error, READ_STATUSES);
+    }
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/security-alerts',
+    tags: ['Administration'],
+    summary: 'Recent security alerts (MAIR-773)',
+    description: 'Uses of a session from another device that closed it, over the last 30 days, newest first (Core '
+        + '`GET /api/v1/admin/security-alerts/`): agent, level, address and device of the use, and when the agent read it.',
+    responses: { ...coreResponses, 200: { description: 'The alerts', content: { 'application/json': { schema: AdministrationSecurityAlertsSchema } } } },
+});
+
+router.get('/security-alerts', async (req: Request, res: Response) => {
+    const response = await callUpstream('CORE_API', () => coreSecurityAlertsClient.listSecurityAlerts(asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationSecurityAlertsSchema, response.data));
+});
+
+registry.registerPath({
+    method: 'get',
+    path: '/admin/users/{userId}/connection-logs',
+    tags: ['Administration'],
+    summary: 'Sign-in journal of a user (MAIR-773)',
+    description: 'The latest 100 lines of the sign-in journal of the user, newest first (Core '
+        + '`GET /api/v1/admin/users/{userId}/connection-logs`): sign-ins, refreshes, logouts and the uses of a session from '
+        + 'another device. 404 for an unknown or archived user.',
+    request: { params: UserIdParams },
+    responses: { ...coreResponses, 200: { description: 'The journal', content: { 'application/json': { schema: AdministrationConnectionLogsSchema } } } },
+});
+
+router.get('/users/:userId/connection-logs', async (req: Request, res: Response) => {
+    const { userId } = parseRequest(UserIdParams, req.params, 'params');
+    const response = await callUpstream('CORE_API', () => coreAdminUsersClient.adminGetUserConnectionLogs(userId, asCaller('CORE_API', req)), { declared: READ_STATUSES, retry: true });
+    return res.status(200).json(whitelist(AdministrationConnectionLogsSchema, response.data));
 });
 
 export default router;

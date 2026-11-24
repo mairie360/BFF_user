@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Vérifie la santé du BFF */
+        /** Check the health of the BFF */
         get: {
             parameters: {
                 query?: never;
@@ -117,10 +117,19 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AuthSessionResponse"];
+                        "application/json": components["schemas"]["LoginSessionResponse"];
                     };
                 };
-                /** @description Données invalides */
+                /** @description No session is open. `2fa_required`: the account is protected by a second factor, send the `token` with a code to `POST /auth/login/2fa` within five minutes. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, enrol through `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorRequiredResponse"];
+                    };
+                };
+                /** @description Invalid data */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -129,7 +138,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Identifiants invalides */
+                /** @description Invalid credentials */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -138,7 +147,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Première connexion : mot de passe à changer */
+                /** @description First sign-in: the password must be changed */
                 412: {
                     headers: {
                         [name: string]: unknown;
@@ -162,7 +171,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur serveur */
+                /** @description Server error */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -180,7 +189,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -207,8 +216,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Force le changement de mot de passe
-         * @description Transmet le token et le nouveau mot de passe au Core API sur /api/v1/auth/force_change_password.
+         * Force a password change
+         * @description Forwards the token and the new password to Core API on /api/v1/auth/force_change_password.
          */
         post: {
             parameters: {
@@ -223,14 +232,14 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Mot de passe changé avec succès */
+                /** @description Password changed */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Données invalides */
+                /** @description Invalid data */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -239,7 +248,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Token invalide ou expiré */
+                /** @description Invalid or expired token */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -248,7 +257,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Token de première connexion inconnu ou expiré */
+                /** @description Unknown or expired first sign-in token */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -268,7 +277,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Erreur serveur */
+                /** @description Server error */
                 500: {
                     headers: {
                         [name: string]: unknown;
@@ -286,7 +295,205 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/forgot_password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Requests a password reset e-mail
+         * @description Forwards the e-mail to Core API (POST /api/v1/auth/forgot_password), which e-mails a one-time reset link (`<PUBLIC_URL>/reset-password?token=…`, valid 15 minutes) when the address matches an active account. The answer is the same empty 200 whether the address matches an account or not, so it never tells which e-mails are registered. Every request counts against two budgets (AUTH_RATE_LIMIT_FORGOT_PASSWORD_MAX, 10 per 15 minutes by default): one per e-mail address, and one per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For. Malformed requests also count as failed attempts per client IP. The client IP is relayed to Core API, which limits the requests per client and per e-mail address too.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ForgotPasswordView"];
+                };
+            };
+            responses: {
+                /** @description Request accepted, empty body. Does not tell whether an e-mail was sent. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid payload (missing `email`, or not an e-mail address of at most 320 characters) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, or it could not send the e-mail */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reset_password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resets a password with the e-mailed token
+         * @description Forwards the reset token of the e-mail, the new password and the device to Core API (POST /api/v1/auth/reset_password), which saves the password, revokes every other session of the account and opens a new one. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies): the user is signed in. The token is single use: a second reset with it answers 401. Failed attempts are rate limited per client IP when TRUST_PROXY is set and the request carries X-Forwarded-For.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ResetPasswordView"];
+                };
+            };
+            responses: {
+                /** @description Password reset and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Password reset, but no session is open (the mailbox is not a second factor): `2fa_required` sends the `token` with a code to `POST /auth/login/2fa`, `2fa_setup_required` (mandatory policy, MAIR-808) to `POST /auth/2fa/setup`. */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorRequiredResponse"];
+                    };
+                };
+                /** @description Invalid payload (`token` not a UUID, `new_password` not 12 to 255 characters or refused by the Core API password policy, `device_info` longer than 512 characters, or a control character) */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Reset token unknown, expired or already used, or account archived since the e-mail was sent; request a new e-mail. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -387,7 +594,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -415,7 +622,7 @@ export interface paths {
         put?: never;
         /**
          * Signs a user out
-         * @description Revokes the caller's Core API session when the session (`Authorization: Bearer` header) is sent: with the refresh token (body field or refreshToken cookie) through POST /api/v1/sessions/revoke, else from the JWT alone through POST /api/v1/sessions/logout. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails. When Keycloak is configured on the instance (KEYCLOAK_REALM_URL + KEYCLOAK_CLIENT_ID), the response also carries `logout_url`, the OpenID Connect end-session URL of the realm: the front must send the browser there so Keycloak closes the single sign-on session and, through its front-channel / back-channel logout, the sessions of the other tools of the realm (n8n, ...). Core API keeps no Keycloak token, so the URL carries `client_id` rather than `id_token_hint`: Keycloak asks the user to confirm the logout, then redirects to `post_logout_redirect_uri` (body field, else KEYCLOAK_POST_LOGOUT_REDIRECT_URI) if the client allows it.
+         * @description Revokes the caller's Core API session: with the refresh token (body field or refreshToken cookie) through POST /api/v1/auth/logout, which needs no JWT and so also works once the access JWT has expired (MAIR-692), and, when the session (`Authorization: Bearer` header) is sent, from the JWT through POST /api/v1/sessions/logout (both together, so a stale refresh token does not leave the JWT's session open). `session_revoked` is true when either succeeded. Without either credential, nothing is revoked. It then always clears the HTTP-only accessToken and refreshToken cookies, even if Core API fails.
          */
         post: {
             parameters: {
@@ -430,7 +637,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Cookie cleared; navigate to `logout_url` when present to close the Keycloak session. */
+                /** @description Cookie cleared. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -439,89 +646,8 @@ export interface paths {
                         "application/json": components["schemas"]["LogoutResponse"];
                     };
                 };
-                /** @description Invalid payload (`post_logout_redirect_uri` is not a URL) */
+                /** @description Invalid payload (`refresh_token` is empty) */
                 400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Erreur serveur */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/keycloak": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Signs a user in with Keycloak
-         * @description Completes the Keycloak single sign-on (OpenID Connect authorization code flow): forwards the authorization code to Core API (POST /api/v1/auth/keycloak), which redeems it, verifies the ID token and opens a session for the Mairie 360 account with the same verified e-mail. The session is then set exactly like POST /auth/login (HttpOnly `accessToken` and `refreshToken` cookies), so every front and BFF keeps working unchanged and the user keeps their roles. The password login stays available during the transition.
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["KeycloakLoginView"];
-                };
-            };
-            responses: {
-                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
-                200: {
-                    headers: {
-                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
-                        "Set-Cookie"?: string;
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["AuthSessionResponse"];
-                    };
-                };
-                /** @description Invalid payload */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Keycloak refused the code (unknown, expired, reused, or redirect_uri / code_verifier mismatch) or the ID token failed verification; restart the sign-in from Keycloak. */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description The Keycloak identity has no verified e-mail, or matches no active Mairie 360 account. */
-                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -538,7 +664,90 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Core API or Keycloak unavailable, or invalid upstream response */
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login/2fa": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Completes the sign-in of a protected account (second factor)
+         * @description Second step of `POST /auth/login` (or `POST /auth/reset_password`) when they answered `202` `2fa_required`: forwards the login token and the code (TOTP or backup code) to Core API. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The token is single use and burnt after five wrong codes: restart from the password.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LoginTwoFactorView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoginSessionResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or burnt login token, or wrong or replayed code. A backup code that was already spent is told apart: two refusals are told apart by `error.details`: `body.code` (message `Backup code already used.`: it still counts as a failed attempt and five burn the token, so the agent can type another backup code only while the login token is still valid; the fifth failed attempt, or an expired token, answers `body.token` instead) and `body.token` (message `Invalid or expired login token.`: the login session is over, restart from the password). A wrong code has no detail. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
                 502: {
                     headers: {
                         [name: string]: unknown;
@@ -547,7 +756,657 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Keycloak sign-in is not configured on this instance (use POST /auth/login instead), or CORE_API_URL is not set. */
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey sign-in: gets the challenge
+         * @description Starts a discoverable passkey sign-in on Core API: the browser offers the passkeys it holds for the site, so nobody types an e-mail. Returns the WebAuthn options and the `id` of the ceremony (single use, two minutes), to send back with the browser answer to `POST /auth/passkey`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Challenge created. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyLoginOptionsResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set: the front falls back to the password. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey sign-in: sends the browser answer
+         * @description Forwards the signed challenge to Core API, which identifies the account by the passkey and verifies it. The session is then delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey is a complete sign-in: no second factor is asked, a mandatory policy is satisfied. Every refusal is the same `401`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyLoginView"];
+                };
+            };
+            responses: {
+                /** @description Signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The passkey is refused: unknown, expired or replayed challenge, unknown passkey, bad signature, cloned passkey, archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/setup/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment by passkey: gets the challenge
+         * @description For an agent who got `202` `2fa_setup_required` (no session yet) and whom the policy lets enrol with a passkey: forwards the enrolment token to Core API, which answers the WebAuthn creation options (discoverable credential and user verification required, any password manager accepted). The token stays valid (five minutes) until the passkey is created. Same refusals as `POST /auth/passkey/setup`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupTokenView"];
+                };
+            };
+            responses: {
+                /** @description Challenge created. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyRegisterOptionsResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired, spent or burnt enrolment token, or archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account already has an active second factor: the token is of no use. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), the front offers the authenticator application only. When CORE_API_URL is not set Core is out of reach and the authenticator application is unavailable too. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/passkey/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment by passkey: sends the browser answer
+         * @description Forwards the enrolment token, the label and the browser answer to Core API, which stores the passkey, spends the token and opens the session like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). A passkey satisfies the mandatory policy by itself: no backup codes are issued. A refused answer counts like a wrong code and the token is burnt at the fifth.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeySetupView"];
+                };
+            };
+            responses: {
+                /** @description Passkey created and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthSessionResponse"];
+                    };
+                };
+                /** @description Invalid data, or an answer Core refuses (the same token can try again until it is burnt). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired, spent or burnt enrolment token, or archived account. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account already has an active second factor, or this credential is already registered. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/2fa/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment: starts the registration of the authenticator application
+         * @description When the instance makes the second factor mandatory, `POST /auth/login` (or `/auth/reset_password`) answers `202` `2fa_setup_required` for an account without a usable factor. Forwards that token to Core API, which answers the secret and the `otpauth://` URI to register in the authenticator application. No session exists yet: finish with `POST /auth/2fa/confirm`. Calling it again replaces the pending secret.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupTokenView"];
+                };
+            };
+            responses: {
+                /** @description Secret to register. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorEnrolmentResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unknown, expired or burnt enrolment token: a single detail points at `body.token` and the agent starts over from the password. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The account got a second factor meanwhile: sign in normally. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mandatory enrolment: confirms with a first code and signs in
+         * @description Forwards the enrolment token and the first code of the authenticator application to Core API, which activates the second factor and opens the session, delivered exactly like `POST /auth/login` (HttpOnly `accessToken` and `refreshToken` cookies). The ten single-use backup codes are in the body, once: the front must make the agent keep them. The token is single use and burnt after five wrong codes: restart from the password.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorSetupConfirmView"];
+                };
+            };
+            responses: {
+                /** @description Enrolled and signed in; the access JWT is in the `accessToken` cookie and the refresh token in the `refreshToken` cookie. */
+                200: {
+                    headers: {
+                        /** @description HttpOnly `accessToken` and `refreshToken` cookies */
+                        "Set-Cookie"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorEnrolmentCompletedResponse"];
+                    };
+                };
+                /** @description Invalid data */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Wrong first code (no detail: the token stays usable), or unknown, expired or burnt enrolment token (a single detail points at `body.token`: the agent starts over from the password). */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description `POST /auth/2fa/setup` was not called with this token. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many failed attempts from this client (or for this account); retry after the `Retry-After` delay. Body: `{ "error": { "code": "TOO_MANY_REQUESTS", "message": "Too many attempts, please try again later", "details": [] } }`. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The second factor is not configured on this instance (Core has no encryption key), or CORE_API_URL is not set. */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -580,7 +1439,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    /** @description Identifiant numérique de l'utilisateur */
+                    /** @description Numeric id of the user */
                     userId: number;
                 };
                 cookie?: never;
@@ -623,6 +1482,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Server error */
                 500: {
                     headers: {
@@ -641,7 +1509,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -660,62 +1528,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/users": {
+    "/user/me/passkeys/options": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Liste les utilisateurs administrables, 20 éléments maximum par page */
-        get: {
+        get?: never;
+        put?: never;
+        /**
+         * Passkey creation by a signed-in agent: gets the challenge
+         * @description Forwards the caller's `Authorization: Bearer` header to Core API `POST /api/v1/user/me/passkeys/options/`, which answers the WebAuthn creation options (discoverable credential and user verification required, no `authenticatorAttachment`, passkeys already registered excluded). Used by the Login screen right after the password sign-in (`passkey_offer.allowed`). The management of the list (rename, delete) is Settings'.
+         */
+        post: {
             parameters: {
-                query?: {
-                    page?: number;
-                    page_size?: number;
-                    search?: string;
-                };
+                query?: never;
                 header?: never;
                 path?: never;
                 cookie?: never;
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Challenge created. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["AdministrationUsersPage"];
+                        "application/json": components["schemas"]["PasskeyRegisterOptionsResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["CoreResponse"];
-                    };
-                };
-                /** @description Aucun contenu retourné par le Core API */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Erreur Core API */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
-                /** @description Non authentifié */
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -724,7 +1568,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description The administrator does not accept passkeys (two-factor policy). */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -733,8 +1577,749 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Too many attempts (Core API rate limit); retry after the `Retry-After` delay. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Passkey creation by a signed-in agent: sends the browser answer
+         * @description Forwards the label and the browser answer to Core API `POST /api/v1/user/me/passkeys/`, with the caller's session. Core stores the passkey and sends the agent a security e-mail. The answer carries the `provider` (name of the passkey manager deduced by Core, `null` when unknown) the front offers as the name of the passkey.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyRegisterView"];
+                };
+            };
+            responses: {
+                /** @description Passkey registered. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyResponse"];
+                    };
+                };
+                /** @description Invalid data, or a browser answer Core refuses (challenge replayed, wrong origin, user verification missing). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing `Authorization: Bearer` header, or invalid or expired session */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description The administrator does not accept passkeys (two-factor policy). */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description This credential is already registered. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Too many attempts (Core API rate limit); retry after the `Retry-After` delay. */
+                429: {
+                    headers: {
+                        /** @description Seconds to wait before retrying */
+                        "Retry-After"?: number;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Passkeys are not configured on this instance (Core has no WebAuthn relying party), or CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/passkeys/{passkeyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename one of my passkeys
+         * @description Forwards the new label to Core API `PATCH /api/v1/user/me/passkeys/{id}/`, with the caller's session (MAIR-811). The Login screen creates the passkey, then shows the `provider` Core deduced as its name: the name the agent keeps is saved here. A passkey of another account answers 404, like an unknown one. No e-mail is sent.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Numeric id of one of the caller's passkeys (the `id` of the creation answer). */
+                    passkeyId: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PasskeyRenameView"];
+                };
+            };
+            responses: {
+                /** @description Passkey renamed. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PasskeyResponse"];
+                    };
+                };
+                /** @description Invalid id or label (empty, more than 100 characters, control character). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description No such passkey among the caller's. */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description CORE_API_URL is not set. */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/user/me/sessions/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a use of the session from another device
+         * @description Called by the front proxies with the session they checked (MAIR-773), forwarded to Core API `POST /api/v1/sessions/report`. `certain` and `possible` close the session (`revoked: true` when it was active) and alert the agent and the administrators; `ip_change` is only logged.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReportSessionView"];
+                };
+            };
+            responses: {
+                /** @description The use is recorded. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReportSessionResponse"];
+                    };
+                };
+                /** @description Invalid body, or a session token without session id. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/security-alert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My pending security alert
+         * @description The latest alert of a session of the caller used from another device that the caller has not read yet (Core `GET /api/v1/user/me/security-alert/`, MAIR-773). The Login screen shows it right after the sign-in. `204` when there is none.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The pending alert. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SecurityAlert"];
+                    };
+                };
+                /** @description No pending alert. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/user/me/security-alert/{alertId}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark my security alert as read
+         * @description Forwarded to Core API `POST /api/v1/user/me/security-alert/{alertId}/acknowledge/` (MAIR-773): the Login screen no longer shows the alert. An unknown alert, another account's or one already read answers 404.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Id of the alert (`id` of `GET /user/me/security-alert`). */
+                    alertId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The alert is read. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid alert id. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Missing, invalid or expired session. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description No unread alert of the caller has this id. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Server error */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable or invalid upstream answer */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/projects-without-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the projects without a group through BFF_Project */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The projects without a group */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationProjectsWithoutGroup"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API or BFF_Project rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API or BFF_Project unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL, PROJECT_BFF_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the manageable users, at most 20 items per page */
+        get: {
+            parameters: {
+                query?: {
+                    page?: number;
+                    page_size?: number;
+                    search?: string;
+                    /** @description State of the account: active, invited (never signed in), inactive (archived) or suspended. */
+                    account_status?: "active" | "invited" | "inactive" | "suspended";
+                    /** @description Holders of this role only. */
+                    role_id?: number;
+                    /** @description Order by name, ascending (default) or descending. */
+                    sort?: "name" | "-name";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Administration data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationUsersPage"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -760,7 +2345,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -772,7 +2357,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Crée un utilisateur via le Core API */
+        /** Create a user through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -786,7 +2371,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -795,7 +2380,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -804,14 +2389,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -820,7 +2405,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -829,7 +2414,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -838,7 +2423,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -849,6 +2434,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -874,7 +2468,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -891,7 +2485,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/users/{userId}": {
+    "/admin/users/{userId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -901,7 +2495,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Supprime définitivement un utilisateur via le Core API */
+        /** Delete a user for good through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -913,7 +2507,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -922,7 +2516,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -931,14 +2525,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -947,7 +2541,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -956,7 +2550,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -965,7 +2559,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -976,6 +2570,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1001,7 +2604,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1014,7 +2617,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Met à jour un utilisateur via le Core API */
+        /** Update a user through Core API */
         patch: {
             parameters: {
                 query?: never;
@@ -1030,7 +2633,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1039,7 +2642,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1048,14 +2651,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1064,7 +2667,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1073,7 +2676,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1082,7 +2685,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1093,6 +2696,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1118,7 +2730,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1131,7 +2743,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/users/{userId}/password": {
+    "/admin/users/{userId}/password": {
         parameters: {
             query?: never;
             header?: never;
@@ -1144,7 +2756,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Modifie le mot de passe et révoque les sessions utilisateur */
+        /** Change the password and revoke the user sessions */
         patch: {
             parameters: {
                 query?: never;
@@ -1160,7 +2772,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1169,7 +2781,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1178,14 +2790,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1194,7 +2806,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1203,7 +2815,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1212,7 +2824,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1223,6 +2835,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1248,7 +2869,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1261,7 +2882,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/users/{userId}/roles": {
+    "/admin/users/{userId}/2fa": {
         parameters: {
             query?: never;
             header?: never;
@@ -1270,7 +2891,812 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Ajoute un rôle à un utilisateur via le Core API */
+        post?: never;
+        /**
+         * Reset the second factor of a user
+         * @description Removes the TOTP secret and the backup codes of the user (lost phone) and revokes all their sessions. Idempotent: 204 whether or not the user had a second factor. The reset is audited by Core.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sessions of a user (MAIR-584)
+         * @description The latest 100 sessions of the user, active and ended, newest first (Core `GET /api/v1/admin/users/{userId}/`). The user record of the administration lists them; the history shows the last 30 days.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Sessions of the user */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationUserSessions"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /**
+         * Sign a user out of every device (MAIR-584)
+         * @description Closes every active session of the user: their JWTs stop working at once in every API. Idempotent. Audited by Core.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign a user out of one device (MAIR-584)
+         * @description Closes one active session of the user; the others stay open. 404 when the session is unknown, belongs to another user or has already ended. Audited by Core.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                    /** @description Id of a session of the user (`id` in `GET /admin/users/{userId}/sessions`). */
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suspend a user (MAIR-904)
+         * @description The account becomes `suspended` and every session of the user is closed; the agent cannot sign in until reactivated. Roles, groups and second factor are kept. Idempotent. 409 for one's own account or the last active administrator.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a suspended user (MAIR-904)
+         * @description Ends the suspension: the agent can sign in again with the roles, groups and second factor it had. Idempotent.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add a role to a user through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -1286,7 +3712,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1295,7 +3721,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1304,14 +3730,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1320,7 +3746,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1329,7 +3755,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1338,7 +3764,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1349,6 +3775,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1374,7 +3809,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1391,7 +3826,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/users/{userId}/roles/{roleId}": {
+    "/admin/users/{userId}/roles/{roleId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1401,7 +3836,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire un rôle à un utilisateur via le Core API */
+        /** Remove a role from a user through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -1414,7 +3849,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1423,7 +3858,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1432,14 +3867,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1448,7 +3883,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1457,7 +3892,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1466,7 +3901,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1484,6 +3919,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
@@ -1502,7 +3946,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1518,35 +3962,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/roles": {
+    "/admin/users/{userId}/service": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Liste les rôles admin via le Core API */
-        get: {
+        get?: never;
+        /** Attach a user to a service of the mairie, or detach them with `service_id: null` (MAIR-923) */
+        put: {
             parameters: {
                 query?: never;
                 header?: never;
-                path?: never;
+                path: {
+                    userId: number;
+                };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminUserServiceBody"];
+                };
+            };
             responses: {
-                /** @description Données de l’administration */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            roles: components["schemas"]["AdministrationRole"][];
-                        };
+                        "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1555,14 +4004,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1571,7 +4020,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1580,7 +4029,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1589,8 +4038,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1616,7 +4074,130 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the services of the mairie with their agent counts (MAIR-923) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Administration data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationServices"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1628,7 +4209,503 @@ export interface paths {
             };
         };
         put?: never;
-        /** Crée un rôle via le Core API */
+        /** Create a service of the mairie (MAIR-923); its name is unique whatever its case */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminServiceWriteBody"];
+                };
+            };
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Service created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationService"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/services/{serviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a service of the mairie (MAIR-923); its agents are left without a service */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serviceId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Response of Core API */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename a service of the mairie (MAIR-923) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    serviceId: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminServiceRenameBody"];
+                };
+            };
+            responses: {
+                /** @description Service renamed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationService"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Conflict with the current state of the resource */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/admin/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the admin roles through Core API */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Administration data */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            roles: components["schemas"]["AdministrationRole"][];
+                        };
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a role through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -1642,7 +4719,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1651,7 +4728,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1660,14 +4737,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1676,7 +4753,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1685,7 +4762,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1694,7 +4771,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1705,6 +4782,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1730,7 +4816,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1747,7 +4833,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/roles/{roleId}": {
+    "/admin/roles/{roleId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1755,7 +4841,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Remplace un rôle via le Core API */
+        /** Replace a role through Core API */
         put: {
             parameters: {
                 query?: never;
@@ -1771,7 +4857,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1780,7 +4866,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1789,14 +4875,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1805,7 +4891,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1814,7 +4900,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1823,7 +4909,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1834,6 +4920,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1859,7 +4954,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1871,7 +4966,7 @@ export interface paths {
             };
         };
         post?: never;
-        /** Supprime un rôle via le Core API */
+        /** Delete a role through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -1883,7 +4978,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1892,7 +4987,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -1901,14 +4996,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -1917,7 +5012,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -1926,7 +5021,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -1935,7 +5030,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -1946,6 +5041,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1971,7 +5075,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -1984,7 +5088,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Met à jour un rôle via le Core API */
+        /** Update a role through Core API */
         patch: {
             parameters: {
                 query?: never;
@@ -2000,7 +5104,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2009,7 +5113,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2018,14 +5122,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2034,7 +5138,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2043,7 +5147,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2052,7 +5156,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2063,6 +5167,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2088,7 +5201,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2101,7 +5214,7 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/groups": {
+    "/admin/groups": {
         parameters: {
             query?: never;
             header?: never;
@@ -2121,7 +5234,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2132,7 +5245,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2141,14 +5254,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2157,7 +5270,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2166,7 +5279,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2175,8 +5288,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2202,7 +5324,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2214,7 +5336,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Crée un groupe via le Core API */
+        /** Create a group through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -2228,7 +5350,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2237,7 +5359,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2246,14 +5368,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2262,7 +5384,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2271,7 +5393,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2280,7 +5402,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2298,6 +5420,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
@@ -2316,7 +5447,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2333,14 +5464,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/groups/{groupId}": {
+    "/admin/groups/{groupId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Récupère un groupe via le Core API */
+        /** Get a group through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -2352,7 +5483,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2363,7 +5494,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2372,14 +5503,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2388,7 +5519,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2397,7 +5528,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2406,8 +5537,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2433,7 +5573,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2446,7 +5586,7 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        /** Supprime un groupe via le Core API */
+        /** Delete a group through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -2458,7 +5598,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2467,7 +5607,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2476,14 +5616,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2492,7 +5632,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2501,7 +5641,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2510,7 +5650,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2528,6 +5668,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
@@ -2546,7 +5695,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2559,7 +5708,7 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        /** Met à jour le nom ou la description d’un groupe */
+        /** Update the name, the description or the colour of a group */
         patch: {
             parameters: {
                 query?: never;
@@ -2575,7 +5724,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2584,7 +5733,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2593,14 +5742,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2609,7 +5758,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2618,7 +5767,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2627,7 +5776,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2645,6 +5794,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
@@ -2663,7 +5821,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2676,14 +5834,14 @@ export interface paths {
         };
         trace?: never;
     };
-    "/bff/admin/groups/{groupId}/users": {
+    "/admin/groups/{groupId}/users": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Liste les utilisateurs d’un groupe via le Core API */
+        /** List the users of a group through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -2695,7 +5853,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2706,7 +5864,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2715,14 +5873,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2731,7 +5889,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2740,7 +5898,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2749,8 +5907,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2776,7 +5943,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2788,7 +5955,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Ajoute un utilisateur à un groupe via le Core API */
+        /** Add a user to a group through Core API */
         post: {
             parameters: {
                 query?: never;
@@ -2804,7 +5971,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2813,7 +5980,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2822,14 +5989,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2838,7 +6005,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2847,7 +6014,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2856,7 +6023,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -2867,6 +6034,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2892,7 +6068,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -2909,7 +6085,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/groups/{groupId}/users/{userId}": {
+    "/admin/groups/{groupId}/users/{userId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2919,7 +6095,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Retire un utilisateur d’un groupe via le Core API */
+        /** Remove a user from a group through Core API */
         delete: {
             parameters: {
                 query?: never;
@@ -2932,7 +6108,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -2941,7 +6117,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -2950,14 +6126,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -2966,7 +6142,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -2975,7 +6151,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -2984,7 +6160,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3002,6 +6178,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Unexpected server error; the cause is only logged */
                 500: {
                     headers: {
@@ -3020,7 +6205,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3036,14 +6221,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions": {
+    "/admin/sessions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Liste les sessions actives via le Core API */
+        /** List the active sessions through Core API */
         get: {
             parameters: {
                 query?: never;
@@ -3053,7 +6238,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3064,7 +6249,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3073,14 +6258,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3089,7 +6274,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3098,7 +6283,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3107,8 +6292,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3134,7 +6328,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3153,7 +6347,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions/history": {
+    "/admin/sessions/history": {
         parameters: {
             query?: never;
             header?: never;
@@ -3173,7 +6367,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Données de l’administration */
+                /** @description Administration data */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3184,7 +6378,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3193,14 +6387,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3209,7 +6403,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3218,7 +6412,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3227,8 +6421,17 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3254,7 +6457,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3273,7 +6476,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/bff/admin/sessions/revoke": {
+    "/admin/sessions/revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -3299,7 +6502,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Réponse du Core API */
+                /** @description Response of Core API */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3308,7 +6511,7 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Créé par le Core API */
+                /** @description Created by Core API */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -3317,14 +6520,14 @@ export interface paths {
                         "application/json": components["schemas"]["CoreResponse"];
                     };
                 };
-                /** @description Aucun contenu retourné par le Core API */
+                /** @description No content returned by Core API */
                 204: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-                /** @description Erreur Core API */
+                /** @description Core API error */
                 400: {
                     headers: {
                         [name: string]: unknown;
@@ -3333,7 +6536,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Non authentifié */
+                /** @description Not authenticated */
                 401: {
                     headers: {
                         [name: string]: unknown;
@@ -3342,7 +6545,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Accès refusé */
+                /** @description Access denied */
                 403: {
                     headers: {
                         [name: string]: unknown;
@@ -3351,7 +6554,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Introuvable */
+                /** @description Not found */
                 404: {
                     headers: {
                         [name: string]: unknown;
@@ -3362,6 +6565,15 @@ export interface paths {
                 };
                 /** @description Conflict with the current state of the resource */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3387,7 +6599,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3404,6 +6616,504 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/two-factor-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reads the second-factor policy of the instance (MAIR-808)
+         * @description Core `GET /api/v1/admin/two-factor-policy`: whether the second factor is mandatory and which modes are accepted.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The policy */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorPolicy"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        /**
+         * Changes the second-factor policy of the instance (MAIR-808)
+         * @description Core `PUT /api/v1/admin/two-factor-policy`: the four fields are required. With `required: true`, an agent without a usable factor enrols at its next sign-in (`2fa_setup_required`) and nobody can turn the factor off. At least one mode must stay allowed; `passkey_allowed: true` and unknown fields answer 400. The change is audited by Core with the administrator id.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TwoFactorPolicyUpdate"];
+                };
+            };
+            responses: {
+                /** @description The policy as saved */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TwoFactorPolicy"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/security-alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent security alerts (MAIR-773)
+         * @description Uses of a session from another device that closed it, over the last 30 days, newest first (Core `GET /api/v1/admin/security-alerts/`): agent, level, address and device of the use, and when the agent read it.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The alerts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationSecurityAlerts"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/connection-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sign-in journal of a user (MAIR-773)
+         * @description The latest 100 lines of the sign-in journal of the user, newest first (Core `GET /api/v1/admin/users/{userId}/connection-logs`): sign-ins, refreshes, logouts and the uses of a session from another device. 404 for an unknown or archived user.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    userId: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The journal */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdministrationConnectionLogs"];
+                    };
+                };
+                /** @description Created by Core API */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CoreResponse"];
+                    };
+                };
+                /** @description No content returned by Core API */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Core API error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not authenticated */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Access denied */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Unexpected server error; the cause is only logged */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Core API unavailable, failed or answered an undeclared error */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set or invalid */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me": {
         parameters: {
             query?: never;
@@ -3411,6 +7121,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the identity, groups and roles of the session */
         get: {
             parameters: {
                 query?: never;
@@ -3438,6 +7149,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Core API unavailable, failed or answered another error */
                 502: {
                     headers: {
@@ -3447,7 +7167,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3473,6 +7193,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Get the identity, groups and roles of the session */
         get: {
             parameters: {
                 query?: never;
@@ -3500,6 +7221,15 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
+                /** @description Core API rate limit reached: retry after the Retry-After header (seconds) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
                 /** @description Core API unavailable, failed or answered another error */
                 502: {
                     headers: {
@@ -3509,7 +7239,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
-                /** @description Instance misconfigured: CORE_API_URL or JWT_SECRET is not set, or CORE_API_URL is invalid */
+                /** @description Instance misconfigured: CORE_API_URL or the session key (JWT_PUBLIC_KEY) is not set, or one of them is invalid */
                 503: {
                     headers: {
                         [name: string]: unknown;
@@ -3546,53 +7276,141 @@ export interface components {
         LoginView: {
             /**
              * Format: email
-             * @description Adresse email de l'utilisateur
+             * @description E-mail address of the user
              * @example alice.dupont@mairie360.fr
              */
             email: string;
             /**
-             * @description Mot de passe de l'utilisateur
+             * @description Password of the user
              * @example MotDePasse123
              */
             password: string;
             /**
-             * @description Informations sur le périphérique utilisé pour se connecter (chaîne vide acceptée, comme par Core API)
+             * @description Device used to sign in (an empty string is accepted, as Core API does)
              * @example Firefox
              */
             device_info: string;
         };
-        KeycloakLoginView: {
+        LoginTwoFactorView: {
             /**
-             * @description Authorization code Keycloak appended to the redirect URI after the user signed in (single use, short-lived).
-             * @example 7c1e0f5a-2b8d-4f3e-9a61-d4c2b7e8f901.3b5d9e2a-6f14-4c8b-a7d0-1e9f2c4b6a83
+             * @description Login token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description Six-digit code of the authenticator application, or a backup code (`xxxx-xxxx`).
+             * @example 492039
              */
             code: string;
+        };
+        PasskeyLoginView: {
             /**
-             * Format: uri
-             * @description Redirect URI sent in the authorization request, byte for byte: Keycloak refuses the code otherwise.
-             * @example https://login.mairie360.fr/auth/callback
+             * @description The `id` returned by `POST /auth/passkey/options`.
+             * @example example-two-factor-token
              */
-            redirect_uri: string;
+            id: string;
             /**
-             * @description PKCE verifier matching the `code_challenge` of the authorization request. Omit it only if the request carried no challenge.
-             * @example dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.get`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "authenticatorData": "SZYN5Y",
+             *         "clientDataJSON": "eyJ0eXBl",
+             *         "signature": "MEUCIQ",
+             *         "userHandle": "bWFpcmll"
+             *       }
+             *     }
              */
-            code_verifier?: string | null;
+            credential: {
+                [key: string]: unknown;
+            };
             /**
-             * @description Nonce sent in the authorization request; the ID token must carry the same value. Omit it only if the request carried no nonce.
-             * @example n-0S6_WzA2Mj
-             */
-            nonce?: string | null;
-            /**
-             * @description Description of the device, stored on the session (empty string accepted, like the password login).
-             * @example Firefox 142 on Ubuntu 24.04
+             * @description Device used to sign in (an empty string is accepted, as for the password login).
+             * @example Firefox
              */
             device_info: string;
         };
+        PasskeyRegisterView: {
+            /**
+             * @description Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.
+             * @example Google Password Manager
+             */
+            label: string;
+            /**
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "attestationObject": "o2NmbXRkbm9uZQ",
+             *         "clientDataJSON": "eyJ0eXBl"
+             *       }
+             *     }
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeySetupView: {
+            /**
+             * @description Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description Name of the passkey, to recognise it in the list. The front proposes the `provider` of a previous creation or the device.
+             * @example Google Password Manager
+             */
+            label: string;
+            /**
+             * @description The `PublicKeyCredential` returned by `navigator.credentials.create`, in its WebAuthn JSON form (base64url binary fields). Forwarded as is: Core verifies it.
+             * @example {
+             *       "id": "k3m9x7p2",
+             *       "rawId": "k3m9x7p2",
+             *       "type": "public-key",
+             *       "response": {
+             *         "attestationObject": "o2NmbXRkbm9uZQ",
+             *         "clientDataJSON": "eyJ0eXBl"
+             *       }
+             *     }
+             */
+            credential: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeyRenameView: {
+            /**
+             * @description New name of the passkey. The Login screen proposes the `provider` Core answered at the creation.
+             * @example Google Password Manager
+             */
+            label: string;
+        };
+        TwoFactorSetupTokenView: {
+            /**
+             * @description Token returned by `POST /auth/login` (or `/auth/reset_password`) with `status: "2fa_setup_required"`. Single use, valid 5 minutes.
+             * @example example-two-factor-token
+             */
+            token: string;
+        };
+        TwoFactorSetupConfirmView: {
+            /**
+             * @description The same enrolment token as `POST /auth/2fa/setup`.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /**
+             * @description First six-digit code displayed by the authenticator application.
+             * @example 492039
+             */
+            code: string;
+        };
         ForceChangePasswordView: {
             /**
-             * @description New password of the user (8 to 255 characters).
-             * @example NouveauMotDePasse123
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy: 400 otherwise).
+             * @example Riviere-Velo-Mairie-2026
              */
             new_password: string;
             /**
@@ -3601,30 +7419,55 @@ export interface components {
              */
             token: string;
         };
+        ForgotPasswordView: {
+            /**
+             * Format: email
+             * @description E-mail address of the account whose password is to be reset (at most 320 characters).
+             * @example alice.dupont@mairie360.fr
+             */
+            email: string;
+        };
+        ResetPasswordView: {
+            /**
+             * @description One-time reset token, the `token` query parameter of the link of the reset e-mail (a UUID).
+             * @example 2f9a1c74-5b3e-4d21-9c8a-7e6f0b1d4a35
+             */
+            token: string;
+            /**
+             * @description New password of the user: 12 to 255 characters, not a commonly used password, not containing the account's e-mail, first name or last name (Core API policy: 400 otherwise).
+             * @example Riviere-Velo-Mairie-2026
+             */
+            new_password: string;
+            /**
+             * @description Description of the device, kept on the session the reset opens (at most 512 characters).
+             * @example Firefox
+             */
+            device_info: string;
+        };
         AboutResponseView: {
             /**
              * Format: email
-             * @description Adresse email de l'utilisateur
+             * @description E-mail address of the user
              * @example alice.dupont@mairie360.fr
              */
             email: string;
             /**
-             * @description Prénom de l'utilisateur
+             * @description First name of the user
              * @example Alice
              */
             first_name: string;
             /**
-             * @description Nom de l'utilisateur
+             * @description Last name of the user
              * @example Dupont
              */
             last_name: string;
             /**
-             * @description Numéro de téléphone de l'utilisateur (null si non renseigné)
+             * @description Phone number of the user (null if not set)
              * @example +33123456789
              */
             phone: string | null;
             /**
-             * @description Statut du compte utilisateur
+             * @description Status of the user account
              * @example active
              */
             status: string;
@@ -3636,7 +7479,7 @@ export interface components {
         RefreshView: {
             /**
              * @description Refresh token of the session. Optional: browsers send the HttpOnly `refreshToken` cookie set at sign-in instead; the body field wins when both are present.
-             * @example 8Xo0Qm2rUu0M9v2YF3sJkQ7bN1pW4dC6hL8zT5aR0eE
+             * @example example-two-factor-token
              */
             refresh_token?: string;
         };
@@ -3646,16 +7489,10 @@ export interface components {
         };
         LogoutView: {
             /**
-             * @description Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. With the session, the Core API session is revoked through it (POST /api/v1/sessions/revoke); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.
+             * @description Refresh token of the session, else the HttpOnly `refreshToken` cookie set at sign-in. The Core API session is revoked through it (POST /api/v1/auth/logout), with or without a valid JWT (MAIR-692); without it, the session is revoked from the JWT alone (POST /api/v1/sessions/logout). Either way the access JWT stops working immediately.
              * @example eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
              */
             refresh_token?: string;
-            /**
-             * Format: uri
-             * @description Where Keycloak sends the browser once the single sign-on session is closed. Must be one of the valid post-logout redirect URIs of the Keycloak client; defaults to KEYCLOAK_POST_LOGOUT_REDIRECT_URI.
-             * @example https://login.mairie360.fr/
-             */
-            post_logout_redirect_uri?: string;
         };
         LogoutResponse: {
             /** @example Logged out successfully */
@@ -3665,19 +7502,60 @@ export interface components {
              * @example true
              */
             session_revoked: boolean;
-            /**
-             * Format: uri
-             * @description Keycloak end-session URL the browser must navigate to so the single sign-on session is closed on every tool of the realm (n8n, ...). Absent when Keycloak is not configured on this instance: the logout is then complete once the cookie is cleared.
-             * @example https://auth.mairie360.fr/realms/mairie360/protocol/openid-connect/logout?client_id=mairie360&post_logout_redirect_uri=https%3A%2F%2Flogin.mairie360.fr%2F
-             */
-            logout_url?: string;
         };
         UserIdParams: {
             /**
-             * @description Identifiant numérique de l'utilisateur
+             * @description Numeric id of the user
              * @example 42
              */
             userId: number;
+        };
+        ReportSessionView: {
+            level: components["schemas"]["SuspicionLevel"];
+            /**
+             * @description Address of the browser that sent the request, as the front proxy saw it.
+             * @example 203.0.113.7
+             */
+            ip_address: string;
+            /**
+             * @description User agent of that browser.
+             * @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0
+             */
+            device_info?: string;
+        };
+        /**
+         * @description `certain`: the session is bound to a device key and the request came without a valid proof. `possible`: an unbound session was used from another network. `ip_change`: a bound session changed network with a valid proof.
+         * @example possible
+         * @enum {string}
+         */
+        SuspicionLevel: "certain" | "possible" | "ip_change";
+        ReportSessionResponse: {
+            /**
+             * @description The session was active and is now closed: send the agent back to the sign-in.
+             * @example true
+             */
+            revoked: boolean;
+        };
+        SecurityAlert: {
+            /** @example 12 */
+            id: number;
+            /**
+             * @example certain
+             * @enum {string}
+             */
+            level: "certain" | "possible";
+            /**
+             * @description Address the session was used from (the front shows only its beginning).
+             * @example 203.0.113.7
+             */
+            ip_address: string | null;
+            /** @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 */
+            device_info: string | null;
+            /**
+             * @description RFC 3339 date of the use.
+             * @example 2026-11-23T08:12:00+00:00
+             */
+            created_at: string;
         };
         CheckApisResponse: {
             /** @enum {string} */
@@ -3690,6 +7568,46 @@ export interface components {
             name: string;
             description: string;
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders of the role open, in navigation order (MAIR-916). The Admin role always opens `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
+        };
+        /**
+         * @description Module of the shared navigation.
+         * @example projects
+         * @enum {string}
+         */
+        AdministrationRoleModule: "dashboard" | "projects" | "calendar" | "messages" | "training" | "admin" | "settings";
+        AdministrationServiceRef: {
+            /** @example 3 */
+            id: number;
+            /** @example Roads */
+            name: string;
+        };
+        AdministrationService: {
+            /** @example 3 */
+            id: number;
+            /** @example Roads */
+            name: string;
+            /**
+             * @description Creation date, RFC 3339 UTC.
+             * @example 2026-11-20T08:00:00Z
+             */
+            created_at: string;
+            /**
+             * @description Active agents attached to the service.
+             * @example 12
+             */
+            agents: number;
+        };
+        AdministrationServices: {
+            /** @description Every service of the mairie, by name. */
+            services: components["schemas"]["AdministrationService"][];
         };
         AdministrationUser: {
             id: number;
@@ -3704,6 +7622,46 @@ export interface components {
                 id: number;
                 name: string;
             }[];
+            /**
+             * @description State shown by the administration: active, invited (never signed in), inactive (archived) or suspended.
+             * @example active
+             * @enum {string}
+             */
+            account_status: "active" | "invited" | "inactive" | "suspended";
+            /**
+             * @description Sessions still open (neither revoked nor expired): the user is shown online when above 0.
+             * @example 2
+             */
+            active_sessions: number;
+            /**
+             * @description Last sign-in (opening of the latest session), RFC 3339 UTC, null when the user never signed in.
+             * @example 2026-11-20T08:42:11Z
+             */
+            last_login_at: string | null;
+            two_factor: components["schemas"]["AdministrationUserTwoFactor"];
+            /** @description Service of the mairie the agent belongs to (MAIR-923), null when none. */
+            service?: {
+                /** @example 3 */
+                id: number;
+                /** @example Roads */
+                name: string;
+            } | null;
+        };
+        /** @description Second factor of the user (security tab of the administration), never a secret. */
+        AdministrationUserTwoFactor: {
+            /**
+             * @description Second-factor methods the user enrolled; empty when none.
+             * @example [
+             *       "totp",
+             *       "backup_codes"
+             *     ]
+             */
+            methods: ("totp" | "passkey" | "backup_codes")[];
+            /**
+             * @description Latest successful second-factor verification, RFC 3339 UTC, or null.
+             * @example 2026-11-20T08:42:30Z
+             */
+            last_verified_at: string | null;
         };
         AdministrationUsersPage: {
             users: components["schemas"]["AdministrationUser"][];
@@ -3717,6 +7675,17 @@ export interface components {
             name: string;
             description: string | null;
             owner_id: number;
+            /**
+             * @description Colour of the group card (MAIR-923); null for the default one.
+             * @example teal
+             * @enum {string|null}
+             */
+            color?: "blue" | "teal" | "green" | "orange" | "purple" | "pink" | "neutral" | null;
+            /**
+             * @description Projects linked to the group.
+             * @example 2
+             */
+            project_count?: number;
         };
         AdministrationGroupMember: {
             id: number;
@@ -3736,6 +7705,121 @@ export interface components {
             expires_at: string;
             revoked_at: string | null;
         };
+        AdministrationUserSessions: {
+            /** @description The latest 100 sessions of the user, newest first; active ones have `revoked_at` null and `expires_at` in the future. */
+            sessions: components["schemas"]["AdministrationSession"][];
+        };
+        TwoFactorPolicy: {
+            /**
+             * @description Every agent must hold a second factor: an agent without one enrols at its next sign-in, before any session opens.
+             * @example true
+             */
+            required: boolean;
+            /**
+             * @description Authenticator application (TOTP) accepted.
+             * @example true
+             */
+            totp_allowed: boolean;
+            /**
+             * @description Passkeys accepted. A PUT with true answers 400 while the instance has no WebAuthn configuration (MAIR-810).
+             * @example false
+             */
+            passkey_allowed: boolean;
+            /**
+             * @description Backup codes accepted at the second step.
+             * @example true
+             */
+            backup_codes_allowed: boolean;
+            /**
+             * @description Id of the administrator who last changed the policy, null for the initial one.
+             * @example 1
+             */
+            updated_by: number | null;
+            /**
+             * @description ISO 8601 date of the last change.
+             * @example 2026-11-17T09:30:00Z
+             */
+            updated_at: string;
+        };
+        TwoFactorPolicyUpdate: {
+            /** @example true */
+            required: boolean;
+            /** @example true */
+            totp_allowed: boolean;
+            /** @example false */
+            passkey_allowed: boolean;
+            /** @example true */
+            backup_codes_allowed: boolean;
+        };
+        AdministrationProjectWithoutGroup: {
+            /**
+             * @description Id of the project in BFF_Project
+             * @example project-9
+             */
+            id: string;
+            /** @example LED street lighting */
+            title: string;
+            /**
+             * @description Creation date (ISO 8601), `null` when unknown
+             * @example 2026-03-03T09:12:00+00:00
+             */
+            createdAt: string | null;
+        };
+        AdministrationProjectsWithoutGroup: {
+            total: number;
+            /** @description Newest first; empty when every project has a group */
+            projects: components["schemas"]["AdministrationProjectWithoutGroup"][];
+        };
+        AdministrationSecurityAlert: {
+            /** @example 12 */
+            id: number;
+            /**
+             * @example certain
+             * @enum {string}
+             */
+            level: "certain" | "possible";
+            /** @example 203.0.113.7 */
+            ip_address: string | null;
+            /** @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 */
+            device_info: string | null;
+            /**
+             * @description RFC 3339 date of the use.
+             * @example 2026-11-23T08:12:00+00:00
+             */
+            created_at: string;
+            /**
+             * @description When the agent read the alert at sign-in, null until then.
+             * @example null
+             */
+            acknowledged_at: string | null;
+            user: {
+                /** @example 42 */
+                id: number;
+                /** @example Camille */
+                first_name: string;
+                /** @example Martin */
+                last_name: string;
+            };
+        };
+        /** @description Alerts of the last 30 days, newest first (500 at most). */
+        AdministrationSecurityAlerts: components["schemas"]["AdministrationSecurityAlert"][];
+        AdministrationConnectionLog: {
+            /**
+             * @description `LOGIN`, `LOGOUT`, `REFRESH`, `EXPIRED`, `CLEANUP`, `STOLEN_SESSION_ATTEMPT`, `SUSPICIOUS_IP_CHANGE` or `IP_CHANGE`.
+             * @example LOGIN
+             */
+            action: string;
+            /** @example 4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70 */
+            session_id: string | null;
+            /** @example 203.0.113.7 */
+            ip_address: string | null;
+            /** @example Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0 */
+            device_info: string | null;
+            /** @example 2026-11-23T08:12:00+00:00 */
+            occurred_at: string | null;
+        };
+        /** @description Latest 100 lines of the sign-in journal of the agent, newest first. */
+        AdministrationConnectionLogs: components["schemas"]["AdministrationConnectionLog"][];
         AdminUserIdParams: {
             userId: number;
         };
@@ -3759,15 +7843,39 @@ export interface components {
             /** @default 20 */
             page_size: number;
             search?: string;
+            /**
+             * @description State of the account: active, invited (never signed in), inactive (archived) or suspended.
+             * @example suspended
+             * @enum {string}
+             */
+            account_status?: "active" | "invited" | "inactive" | "suspended";
+            /**
+             * @description Holders of this role only.
+             * @example 2
+             */
+            role_id?: number;
+            /**
+             * @description Order by name, ascending (default) or descending.
+             * @example -name
+             * @enum {string}
+             */
+            sort?: "name" | "-name";
         };
         AdminGroupPatchBody: {
             /** @example Scan group */
             name?: string;
             /** @example Group edited by the ZAP scan */
             description?: string;
+            color?: components["schemas"]["AdministrationGroupColor"];
         };
+        /**
+         * @description Colour of the group card, from the charter palette.
+         * @example teal
+         * @enum {string|null}
+         */
+        AdministrationGroupColor: "blue" | "teal" | "green" | "orange" | "purple" | "pink" | "neutral" | null;
         AdminUserPasswordResetBody: {
-            /** @example Temporary-Passw0rd */
+            /** @example Temporary-Ecole-Pont-2026 */
             new_password: string;
         };
         AdminUserCreateBody: {
@@ -3780,7 +7888,7 @@ export interface components {
             first_name: string;
             /** @example Doe */
             last_name: string;
-            /** @example Temporary-Passw0rd */
+            /** @example Temporary-Ecole-Pont-2026 */
             password: string;
             /** @example 06 12 34 56 78 */
             phone_number?: string | null;
@@ -3815,6 +7923,14 @@ export interface components {
             description: string;
             /** @example true */
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
         };
         AdminRoleReplaceBody: {
             /** @example Scan role */
@@ -3823,6 +7939,14 @@ export interface components {
             description: string;
             /** @example true */
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
         };
         AdminRolePatchBody: {
             /** @example Scan role */
@@ -3831,18 +7955,46 @@ export interface components {
             description?: string | null;
             /** @example true */
             can_be_deleted?: boolean | null;
+            /**
+             * @description Modules the holders open (MAIR-916). Absent keeps them (a new role opens `dashboard`); the Admin role always keeps `admin`.
+             * @example [
+             *       "dashboard",
+             *       "projects"
+             *     ]
+             */
+            modules?: components["schemas"]["AdministrationRoleModule"][];
         };
         AdminGroupCreateBody: {
             /** @example Culture */
             name: string;
             /** @example Culture department */
             description: string;
+            color?: components["schemas"]["AdministrationGroupColor"];
         };
         AdminGroupUserBody: {
             /** @example 42 */
             user_id: number;
             /** @description Must match the path groupId when sent */
             group_id?: number;
+        };
+        AdminServiceIdParams: {
+            /** @example 3 */
+            serviceId: number;
+        };
+        AdminServiceWriteBody: {
+            /** @example Roads */
+            name: string;
+        };
+        AdminServiceRenameBody: {
+            /** @example Scan service */
+            name: string;
+        };
+        AdminUserServiceBody: {
+            /**
+             * @description Id of a service of `GET /admin/services`, or `null` to detach the agent.
+             * @example 3
+             */
+            service_id: number | null;
         };
         AdminSessionRevokeBody: {
             /** @example opaque-revoked-token */
@@ -3870,6 +8022,162 @@ export interface components {
                 id?: number;
                 name: string;
             })[];
+            /**
+             * @description Modules the role of the session opens (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), in navigation order. Absent when Core does not send them.
+             * @example [
+             *       "dashboard",
+             *       "projects",
+             *       "admin"
+             *     ]
+             */
+            modules?: string[];
+        };
+        LoginSessionResponse: {
+            /** @example Logged in successfully */
+            message: string;
+            passkey_offer?: components["schemas"]["PasskeyOffer"];
+        };
+        /** @description Only after a password sign-in on a Core that sends it: whether the Login screen proposes to create a passkey. Absent after a sign-in by passkey, and from an older Core. */
+        PasskeyOffer: {
+            /**
+             * @description The instance accepts passkeys (Core has a WebAuthn relying party and the policy allows them).
+             * @example true
+             */
+            allowed: boolean;
+            /**
+             * @description The account already has at least one passkey.
+             * @example false
+             */
+            registered: boolean;
+        };
+        TwoFactorRequiredResponse: {
+            /**
+             * @description `2fa_required`: the account has a second factor, send the token with a code to `POST /auth/login/2fa`. `2fa_setup_required` (MAIR-808): the instance makes the second factor mandatory and the account has none, send the token to `POST /auth/2fa/setup` then `POST /auth/2fa/confirm`. No session is open in both cases.
+             * @enum {string}
+             */
+            status: "2fa_required" | "2fa_setup_required";
+            /**
+             * @description Single-use token, valid 5 minutes: it opens the second step (`2fa_required`) or the enrolment (`2fa_setup_required`) and nothing else.
+             * @example example-two-factor-token
+             */
+            token: string;
+            /** @description Only with `2fa_setup_required` (MAIR-809): what the administrator allows, so the screen offers nothing else. Absent from `2fa_required`, and from the answer of a Core that does not send it. */
+            policy?: {
+                /**
+                 * @description The authenticator application is an accepted mode.
+                 * @example true
+                 */
+                totp_allowed: boolean;
+                /**
+                 * @description Passkeys are an accepted mode.
+                 * @example false
+                 */
+                passkey_allowed: boolean;
+                /**
+                 * @description Backup codes are accepted at login: when `false`, none must be shown.
+                 * @example true
+                 */
+                backup_codes_allowed: boolean;
+            };
+        };
+        PasskeyLoginOptionsResponse: {
+            /**
+             * @description Identifier of the ceremony: send it back, with the browser answer, to `POST /auth/passkey`. Single use, valid two minutes.
+             * @example example-two-factor-token
+             */
+            id: string;
+            /**
+             * @description WebAuthn `PublicKeyCredentialRequestOptions` for `navigator.credentials.get` (discoverable: no account is named, user verification required).
+             * @example {
+             *       "publicKey": {
+             *         "challenge": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c",
+             *         "rpId": "mairie360-eip.fr",
+             *         "userVerification": "required"
+             *       },
+             *       "mediation": "conditional"
+             *     }
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        PasskeyRegisterOptionsResponse: {
+            /**
+             * @description WebAuthn `PublicKeyCredentialCreationOptions` for `navigator.credentials.create` (discoverable credential and user verification required, no `authenticatorAttachment`: every password manager is accepted).
+             * @example {
+             *       "publicKey": {
+             *         "challenge": "q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6j7k8l9z0x1c",
+             *         "rp": {
+             *           "id": "mairie360-eip.fr",
+             *           "name": "Mairie 360"
+             *         },
+             *         "user": {
+             *           "id": "bWFpcmll",
+             *           "name": "camille@mairie360.test",
+             *           "displayName": "Camille Trois"
+             *         },
+             *         "pubKeyCredParams": [
+             *           {
+             *             "type": "public-key",
+             *             "alg": -7
+             *           },
+             *           {
+             *             "type": "public-key",
+             *             "alg": -257
+             *           }
+             *         ],
+             *         "authenticatorSelection": {
+             *           "residentKey": "required",
+             *           "userVerification": "required"
+             *         }
+             *       }
+             *     }
+             */
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        TwoFactorEnrolmentResponse: {
+            /**
+             * @description Base32 secret to type in the authenticator application.
+             * @example JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
+             */
+            secret: string;
+            /**
+             * @description `otpauth://` URI to render as a QR code.
+             * @example otpauth://totp/Mairie360:camille@mairie.fr?secret=JBSWY3DPEHPK3PXP&issuer=Mairie360
+             */
+            otpauth_uri: string;
+        };
+        TwoFactorEnrolmentCompletedResponse: {
+            /** @example Logged in successfully */
+            message: string;
+            /**
+             * @description The ten single-use backup codes, shown once: the front must make the agent keep them.
+             * @example [
+             *       "a1b2-c3d4",
+             *       "e5f6-a7b8"
+             *     ]
+             */
+            backup_codes: string[];
+        };
+        PasskeyResponse: {
+            /** @example 7 */
+            id: number;
+            /** @example Google Password Manager */
+            label: string;
+            /**
+             * @description Name of the passkey manager deduced by Core from the authenticator (iCloud Keychain, Google Password Manager, ...); `null` when unknown: the agent types a name.
+             * @example Google Password Manager
+             */
+            provider: string | null;
+            /** @example 2026-11-19T09:12:00Z */
+            created_at: string;
+            /**
+             * @description `null` until the passkey signs in.
+             * @example null
+             */
+            last_used_at: string | null;
         };
     };
     responses: never;

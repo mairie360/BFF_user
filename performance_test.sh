@@ -15,10 +15,23 @@ if [ -z "${IMAGE_REF:-}" ]; then
 fi
 echo "==> BFF under test: $IMAGE_REF"
 
-# Random JWT_SECRET for this run and the admin JWT signed with it (MAIR-474): nothing is signed
-# with a committed secret.
+# Fresh Ed25519 key pair for this run (MAIR-428, MAIR-680): Core signs the session JWTs with it, the
+# BFF only gets the public key; ADMIN_JWT (sub=1, 4 hours) is signed like Core signs it. Nothing is
+# committed.
 # shellcheck source=stack_secrets.sh
 source ./stack_secrets.sh || exit 1
+# Tokens of every caller of load-test.js (k6 cannot sign Ed25519): the Admin (1), the user 2 of
+# init-test.sql and the agents of init-perf.sql. Keep the range in step with AGENTS in load-test.js.
+# In a private directory (mode 700): the file stays readable by the k6 container user through its bind
+# mount, never by the other users of the host (MAIR-680).
+JWT_TOKENS_DIR="$(mktemp -d)" || exit 1
+# Removed on any exit from here on (the full trap below also removes the CPU-set file).
+trap 'rm -rf "$JWT_TOKENS_DIR"' EXIT
+JWT_TOKENS_FILE="$JWT_TOKENS_DIR/tokens.json"
+export JWT_TOKENS_FILE
+echo "==> Signing the k6 callers' tokens..."
+sign_jwt_file "$JWT_TOKENS_FILE" user 14400 1 2 $(seq 500001 510000) || exit 1
+chmod 644 "$JWT_TOKENS_FILE" # read by the k6 container user
 
 # Shared CI test files (OpenAPI coverage gate: ZAP hook and k6 coverage module). CI checks
 # mairie360/CICD out as cicd-repo/; locally it is cloned once at the cicd_version pinned in
@@ -38,7 +51,7 @@ PERF_CPUS="${PERF_CPUS:-4}"
 CPUS=$(nproc)
 [ "$CPUS" -gt "$PERF_CPUS" ] && CPUS="$PERF_CPUS"
 CPUSET_FILE="$(mktemp --suffix=.yml)"
-trap 'rm -f "$CPUSET_FILE"' EXIT
+trap 'rm -f "$CPUSET_FILE"; rm -rf "$JWT_TOKENS_DIR"' EXIT
 {
     echo "services:"
     for service in $(docker compose -f "$COMPOSE_FILE" config --services); do

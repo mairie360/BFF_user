@@ -1,5 +1,5 @@
 # --- Étape 1 : Build ---
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS builder
 WORKDIR /app
 COPY package*.json ./
 
@@ -16,11 +16,11 @@ RUN --mount=type=secret,id=npmrc,target=/app/.npmrc \
     npm ci --omit=dev --ignore-scripts
 
 # --- Stage 2: Runtime ---
-FROM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 ENV NODE_ENV=production
 # The runtime only runs `node dist/index.js`: drop the package managers bundled with the base image
 # (their dependencies carry CVEs reported by the Trivy scan of the release).
-RUN apk add --no-cache curl \
+RUN apk add --no-cache curl tini \
     && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
               /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn-*
 
@@ -35,4 +35,7 @@ USER node
 ENV NODE_OPTIONS="--max-old-space-size=180"
 
 EXPOSE 4000
+# tini as PID 1 forwards SIGTERM to Node and reaps zombies: Node as PID 1 would ignore the signal, so the BFF
+# could not drain its requests (gracefulShutdown) and would be killed at the end of the grace period.
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "dist/index.js"]

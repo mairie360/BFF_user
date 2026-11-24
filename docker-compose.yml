@@ -49,7 +49,8 @@ x-service: &service-template
 
 services:
   postgres:
-    image: ghcr.io/mairie360/database:dev-99f6127
+    image: ghcr.io/mairie360/database:${UPSTREAM_TAG:-dev}
+    pull_policy: ${UPSTREAM_PULL_POLICY:-always}
     restart: always
     container_name: mairie360-db-bff-user
     environment:
@@ -69,7 +70,8 @@ services:
       retries: 5
 
   liquibase:
-    image: ghcr.io/mairie360/liquibase-migrations:dev-99f6127
+    image: ghcr.io/mairie360/liquibase-migrations:${UPSTREAM_TAG:-dev}
+    pull_policy: ${UPSTREAM_PULL_POLICY:-always}
     container_name: mairie360-liquibase-bff-user
     depends_on:
       postgres:
@@ -89,7 +91,7 @@ services:
       - backend
 
   redis:
-    image: redis:8.4.0-bookworm
+    image: redis:8.4.0-bookworm@sha256:c22af04bb576503bf16b3e34a1fd2fd82de0f765afd866d2e380145e0af30d78
     container_name: mairie360-redis-bff-user #change api name
     restart: always
     expose:
@@ -104,9 +106,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # Fake Resend API (MAIR-552): records the e-mails Core sends (tests/fake-resend/README.md).
+  fake-resend:
+    image: wiremock/wiremock:3.13.2@sha256:0d4ecb3e4dc8213fd7a4d37d6a78f6e6b553a6d2e15bd51b0999781282ac61b3
+    container_name: fake-resend-bff-user-developpement
+    command: ["--port", "8080", "--global-response-templating"]
+    volumes:
+      - ./tests/fake-resend/mappings:/home/wiremock/mappings:ro
+    ports:
+      - "8025:8080"
+    networks:
+      - backend
+
   core:
     container_name: core-bff-user-developpement
-    image: ghcr.io/mairie360/core-api:dev-2529974
+    image: ghcr.io/mairie360/core-api:${UPSTREAM_TAG:-dev}
+    pull_policy: ${UPSTREAM_PULL_POLICY:-always}
     ports:
       - "3000:3000"
     networks:
@@ -126,17 +141,23 @@ services:
       DB_PORT: 5432
       PUBLIC_URL: http://core.development.mairie360.fr
       JWT_SECRET: b"secret"
+      # MAIR-680: Ed25519 session keys, taken from the shell and never committed. Unset, Core signs
+      # HS256 tokens with JWT_SECRET, which the BFF refuses (bffs-lib >= 3): `source ./stack_secrets.sh`
+      # before `docker compose up` so Core signs EdDSA tokens.
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       # mairie360_api_lib >= 2.0 refuses the well-known b"secret" without this flag. Local stack only:
-      # a deployment uses a random secret of at least 32 bytes (MAIR-428).
+      # a deployment uses no JWT_SECRET at all (MAIR-680).
       JWT_ALLOW_WEAK_SECRET: "true"
       JWT_TIMEOUT: 3600
-      # Core API >= 2.0.0 sends the password e-mails itself: no SMTP server locally, nothing is delivered.
-      EMAIL_FROM: "noreply.mairie360@dev.local"
-      SMTP_HOST: "localhost"
-      SMTP_PORT: "1025"
-      SMTP_USERNAME: ""
-      SMTP_PASSWORD: ""
+      # Core sends the password e-mails through Resend (MAIR-522): the fake one by default, which records them.
+      # Real e-mails: RESEND_API_KEY=re_… RESEND_BASE_URL=https://api.resend.com EMAIL_DOMAIN=mairie360-eip.fr
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_fake_local}
+      RESEND_BASE_URL: ${RESEND_BASE_URL:-http://fake-resend:8080}
+      EMAIL_DOMAIN: ${EMAIL_DOMAIN:-mairie360.local}
     depends_on:
+      fake-resend:
+        condition: service_started
       liquibase:
         condition: service_completed_successfully
       redis:
@@ -174,14 +195,12 @@ services:
       # Le BFF n'accède ni à PostgreSQL ni à Redis : tout passe par Core API.
       HOST: "0.0.0.0"
       PORT: 4000
-      JWT_SECRET: 'b"secret"'
+      # MAIR-680: the public key of the Core that signs this stack's sessions (local or remote), from the
+      # shell (`source ./stack_secrets.sh` gives a pair only for a Core started here with it). Required:
+      # bffs-lib >= 3 refuses HS256 tokens and ignores JWT_SECRET, so the BFF does not start without it.
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-}
       # IMPORTANT : On utilise le nom du service Docker pour communiquer
       CORE_API_URL: "http://core:3000"
-      # Keycloak single logout (POST /auth/logout returns logout_url), disabled while these are empty.
-      # Public realm URL as the browser reaches it, same client as Core's KEYCLOAK_CLIENT_ID.
-      KEYCLOAK_REALM_URL: ${KEYCLOAK_REALM_URL:-}
-      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-}
-      KEYCLOAK_POST_LOGOUT_REDIRECT_URI: ${KEYCLOAK_POST_LOGOUT_REDIRECT_URI:-}
     volumes:
       - /app/node_modules # Isolation des modules pour éviter les conflits OS (Mac/Windows vs Linux)
     # depends_on:
@@ -194,7 +213,7 @@ services:
       retries: 3
 
   nginx:
-    image: nginx:1.29.1-bookworm
+    image: nginx:1.29.1-bookworm@sha256:8adbdcb969e2676478ee2c7ad333956f0c8e0e4c5a7463f4611d7a2e7a7ff5dc
     restart: always
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf

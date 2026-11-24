@@ -10,7 +10,7 @@
 #   ./agent_dev.sh logs [svc] [N]   last N log lines of a service (default: the app, 80)
 #   ./agent_dev.sh sql "<query>"    run SQL in the database container
 #   ./agent_dev.sh redis <cmd...>   run a redis-cli command
-#   ./agent_dev.sh token [sub] [role]   print an HS256 JWT signed with the stack secret (default: admin, sub=1)
+#   ./agent_dev.sh token [sub] [role]   print an EdDSA JWT signed like Core signs it (default: admin, sub=1)
 #   ./agent_dev.sh http METHOD PATH [json-body]   call the app with that token, print status then body
 #   ./agent_dev.sh restart [svc]    restart one service (default: the app)
 #   ./agent_dev.sh down [-v]        stop the watcher and the stack (-v also drops the volumes)
@@ -30,9 +30,10 @@ NEEDS_NODE_AUTH_TOKEN="true"
 
 DB_USER="${DB_USER:-postgres}"
 DB_NAME="${DB_NAME:-mairie_360_database}"
-# Well-known dev value of the compose files (JWT_ALLOW_WEAK_SECRET=true there). Override for another stack.
-JWT_SECRET="${JWT_SECRET:-b\"secret\"}"
 STATE_DIR=".agent"
+# Ed25519 pair of the stack (MAIR-680: bffs-lib >= 3 only accepts EdDSA tokens signed by Core's key).
+# Kept in .agent/ so `up` and later `token` / `http` calls use the same pair.
+KEYS_FILE="$STATE_DIR/session-keys.env"
 WATCH_PID="$STATE_DIR/watch.pid"
 WATCH_LOG="$STATE_DIR/watch.log"
 
@@ -44,21 +45,32 @@ watcher_running() { [ -f "$WATCH_PID" ] && kill -0 "$(cat "$WATCH_PID")" 2>/dev/
 
 probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$APP_URL$READY_PATH" 2>/dev/null || true; }
 
-b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+load_keys() {
+    mkdir -p "$STATE_DIR"
+    # shellcheck disable=SC1090
+    [ -f "$KEYS_FILE" ] && . "$KEYS_FILE"
+    # Generates a fresh pair unless one is already exported, then defines sign_jwt.
+    # shellcheck disable=SC1091
+    . ./stack_secrets.sh || die "stack_secrets.sh failed (openssl 3 needed)"
+    (umask 077; {
+        printf 'export JWT_PRIVATE_KEY=%q\n' "$JWT_PRIVATE_KEY"
+        printf 'export JWT_PUBLIC_KEY=%q\n' "$JWT_PUBLIC_KEY"
+        printf 'export TOTP_ENCRYPTION_KEY=%q\n' "$TOTP_ENCRYPTION_KEY"
+    } >"$KEYS_FILE")
+}
 
 make_token() {
-    local sub="${1:-1}" role="${2:-admin}" header payload signature
-    header="$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url)"
-    payload="$(printf '{"sub":"%s","role":"%s","exp":%s}' "$sub" "$role" "$(( $(date +%s) + 4 * 3600 ))" | b64url)"
-    signature="$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -hmac "$JWT_SECRET" -binary | b64url)"
-    printf '%s.%s.%s\n' "$header" "$payload" "$signature"
+    local sub="${1:-1}" role="${2:-admin}"
+    load_keys
+    sign_jwt "$sub" "$role" $(( 4 * 3600 )) || die "could not sign the token"
+    echo
 }
 
 cmd_up() {
     if [ "$NEEDS_NODE_AUTH_TOKEN" = "true" ] && [ -z "${NODE_AUTH_TOKEN:-}" ]; then
         die "NODE_AUTH_TOKEN is not set (token with read:packages, needed to install @mairie360/* packages)"
     fi
-    mkdir -p "$STATE_DIR"
+    load_keys
     compose up -d --build --wait --wait-timeout "${WAIT_TIMEOUT:-600}" || {
         echo "agent_dev: the stack did not become healthy, last logs of $APP_SERVICE:" >&2
         compose logs --no-color --tail 60 "$APP_SERVICE" >&2 || true
@@ -130,7 +142,7 @@ cmd_down() {
         kill "$(cat "$WATCH_PID")" 2>/dev/null || true
     fi
     rm -f "$WATCH_PID"
-    if [ "${1:-}" = "-v" ]; then compose down -v; else compose down; fi
+    if [ "${1:-}" = "-v" ]; then compose down -v; rm -f "$KEYS_FILE"; else compose down; fi
 }
 
 action="${1:-}"

@@ -1,7 +1,7 @@
 -- Minimal seed for the isolated test stacks (performance / security) of BFF User.
 -- The test JWTs reference two users:
 --   * sub = "1": Admin role. docker-compose-security.yml injects a static token for it
---     through the ZAP replacer, so every operation (including /bff/admin/*) is scanned
+--     through the ZAP replacer, so every operation (including /admin/*) is scanned
 --     authenticated;
 --   * sub = "2": User role only. load-test.js signs a token for it on the fly.
 -- The other rows are scan fixtures: ZAP fills a path parameter with its contract example, or
@@ -9,8 +9,8 @@
 --   * user 10, role 10, group 10 (with user 10 as member) are read and updated;
 --   * user 11, role 11, group 11 are the examples of the DELETE routes;
 --   * user 42 is the example of /user/{userId}/about and of a new group member;
---   * two sessions hold example refresh tokens: user 2's (the former /bff/admin/sessions/refresh
---     example, kept as a valid session) and the one of /bff/admin/sessions/revoke (user 1: Core API
+--   * two sessions hold example refresh tokens: user 2's (the former /admin/sessions/refresh
+--     example, kept as a valid session) and the one of /admin/sessions/revoke (user 1: Core API
 --     only revokes the caller's own sessions).
 --     Core API >= 2.0.0 stores the SHA-256 digest (lowercase hex) of the refresh token in token_hash
 --     and rotates the token on every refresh.
@@ -21,6 +21,7 @@ INSERT INTO users (id, first_name, last_name, email, password, status)
 VALUES
     (1, 'Security', 'Admin', 'security-admin@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (2, 'Perf', 'Tester', 'perf-tester@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
+    (3, 'Scan', 'Mayor', 'scan-mayor@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (10, 'Scan', 'Target', 'scan-target@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (11, 'Scan', 'Deleted', 'scan-deleted@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active'),
     (42, 'Scan', 'Member', 'scan-member@mairie360.fr', '$argon2id$v=19$m=19456,t=2,p=1$/iKF9PbiDRDs4EKPjlIIhg$UKx9vfwwps250mEP/bYp63CXbEnQGULeUAhDq+az9Aw', 'active')
@@ -71,3 +72,13 @@ ON CONFLICT (token_hash) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('users', 'id'), (SELECT max(id) FROM users));
 SELECT setval(pg_get_serial_sequence('roles', 'id'), (SELECT max(id) FROM roles));
 SELECT setval(pg_get_serial_sequence('groups', 'id'), (SELECT max(id) FROM groups));
+
+-- The mayor (user 3) holds the Maire role only: it may list the projects without a group, not the other /admin routes.
+INSERT INTO user_roles (user_id, role_id)
+SELECT 3, r.id FROM roles r WHERE r.name = 'Maire'
+ON CONFLICT DO NOTHING;
+
+-- A project with no group (as left by a group deleted in Core API), read by GET /admin/projects-without-group.
+INSERT INTO projects (id, title, description, owner_id)
+VALUES (900, 'Seeded project without a group', 'Listed by the administration groups tab', 1)
+ON CONFLICT (id) DO NOTHING;

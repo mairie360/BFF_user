@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { errorHandler } from '@mairie360/bffs-lib';
 import { AxiosError, AxiosHeaders } from 'axios';
 import cookieParser from 'cookie-parser';
@@ -6,11 +5,12 @@ import express from 'express';
 import request from 'supertest';
 import {
     coreAdminUsersClient,
+    coreTwoFactorPolicyClient,
     coreGroupsClient,
     coreUsersClient,
 } from '../src/clients/coreClient';
 import adminRouter from '../src/routes/admin';
-import { adminUserRow, adminUsersPage, axiosResponse, group, groupMembers, meResponse } from './support/core-fixtures';
+import { adminUserRow, adminUsersPage, axiosResponse, group, groupMembers, meResponse, sessionToken, useSessionPublicKey } from './support/core-fixtures';
 
 // Test unitaire des règles du routeur : Core API est simulée au niveau du client généré. Chaque regroupement
 // expose exactement les opérations de getCoreAPIMairie360 (@mairie360/core-api-openapi), avec l'alias
@@ -29,6 +29,7 @@ jest.mock('../src/clients/coreClient', () => {
         coreAdminUsersClient: operations,
         coreGroupsClient: { ...operations, getGroupUsers: operations.getGroupMembers },
         coreSessionsClient: operations,
+        coreTwoFactorPolicyClient: operations,
         coreUsersClient: operations,
     };
 });
@@ -37,29 +38,27 @@ const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedListUsers = jest.mocked(coreAdminUsersClient.adminListUsers);
 const mockedDeleteUser = jest.mocked(coreAdminUsersClient.adminDeleteUser);
 const mockedResetUserPassword = jest.mocked(coreAdminUsersClient.adminResetUserPassword);
+const mockedGetPolicy = jest.mocked(coreTwoFactorPolicyClient.getTwoFactorPolicy);
+const mockedUpdatePolicy = jest.mocked(coreTwoFactorPolicyClient.updateTwoFactorPolicy);
+const mockedResetUserTwoFactor = jest.mocked(coreAdminUsersClient.adminResetUserTwoFactor);
+const mockedGetUser = jest.mocked(coreAdminUsersClient.adminGetUser);
+const mockedRevokeUserSessions = jest.mocked(coreAdminUsersClient.adminRevokeUserSessions);
+const mockedRevokeUserSession = jest.mocked(coreAdminUsersClient.adminRevokeUserSession);
+const mockedSuspendUser = jest.mocked(coreAdminUsersClient.adminSuspendUser);
+const mockedReactivateUser = jest.mocked(coreAdminUsersClient.adminReactivateUser);
 const mockedPatchGroup = jest.mocked(coreGroupsClient.patchGroup);
 const mockedGetGroupUsers = jest.mocked(coreGroupsClient.getGroupUsers);
 const mockedAddUserToGroup = jest.mocked(coreGroupsClient.addUserToGroup);
 
 const adminUser = adminUserRow();
 
-function tokenFor(userId: number) {
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({
-        sub: String(userId),
-        exp: Math.floor(Date.now() / 1000) + 3_600,
-    })).toString('base64url');
-    const signature = createHmac('sha256', process.env.JWT_SECRET!)
-        .update(`${header}.${payload}`)
-        .digest('base64url');
-
-    return `${header}.${payload}.${signature}`;
-}
+// EdDSA session token signed with the test key of Core (MAIR-680).
+const tokenFor = (userId: number) => sessionToken(userId);
 
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
-app.use('/bff/admin', adminRouter);
+app.use('/admin', adminRouter);
 app.use(errorHandler({ onError: () => undefined }));
 
 /** Core API error as the generated axios client rejects it. */
@@ -69,7 +68,7 @@ const coreError = (status: number, data: unknown = 'Core error') => new AxiosErr
 
 describe('Administration routes', () => {
     beforeAll(() => {
-        process.env.JWT_SECRET = 'admin-test-secret';
+        useSessionPublicKey();
     });
 
     beforeEach(() => {
@@ -86,7 +85,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser])));
 
         const response = await request(app)
-            .get('/bff/admin/users?page=1&page_size=20')
+            .get('/admin/users?page=1&page_size=20')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
@@ -98,7 +97,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
 
         const response = await request(app)
-            .get('/bff/admin/users?search=martin')
+            .get('/admin/users?search=martin')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
@@ -107,7 +106,7 @@ describe('Administration routes', () => {
 
     it('rejects a page size greater than 20', async () => {
         const response = await request(app)
-            .get('/bff/admin/users?page_size=21')
+            .get('/admin/users?page_size=21')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(400);
@@ -124,7 +123,7 @@ describe('Administration routes', () => {
 
         const token = tokenFor(1);
         const response = await request(app)
-            .delete('/bff/admin/users/42')
+            .delete('/admin/users/42')
             .set('Authorization', `Bearer ${token}`);
 
         expect(response.status).toBe(204);
@@ -140,17 +139,51 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
 
         const response = await request(app)
-            .get('/bff/admin/users')
+            .get('/admin/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
+    });
+
+    // One role rule for every BFF (bffs-lib); the check used to be a strict `trim().toLowerCase() === 'admin'`.
+    it.each([
+        ['Administrateur'],
+        ['ROLE_ADMIN'],
+        [' role-admin '],
+        ['administrator'],
+    ])('MAIR-689 accepts %p as the administrator role', async (name) => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: name, roles: [name] })));
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([])));
+
+        const response = await request(app)
+            .get('/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
+    });
+
+    it.each([
+        ['Maire'],
+        ['Responsable'],
+        ['Stagiaire'],
+        ['Super Admin'],
+    ])('MAIR-689 refuses %p on an administrator route', async (name) => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: name, roles: [name] })));
+
+        const response = await request(app)
+            .get('/admin/users')
+            .set('Authorization', `Bearer ${tokenFor(2)}`);
+
+        expect(response.status).toBe(403);
+        expect(response.body).toEqual({ error: { code: 'FORBIDDEN', message: 'Administrator role required', details: [] } });
+        expect(mockedListUsers).not.toHaveBeenCalled();
     });
 
     it('rejects user deletion when the requester is not an administrator', async () => {
         mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 
         const response = await request(app)
-            .delete('/bff/admin/users/42')
+            .delete('/admin/users/42')
             .set('Authorization', `Bearer ${tokenFor(2)}`);
 
         expect(response.status).toBe(403);
@@ -162,7 +195,7 @@ describe('Administration routes', () => {
         ['no session', undefined, 'Invalid session.'],
         ['a forged token', 'Bearer a.b.c', 'Invalid or expired session token.'],
     ])('answers 401 with %s before calling Core API', async (_label, authorization, message) => {
-        const call = request(app).delete('/bff/admin/users/42');
+        const call = request(app).delete('/admin/users/42');
         const response = await (authorization ? call.set('Authorization', authorization) : call);
 
         expect(response.status).toBe(401);
@@ -174,7 +207,7 @@ describe('Administration routes', () => {
         ['the accessToken cookie', (call: request.Test) => call.set('Cookie', `accessToken=${tokenFor(1)}`)],
         ['the x-session-token header', (call: request.Test) => call.set('x-session-token', tokenFor(1))],
     ])('ignores a session sent in %s: 401 before calling Core API', async (_label, prepare) => {
-        const response = await prepare(request(app).get('/bff/admin/users'));
+        const response = await prepare(request(app).get('/admin/users'));
 
         expect(response.status).toBe(401);
         expect(mockedGetMe).not.toHaveBeenCalled();
@@ -184,36 +217,35 @@ describe('Administration routes', () => {
     it('marks administration answers as not cacheable, errors included', async () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser])));
 
-        const ok = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
-        const refused = await request(app).get('/bff/admin/users');
+        const ok = await request(app).get('/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const refused = await request(app).get('/admin/users');
 
         expect(ok.headers['cache-control']).toBe('no-store');
         expect(refused.headers['cache-control']).toBe('no-store');
     });
 
-    it('answers 503 without calling Core API when JWT_SECRET is not configured', async () => {
+    it('answers 503 without calling Core API when JWT_PUBLIC_KEY is not configured', async () => {
         const token = tokenFor(1);
-        const secret = process.env.JWT_SECRET;
-        delete process.env.JWT_SECRET;
+        delete process.env.JWT_PUBLIC_KEY;
         try {
-            const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${token}`);
+            const response = await request(app).delete('/admin/users/42').set('Authorization', `Bearer ${token}`);
 
             expect(response.status).toBe(503);
             expect(response.body).toEqual({
                 error: { code: 'SERVICE_UNAVAILABLE', message: 'The administrator session check is not configured.', details: [] },
             });
-            // The secret's name is not disclosed.
-            expect(JSON.stringify(response.body)).not.toContain('JWT_SECRET');
+            // The names of the keys are not disclosed.
+            expect(JSON.stringify(response.body)).not.toMatch(/JWT_(PUBLIC_KEY|SECRET)/);
             expect(mockedGetMe).not.toHaveBeenCalled();
         } finally {
-            process.env.JWT_SECRET = secret;
+            useSessionPublicKey();
         }
     });
 
     it('answers 503 without calling Core API when CORE_API_URL is not configured', async () => {
         delete process.env.CORE_API_URL;
 
-        const response = await request(app).get('/bff/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const response = await request(app).get('/admin/users').set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(503);
         expect(response.body).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: 'The CORE_API service is not configured.', details: [] } });
@@ -224,7 +256,7 @@ describe('Administration routes', () => {
     it('answers 401 before 503 to a caller without session on a misconfigured instance', async () => {
         delete process.env.CORE_API_URL;
 
-        const response = await request(app).get('/bff/admin/users');
+        const response = await request(app).get('/admin/users');
 
         expect(response.status).toBe(401);
     });
@@ -238,7 +270,7 @@ describe('Administration routes', () => {
         mockedDeleteUser.mockRejectedValue(coreError(coreStatus, 'duplicate key value violates unique constraint "users_email_key"'));
 
         const response = await request(app)
-            .delete('/bff/admin/users/42')
+            .delete('/admin/users/42')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(status);
@@ -248,7 +280,7 @@ describe('Administration routes', () => {
     it('never retries a write, even on a transient Core failure', async () => {
         mockedDeleteUser.mockRejectedValue(coreError(503));
 
-        const response = await request(app).delete('/bff/admin/users/42').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const response = await request(app).delete('/admin/users/42').set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
         expect(mockedDeleteUser).toHaveBeenCalledTimes(1);
@@ -258,7 +290,7 @@ describe('Administration routes', () => {
         mockedListUsers.mockRejectedValue(coreError(409));
 
         const response = await request(app)
-            .get('/bff/admin/users')
+            .get('/admin/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
@@ -269,7 +301,7 @@ describe('Administration routes', () => {
         mockedGetMe.mockRejectedValue(new AxiosError('connect ECONNREFUSED'));
 
         const response = await request(app)
-            .get('/bff/admin/users')
+            .get('/admin/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(502);
@@ -280,7 +312,7 @@ describe('Administration routes', () => {
         mockedResetUserPassword.mockResolvedValue(axiosResponse(undefined, 204));
 
         const response = await request(app)
-            .patch('/bff/admin/users/42/password')
+            .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ new_password: 'Temporary-123!' });
 
@@ -292,9 +324,120 @@ describe('Administration routes', () => {
         );
     });
 
+    it('MAIR-805 resets the second factor of a user for an administrator', async () => {
+        mockedResetUserTwoFactor.mockResolvedValue(axiosResponse(undefined, 204));
+
+        const response = await request(app)
+            .delete('/admin/users/42/2fa')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(204);
+        expect(mockedResetUserTwoFactor).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-805 refuses the second factor reset to a non-administrator, before any Core call', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
+
+        const response = await request(app)
+            .delete('/admin/users/42/2fa')
+            .set('Authorization', `Bearer ${tokenFor(2)}`);
+
+        expect(response.status).toBe(403);
+        expect(mockedResetUserTwoFactor).not.toHaveBeenCalled();
+    });
+
+    it('MAIR-805 relays the 404 of an unknown user and rejects a non-numeric id', async () => {
+        mockedResetUserTwoFactor.mockRejectedValue(new AxiosError('nf', undefined, undefined, undefined, {
+            data: 'x', status: 404, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
+        }));
+
+        const missing = await request(app).delete('/admin/users/99/2fa').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const invalid = await request(app).delete('/admin/users/abc/2fa').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(missing.status).toBe(404);
+        expect(invalid.status).toBe(400);
+    });
+
+    it('MAIR-904 relays the state, role and order filters of the user list', async () => {
+        mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUserRow({ account_status: 'suspended', active_sessions: 0, last_login_at: null, two_factor: { methods: [], last_verified_at: null } } as never)])));
+
+        const response = await request(app)
+            .get('/admin/users?page=2&page_size=6&account_status=suspended&role_id=3&sort=-name')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+        const invalid = await request(app)
+            .get('/admin/users?account_status=deleted')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.users[0].account_status).toBe('suspended');
+        expect(mockedListUsers).toHaveBeenCalledWith(
+            { page: 2, page_size: 6, account_status: 'suspended', role_id: 3, sort: '-name' },
+            expect.anything(),
+        );
+        expect(invalid.status).toBe(400);
+    });
+
+    it('MAIR-584 lists the sessions of a user, whitelisted', async () => {
+        const session = { id: '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70', device_info: 'Firefox', ip_address: '203.0.113.24', created_at: '2026-11-20T08:00:00Z', expires_at: '2026-11-27T08:00:00Z', revoked_at: null };
+        mockedGetUser.mockResolvedValue(axiosResponse({ user: { first_name: 'A' }, role: null, roles: [], groups: [], sessions: [{ ...session, token_hash: 'never relayed' }] } as never));
+
+        const response = await request(app).get('/admin/users/42/sessions').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ sessions: [session] });
+        expect(mockedGetUser).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-584 signs a user out of one device or of every device', async () => {
+        mockedRevokeUserSession.mockResolvedValue(axiosResponse(undefined, 204));
+        mockedRevokeUserSessions.mockResolvedValue(axiosResponse(undefined, 204));
+        const sid = '4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70';
+
+        const one = await request(app).delete(`/admin/users/42/sessions/${sid}`).set('Authorization', `Bearer ${tokenFor(1)}`);
+        const all = await request(app).delete('/admin/users/42/sessions').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const invalid = await request(app).delete('/admin/users/42/sessions/not-a-session').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect([one.status, all.status, invalid.status]).toEqual([204, 204, 400]);
+        expect(mockedRevokeUserSession).toHaveBeenCalledWith(42, sid, expect.anything());
+        expect(mockedRevokeUserSessions).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-584 relays the 404 of an ended session', async () => {
+        mockedRevokeUserSession.mockRejectedValue(coreError(404, 'Unknown session'));
+
+        const response = await request(app)
+            .delete('/admin/users/42/sessions/4f7c2a9e-8d31-4c55-9a0b-3e1f6d2c8b70')
+            .set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect(response.status).toBe(404);
+        expect(JSON.stringify(response.body)).not.toContain('Unknown session');
+    });
+
+    it('MAIR-904 suspends and reactivates a user, relays the 409 of one\'s own account', async () => {
+        mockedSuspendUser.mockResolvedValueOnce(axiosResponse(undefined, 204)).mockRejectedValueOnce(coreError(409));
+        mockedReactivateUser.mockResolvedValue(axiosResponse(undefined, 204));
+
+        const suspended = await request(app).post('/admin/users/42/suspend').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const own = await request(app).post('/admin/users/1/suspend').set('Authorization', `Bearer ${tokenFor(1)}`);
+        const reactivated = await request(app).post('/admin/users/42/reactivate').set('Authorization', `Bearer ${tokenFor(1)}`);
+
+        expect([suspended.status, own.status, reactivated.status]).toEqual([204, 409, 204]);
+        expect(mockedSuspendUser).toHaveBeenCalledWith(42, expect.anything());
+        expect(mockedReactivateUser).toHaveBeenCalledWith(42, expect.anything());
+    });
+
+    it('MAIR-904 refuses the suspension to a non-administrator, before any Core call', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
+
+        const response = await request(app).post('/admin/users/42/suspend').set('Authorization', `Bearer ${tokenFor(2)}`);
+
+        expect(response.status).toBe(403);
+        expect(mockedSuspendUser).not.toHaveBeenCalled();
+    });
+
     it('rejects an invalid new password', async () => {
         const response = await request(app)
-            .patch('/bff/admin/users/42/password')
+            .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ new_password: 'short' });
 
@@ -306,7 +449,7 @@ describe('Administration routes', () => {
         mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
 
         const response = await request(app)
-            .patch('/bff/admin/users/42/password')
+            .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(2)}`)
             .send({ new_password: 'Temporary-123!' });
 
@@ -318,7 +461,7 @@ describe('Administration routes', () => {
         mockedPatchGroup.mockResolvedValue(axiosResponse(group(4, { name: 'Direction générale', description: 'Équipe de direction' })));
 
         const response = await request(app)
-            .patch('/bff/admin/groups/4')
+            .patch('/admin/groups/4')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ name: 'Direction générale', description: 'Équipe de direction' });
 
@@ -335,19 +478,21 @@ describe('Administration routes', () => {
         mockedListUsers.mockResolvedValue(axiosResponse(adminUsersPage([adminUser], { page_size: 500 })));
 
         const response = await request(app)
-            .get('/bff/admin/groups/4/users')
+            .get('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(200);
         expect(mockedListUsers).toHaveBeenCalledWith({ group_id: 4, page_size: 500 }, expect.anything());
-        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => field !== 'roles')));
+        // A member carries its identity, not the administration fields of the list (role, state, sessions, second factor).
+        const memberFields = ['id', 'first_name', 'last_name', 'email', 'phone_number', 'phone_country', 'status', 'is_archived'];
+        expect(response.body.users[0]).toEqual(Object.fromEntries(Object.entries(adminUser).filter(([field]) => memberFields.includes(field))));
     });
 
     it('does not add a member who already belongs to the group', async () => {
         mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([7])));
 
         const response = await request(app)
-            .post('/bff/admin/groups/4/users')
+            .post('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ user_id: 7 });
 
@@ -361,7 +506,7 @@ describe('Administration routes', () => {
         mockedAddUserToGroup.mockResolvedValue(axiosResponse('User added to group'));
 
         const response = await request(app)
-            .post('/bff/admin/groups/4/users')
+            .post('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ user_id: 7 });
 
@@ -371,23 +516,26 @@ describe('Administration routes', () => {
     });
 
     it.each([
-        ['post', '/bff/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
-        ['post', '/bff/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
-        ['patch', '/bff/admin/users/7', {}],
+        ['post', '/admin/users', { email: 'not-an-email', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd' }],
+        ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
+        // MAIR-757: Core API's policy needs 12 characters.
+        ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Velo-2026-x' }],
+        ['patch', '/admin/users/7/password', { new_password: 'Velo-2026-x' }],
+        ['patch', '/admin/users/7', {}],
         // MAIR-480: Core's phone characters, an upper-case ISO 3166-1 alpha-2 country.
-        ['patch', '/bff/admin/users/7', { phone_number: '06+12345678' }],
-        ['patch', '/bff/admin/users/7', { phone_number: '0'.repeat(33) }],
-        ['patch', '/bff/admin/users/7', { phone_number: '0612345678', phone_country: 'fr' }],
-        ['post', '/bff/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd', phone_number: '0612345678', phone_country: 'FRA' }],
-        ['post', '/bff/admin/users/7/roles', { role_id: '3' }],
-        ['post', '/bff/admin/roles', { name: 'Agent' }],
-        ['put', '/bff/admin/roles/3', { name: '', description: 'Municipal agent' }],
-        ['patch', '/bff/admin/roles/3', {}],
-        ['post', '/bff/admin/groups', { name: 'Culture' }],
-        ['post', '/bff/admin/roles', { name: '<script>alert(1)</script>', description: 'Municipal agent' }],
-        ['patch', '/bff/admin/groups/4', { description: '<img src=x onerror=alert(1)>' }],
-        ['post', '/bff/admin/groups/4/users', { user_id: 0 }],
-        ['post', '/bff/admin/sessions/revoke', { token: 'opaque-refresh-token' }],
+        ['patch', '/admin/users/7', { phone_number: '06+12345678' }],
+        ['patch', '/admin/users/7', { phone_number: '0'.repeat(33) }],
+        ['patch', '/admin/users/7', { phone_number: '0612345678', phone_country: 'fr' }],
+        ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Temporary-Passw0rd', phone_number: '0612345678', phone_country: 'FRA' }],
+        ['post', '/admin/users/7/roles', { role_id: '3' }],
+        ['post', '/admin/roles', { name: 'Agent' }],
+        ['put', '/admin/roles/3', { name: '', description: 'Municipal agent' }],
+        ['patch', '/admin/roles/3', {}],
+        ['post', '/admin/groups', { name: 'Culture' }],
+        ['post', '/admin/roles', { name: '<script>alert(1)</script>', description: 'Municipal agent' }],
+        ['patch', '/admin/groups/4', { description: '<img src=x onerror=alert(1)>' }],
+        ['post', '/admin/groups/4/users', { user_id: 0 }],
+        ['post', '/admin/sessions/revoke', { token: 'opaque-refresh-token' }],
     ])('rejects an invalid %s %s body without calling Core API', async (method, path, body) => {
         const response = await request(app)[method as 'post'](path)
             .set('Authorization', `Bearer ${tokenFor(1)}`)
@@ -404,7 +552,7 @@ describe('Administration routes', () => {
 
     it('rejects a role assignment whose body names another user than the path', async () => {
         const response = await request(app)
-            .post('/bff/admin/users/7/roles')
+            .post('/admin/users/7/roles')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ user_id: 1, role_id: 1 });
 
@@ -417,7 +565,7 @@ describe('Administration routes', () => {
         jest.mocked(coreAdminUsersClient.adminAddRoleToUser).mockResolvedValue(axiosResponse(undefined, 200));
 
         const response = await request(app)
-            .post('/bff/admin/users/7/roles')
+            .post('/admin/users/7/roles')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ role_id: 3 });
 
@@ -427,7 +575,7 @@ describe('Administration routes', () => {
 
     it('rejects a group membership whose body names another group than the path', async () => {
         const response = await request(app)
-            .post('/bff/admin/groups/4/users')
+            .post('/admin/groups/4/users')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ group_id: 5, user_id: 7 });
 
@@ -440,7 +588,7 @@ describe('Administration routes', () => {
         mockedPatchUser.mockResolvedValue(axiosResponse('User updated', 200));
 
         const response = await request(app)
-            .patch('/bff/admin/users/7')
+            .patch('/admin/users/7')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ first_name: 'Jane', password: 'x' });
 
@@ -452,11 +600,74 @@ describe('Administration routes', () => {
         mockedGetGroupUsers.mockResolvedValue(axiosResponse(groupMembers([9])));
 
         const response = await request(app)
-            .delete('/bff/admin/groups/4/users/7')
+            .delete('/admin/groups/4/users/7')
             .set('Authorization', `Bearer ${tokenFor(1)}`);
 
         expect(response.status).toBe(404);
         expect(response.body).toEqual({ error: { code: 'NOT_FOUND', message: 'Unknown group member', details: [] } });
         expect(jest.mocked(coreGroupsClient.removeUserFromGroup)).not.toHaveBeenCalled();
+    });
+});
+
+describe('MAIR-808 two-factor policy routes', () => {
+    const policy = { required: true, totp_allowed: true, passkey_allowed: false, backup_codes_allowed: true, updated_by: 1, updated_at: '2026-11-17T09:30:00Z' };
+    const update = { required: true, totp_allowed: true, passkey_allowed: false, backup_codes_allowed: true };
+    const admin = () => ({ Authorization: `Bearer ${tokenFor(1)}` });
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'Admin' })));
+    });
+
+    it('reads the policy for an administrator, reduced to the contract fields', async () => {
+        mockedGetPolicy.mockResolvedValue(axiosResponse({ ...policy, internal: 'hidden' }));
+
+        const response = await request(app).get('/admin/two-factor-policy').set(admin());
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(policy);
+    });
+
+    it('changes the policy through Core and relays the saved one', async () => {
+        mockedUpdatePolicy.mockResolvedValue(axiosResponse(policy));
+
+        const response = await request(app).put('/admin/two-factor-policy').set(admin()).send(update);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual(policy);
+        expect(mockedUpdatePolicy).toHaveBeenCalledWith(update, expect.anything());
+    });
+
+    it('refuses both routes to a non-administrator before any Core call', async () => {
+        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
+        const headers = { Authorization: `Bearer ${tokenFor(2)}` };
+
+        expect((await request(app).get('/admin/two-factor-policy').set(headers)).status).toBe(403);
+        expect((await request(app).put('/admin/two-factor-policy').set(headers).send(update)).status).toBe(403);
+        expect(mockedGetPolicy).not.toHaveBeenCalled();
+        expect(mockedUpdatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('refuses an incomplete body and an unknown mode before any Core call', async () => {
+        const incomplete = await request(app).put('/admin/two-factor-policy').set(admin()).send({ required: true });
+        const unknown = await request(app).put('/admin/two-factor-policy').set(admin()).send({ ...update, sms_allowed: true });
+
+        expect(incomplete.status).toBe(400);
+        expect(unknown.status).toBe(400);
+        expect(mockedUpdatePolicy).not.toHaveBeenCalled();
+    });
+
+    it('relays the 400 of Core (no mode left, passkeys not available yet)', async () => {
+        mockedUpdatePolicy.mockRejectedValue(coreError(400));
+
+        const response = await request(app).put('/admin/two-factor-policy').set(admin()).send({ ...update, passkey_allowed: true });
+
+        expect(response.status).toBe(400);
+    });
+
+    it('answers 502 when Core returns a policy that is not the contract', async () => {
+        mockedGetPolicy.mockResolvedValue(axiosResponse({ required: 'yes' } as never));
+
+        expect((await request(app).get('/admin/two-factor-policy').set(admin())).status).toBe(502);
     });
 });

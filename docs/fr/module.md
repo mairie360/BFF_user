@@ -12,9 +12,10 @@ Domaine fonctionnel: Identité et administration.
 
 ## Fonctions disponibles
 
-- Connexion, changement de mot de passe de première connexion et déconnexion (pas d’inscription publique: les administrateurs créent les comptes).
+- Connexion, changement de mot de passe de première connexion, mot de passe oublié (e-mail de réinitialisation, puis réinitialisation avec le jeton reçu, qui connecte l’utilisateur) et déconnexion (pas d’inscription publique: les administrateurs créent les comptes).
 - Consultation de la session avec identité, groupes et rôles via `/me` et `/session/me`.
-- Gestion des utilisateurs, rôles, groupes, membres et opérations de session sous `/bff/admin`.
+- Gestion des utilisateurs, rôles, groupes, membres et opérations de session sous `/admin`.
+- Liste des projets restés sans groupe (`/admin/projects-without-group`, lue dans BFF_Project) pour l’onglet Groupes.
 
 ## Parcours type
 
@@ -30,11 +31,11 @@ Ce dépôt contient le serveur BFF et son contrat. Les web services associés po
 
 ## Données et état actuel
 
-Core fournit les opérations d’identité et de session. Les dépôts SQL du BFF lisent aussi les utilisateurs et rôles, et réalisent certaines mutations de mots de passe et de groupes. Le parcours de première connexion utilise PostgreSQL et Redis. Les données ne sont donc pas toutes accessibles exclusivement par HTTP.
+Core API fournit l’identité, les sessions, les utilisateurs, les rôles et les groupes : le BFF n’accède ni à une base de données ni à Redis, et toute lecture ou écriture passe par Core API, première connexion comprise. Seule exception : la liste des projets sans groupe, lue dans BFF_Project.
 
 ## Périmètre et limites
 
-Les fonctions de supervision, sauvegarde, journaux applicatifs et politique système décrites dans les besoins d’administration ne sont pas garanties par ce contrat. Les accès SQL exigent un schéma compatible, notamment `group_members`; ne pas confondre ce nom avec `group_users` utilisé dans d’autres contrats.
+Les fonctions de supervision, sauvegarde, journaux applicatifs et politique système décrites dans les besoins d’administration ne sont pas garanties par ce contrat.
 
 ## Pour développer ou exploiter ce module
 

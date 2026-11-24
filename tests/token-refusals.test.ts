@@ -1,11 +1,12 @@
-import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import request from 'supertest';
 import { app } from '../src/app';
-import { JWT_SECRET, expiredToken, sessionToken } from './support/core-fixtures';
+import { expiredToken, sessionToken, useSessionPublicKey } from './support/core-fixtures';
+import { captureLogs } from './support/logs';
+import { SESSION_AUDIENCE, eddsaToken, foreignKeyPair, hs256Token } from './support/session-keys';
 
 // Token refusals on every secured operation of the published contract (MAIR-474): an operation is covered as
 // soon as it is documented. Each forged token must get its 401 from the BFF itself, before any Core API call;
@@ -22,8 +23,8 @@ const contract = JSON.parse(readFileSync(join(__dirname, '..', 'contracts', 'ope
 // Public on purpose: no session exists yet (sign-in, first password, refresh of an expired JWT, SSO) or the
 // route must always clear the cookies (logout), and the probes.
 const PUBLIC_OPERATIONS = [
-    'GET /health', 'GET /check_apis', 'POST /auth/login', 'POST /auth/force_change_password', 'POST /auth/refresh',
-    'POST /auth/logout', 'POST /auth/keycloak',
+    'GET /health', 'GET /check_apis', 'POST /auth/login', 'POST /auth/login/2fa', 'POST /auth/passkey', 'POST /auth/passkey/options', 'POST /auth/passkey/setup', 'POST /auth/passkey/setup/options', 'POST /auth/2fa/setup', 'POST /auth/2fa/confirm', 'POST /auth/force_change_password', 'POST /auth/refresh',
+    'POST /auth/logout', 'POST /auth/forgot_password', 'POST /auth/reset_password',
 ];
 
 const operations = Object.entries(contract.paths).flatMap(([path, methods]) =>
@@ -36,10 +37,6 @@ const operations = Object.entries(contract.paths).flatMap(([path, methods]) =>
 const secured = operations.filter((operation) => operation.secured);
 
 const base64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
-function signed(payload: object): string {
-    const unsigned = `${base64url({ alg: 'HS256', typ: 'JWT' })}.${base64url(payload)}`;
-    return `${unsigned}.${createHmac('sha256', JWT_SECRET).update(unsigned).digest('base64url')}`;
-}
 const genuine = sessionToken(1);
 const [genuineHeader, , genuineSignature] = genuine.split('.');
 const forgedHeaders: Array<[string, string]> = [
@@ -47,12 +44,16 @@ const forgedHeaders: Array<[string, string]> = [
     ['a token without scheme', genuine],
     ['an empty bearer', 'Bearer '],
     ['garbage', 'Bearer not.a.jwt'],
-    ['another secret', `Bearer ${sessionToken(1, 'not-the-secret-of-this-deployment-0123')}`],
+    ['another key', `Bearer ${sessionToken(1, { privateKey: foreignKeyPair.privateKey })}`],
+    // MAIR-680: a historical HS256 token is refused whatever secret signed it (bffs-lib >= 3).
+    ['an HS256 token', `Bearer ${hs256Token(1, 'not-the-secret-of-this-deployment-0123')}`],
     ['an expired token', `Bearer ${expiredToken(1)}`],
     ['alg none', `Bearer ${base64url({ alg: 'none', typ: 'JWT' })}.${base64url({ sub: '1', exp: 4_102_444_800 })}.`],
     ['a payload swapped under a valid signature', `Bearer ${genuineHeader}.${base64url({ sub: '2', exp: 4_102_444_800 })}.${genuineSignature}`],
-    ['an asymmetric algorithm', `Bearer ${base64url({ alg: 'RS256', typ: 'JWT' })}.${genuine.split('.')[1]}.${genuineSignature}`],
-    ['a well-signed token with a non-numeric subject', `Bearer ${signed({ sub: 'admin', exp: 4_102_444_800 })}`],
+    ['an RSA algorithm', `Bearer ${base64url({ alg: 'RS256', typ: 'JWT' })}.${genuine.split('.')[1]}.${genuineSignature}`],
+    ['another issuer', `Bearer ${eddsaToken(1, { claims: { iss: 'another-service' } })}`],
+    ['another audience', `Bearer ${eddsaToken(1, { claims: { aud: `${SESSION_AUDIENCE}-other` } })}`],
+    ['a well-signed token with a non-numeric subject', `Bearer ${eddsaToken('admin')}`],
 ];
 
 // Stands for Core API: counts the calls and fails them all, so a genuine token ends in a 502, never a 401.
@@ -66,7 +67,7 @@ beforeAll(async () => {
     });
     await new Promise<void>((resolve) => core.listen(0, '127.0.0.1', resolve));
     process.env.CORE_API_URL = `http://127.0.0.1:${(core.address() as AddressInfo).port}`;
-    process.env.JWT_SECRET = JWT_SECRET;
+    useSessionPublicKey();
 });
 
 afterAll(async () => {
@@ -75,8 +76,8 @@ afterAll(async () => {
 
 beforeEach(() => {
     coreCalls = 0;
-    jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    captureLogs();
+    captureLogs();
 });
 
 afterEach(() => {

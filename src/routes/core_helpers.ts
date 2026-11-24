@@ -1,14 +1,38 @@
-import { callUpstream, withoutSession, type UpstreamRequestOptions } from '@mairie360/bffs-lib';
+import { asAnonymousClient, callUpstream, type UpstreamRequestOptions } from '@mairie360/bffs-lib';
+import type { Request } from 'express';
 import type { AxiosResponse } from 'axios';
 import type {
     ForceChangePasswordView,
+    ForgotPasswordView,
     LoginResponseView,
+    LoginTwoFactorView,
     LoginView,
+    PasskeyLoginOptionsView,
+    PasskeyLoginView,
+    PasskeyRegisterOptionsView,
+    PasskeyRegisterView,
+    PasskeySetupCompletedView,
+    PasskeySetupView,
+    PasskeyRenameView,
+    PasskeyView,
     RefreshResponseView,
+    ResetPasswordResponseView,
+    ResetPasswordView,
+    SetupCompletedView,
+    SetupConfirmView,
+    SetupTokenView,
+    TwoFactorRequiredView,
+    TwoFactorSetupView,
 } from '@mairie360/core-api-openapi/model';
-import { coreAuthClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
-import type { KeycloakLoginView } from '../clients/coreClient';
+import { coreAuthClient, corePasskeysClient, coreSessionsClient, coreUsersClient } from '../clients/coreClient';
 import type { AboutResponseView } from '../openapi-registry';
+
+/**
+ * The anonymous client a public auth route acts for. Its address (`req.ip`, resolved behind `TRUST_PROXY`) is relayed
+ * to Core as `X-Forwarded-For` (`asAnonymousClient`), so Core's per-IP budgets count that client, not this BFF's pod
+ * shared by every user (MAIR-679).
+ */
+export type AnonymousClient = Pick<Request, 'ip' | 'socket' | 'app'>;
 
 export function isLoginResponseView(value: unknown): value is LoginResponseView {
     return (
@@ -19,8 +43,94 @@ export function isLoginResponseView(value: unknown): value is LoginResponseView 
     );
 }
 
-export async function loginUser(loginView: LoginView): Promise<AxiosResponse<LoginResponseView>> {
-    return coreAuthClient.login(loginView, withoutSession('CORE_API'));
+/**
+ * Core's 202 (MAIR-805, MAIR-808): no session yet. `2fa_required` carries the token of the second step of a protected
+ * account, `2fa_setup_required` the token of the enrolment the mandatory policy imposes.
+ */
+export function isTwoFactorRequired(value: unknown): value is TwoFactorRequiredView {
+    return (
+        typeof value === 'object'
+        && value !== null
+        && 'status' in value
+        && (value.status === '2fa_required' || value.status === '2fa_setup_required')
+        && 'token' in value
+        && typeof value.token === 'string'
+    );
+}
+
+export async function loginUser(
+    loginView: LoginView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView | TwoFactorRequiredView>> {
+    return coreAuthClient.login(loginView, asAnonymousClient('CORE_API', client));
+}
+
+/** Second step of a protected account's login: the login token plus a TOTP or backup code opens the session. */
+export async function loginUserTwoFactor(
+    view: LoginTwoFactorView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.loginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey sign-in, step 1: a discoverable challenge, no account named. */
+export async function startPasskeyLogin(client: AnonymousClient): Promise<AxiosResponse<PasskeyLoginOptionsView>> {
+    return coreAuthClient.passkeyLoginOptions(asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey sign-in, step 2: the signed challenge opens the session, answered like a login. */
+export async function finishPasskeyLogin(
+    view: PasskeyLoginView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<LoginResponseView>> {
+    return coreAuthClient.passkeyLogin(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey creation by the enrolment token, step 1: the `2fa_setup_required` token yields the challenge. */
+export async function startPasskeyEnrolment(
+    view: SetupTokenView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<PasskeyRegisterOptionsView>> {
+    return coreAuthClient.passkeySetupOptions(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey creation by the enrolment token, step 2: the passkey satisfies the policy and opens the session. */
+export async function finishPasskeyEnrolment(
+    view: PasskeySetupView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<PasskeySetupCompletedView>> {
+    return coreAuthClient.passkeySetup(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Passkey creation by a signed-in agent, step 1: the challenge, with the caller's session. */
+export async function startPasskeyRegistration(caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyRegisterOptionsView>> {
+    return corePasskeysClient.passkeyRegisterOptions(caller);
+}
+
+/** Passkey creation by a signed-in agent, step 2: stores the passkey under the label. */
+export async function finishPasskeyRegistration(view: PasskeyRegisterView, caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyView>> {
+    return corePasskeysClient.registerPasskey(view, caller);
+}
+
+/** Rename of one of the caller's passkeys (MAIR-811): the name the agent keeps after the creation. */
+export async function renamePasskey(passkeyId: number, view: PasskeyRenameView, caller: UpstreamRequestOptions): Promise<AxiosResponse<PasskeyView>> {
+    return corePasskeysClient.renameMyPasskey(passkeyId, view, caller);
+}
+
+/** Mandatory enrolment, step 1 (MAIR-808): the `2fa_setup_required` token yields the secret to register. */
+export async function startLoginEnrolment(
+    view: SetupTokenView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<TwoFactorSetupView>> {
+    return coreAuthClient.setupLoginTwoFactor(view, asAnonymousClient('CORE_API', client));
+}
+
+/** Mandatory enrolment, step 2 (MAIR-808): the first code activates the factor and opens the session. */
+export async function confirmLoginEnrolment(
+    view: SetupConfirmView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<SetupCompletedView>> {
+    return coreAuthClient.confirmLoginTwoFactor(view, asAnonymousClient('CORE_API', client));
 }
 
 /**
@@ -28,16 +138,17 @@ export async function loginUser(loginView: LoginView): Promise<AxiosResponse<Log
  * its JWT middleware (>= 1.2.0), so no session is forwarded and an expired JWT is not needed.
  * Core >= 2.0.0 rotates the refresh token: the one sent stops working and the body carries its replacement.
  */
-export async function refreshSession(refreshToken: string): Promise<AxiosResponse<RefreshResponseView>> {
-    return coreSessionsClient.refresh({ refresh_token: refreshToken }, withoutSession('CORE_API'));
+export async function refreshSession(refreshToken: string, client: AnonymousClient): Promise<AxiosResponse<RefreshResponseView>> {
+    return coreSessionsClient.refresh({ refresh_token: refreshToken }, asAnonymousClient('CORE_API', client));
 }
 
 /**
- * Revokes the caller's own Core session (POST /api/v1/sessions/revoke): Core checks that the refresh
- * token belongs to the JWT's user, then rejects that JWT on its next session check.
+ * Ends the session of a refresh token, without a JWT (POST /api/v1/auth/logout, MAIR-692): works after the
+ * access JWT expired. Called with `asAnonymousClient('CORE_API', req)`: Core rate-limits it per client
+ * address (refresh budget). Core answers the same 204 whether the token matched a session or not.
  */
-export async function revokeSession(refreshToken: string, caller: UpstreamRequestOptions): Promise<void> {
-    await coreSessionsClient.revoke({ refresh_token: refreshToken }, caller);
+export async function logoutWithRefreshToken(refreshToken: string, client: UpstreamRequestOptions): Promise<void> {
+    await coreAuthClient.logoutWithRefreshToken({ refresh_token: refreshToken }, client);
 }
 
 /**
@@ -48,17 +159,30 @@ export async function logoutSession(caller: UpstreamRequestOptions): Promise<voi
     await coreSessionsClient.logout(caller);
 }
 
-/** Keycloak sign-in: POST /api/v1/auth/keycloak, public on Core API like the password login. */
-export async function keycloakLoginUser(
-    keycloakLoginView: KeycloakLoginView,
-): Promise<AxiosResponse<LoginResponseView>> {
-    return coreAuthClient.keycloakLogin(keycloakLoginView, withoutSession('CORE_API'));
-}
-
 export async function forceChangeUserPassword(
     forceChangePasswordView: ForceChangePasswordView,
+    client: AnonymousClient,
 ): Promise<void> {
-    await coreAuthClient.forceChangePassword(forceChangePasswordView, withoutSession('CORE_API'));
+    await coreAuthClient.forceChangePassword(forceChangePasswordView, asAnonymousClient('CORE_API', client));
+}
+
+/**
+ * Asks Core to e-mail a reset link (POST /api/v1/auth/forgot_password, public). Core answers the same empty 200
+ * whether the e-mail matches an account or not.
+ */
+export async function requestPasswordReset(forgotPasswordView: ForgotPasswordView, client: AnonymousClient): Promise<void> {
+    await coreAuthClient.forgotPassword(forgotPasswordView, asAnonymousClient('CORE_API', client));
+}
+
+/**
+ * Consumes the e-mailed reset token (POST /api/v1/auth/reset_password, public): Core saves the new password,
+ * revokes the other sessions and opens one, answered like a login (JWT in `Authorization`, refresh token in the body).
+ */
+export async function resetUserPassword(
+    resetPasswordView: ResetPasswordView,
+    client: AnonymousClient,
+): Promise<AxiosResponse<ResetPasswordResponseView | TwoFactorRequiredView>> {
+    return coreAuthClient.resetPassword(resetPasswordView, asAnonymousClient('CORE_API', client));
 }
 
 /**

@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { type EddsaTokenOptions, eddsaToken } from './session-keys';
 import { AxiosHeaders, type AxiosResponse, type RawAxiosResponseHeaders } from 'axios';
 import { getCoreAPIMairie360 } from '@mairie360/core-api-openapi/endpoints/coreAPIMairie360';
 import type {
@@ -43,7 +43,7 @@ export const groupMembers = (users: number[]): GetGroupUsersResultView => ({ use
 export const postGroupResult = (id: number): PostGroupResultView => ({ id });
 
 export function role(id: number, overrides: Partial<Role> = {}): Role {
-  return { id, name: `Rôle ${id}`, description: `Description du rôle ${id}`, ...overrides };
+  return { id, name: `Rôle ${id}`, description: `Description du rôle ${id}`, can_be_deleted: true, modules: ['dashboard'], ...overrides };
 }
 
 export const rolesResult = (roles: Role[]): AdminGetRolesResultView => ({ roles });
@@ -75,17 +75,24 @@ export function meResponse(overrides: Partial<GetMeResponseView> = {}): GetMeRes
     roles: role ? [role] : [],
     status: 'active',
     groups: [group(1)],
+    // MAIR-916: the modules the role opens, in navigation order (Admin opens every one).
+    modules: role === 'Admin' ? ['dashboard', 'projects', 'calendar', 'messages', 'training', 'admin', 'settings'] : ['dashboard'],
     ...overrides,
   };
 }
 
 export function userResponse(overrides: Partial<GetUserResponseView> = {}): GetUserResponseView {
-  return { ...meResponse(), is_archived: false, ...overrides };
+  // `modules` is only answered by /user/me/ (MAIR-916).
+  const user: Partial<GetMeResponseView> = meResponse();
+  delete user.modules;
+  return { ...(user as GetMeResponseView), is_archived: false, ...overrides };
 }
 
 export const loginResponse = (refresh_token = 'opaque-refresh-token'): LoginResponseView => ({ refresh_token });
 
 export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRow {
+  // Core >= 2.1.0 (MAIR-564): a user holds one role, `role`; the deprecated `roles` holds at most that one.
+  const role = overrides.role !== undefined ? overrides.role : { id: 1, name: 'Admin' };
   return {
     id: 1,
     first_name: 'Admin',
@@ -93,8 +100,14 @@ export function adminUserRow(overrides: Partial<AdminUserRow> = {}): AdminUserRo
     email: 'admin@mairie360.fr',
     phone_number: null,
     status: 'active',
+    account_status: 'active',
     is_archived: false,
-    roles: [{ id: 1, name: 'Admin' }],
+    role,
+    roles: role ? [role] : [],
+    active_sessions: 0,
+    last_login_at: null,
+    two_factor: { methods: [], last_verified_at: null },
+    service: null,
     ...overrides,
   };
 }
@@ -104,19 +117,19 @@ export function adminUsersPage(users: AdminUserRow[], overrides: Partial<AdminLi
   return { users, page: 1, page_size: 20, total: users.length, total_pages: users.length === 0 ? 0 : 1, ...overrides };
 }
 
-export const JWT_SECRET = 'contract-test-secret';
-
-/** JWT HS256 signé avec JWT_SECRET : `requireAdmin` le vérifie localement, Core API (simulée) le reçoit tel quel. */
-export function sessionToken(userId: number, secret = JWT_SECRET, expiresIn = 3_600): string {
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ sub: String(userId), exp: Math.floor(Date.now() / 1000) + expiresIn })).toString('base64url');
-  const signature = createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
-  return `${header}.${payload}.${signature}`;
+/**
+ * EdDSA session token signed like Core signs it (MAIR-680): `requireSession` / `requireAdmin` verify it locally
+ * with `JWT_PUBLIC_KEY`, Core API (mocked) receives it unchanged. `privateKey` signs it with another key.
+ */
+export function sessionToken(userId: number, options: EddsaTokenOptions = {}): string {
+  return eddsaToken(userId, options);
 }
 
-export const expiredToken = (userId: number) => sessionToken(userId, JWT_SECRET, -60);
+export const expiredToken = (userId: number) => sessionToken(userId, { expiresIn: -60 });
 
 /** Contrat Core API reconstruit depuis le paquet installé : le BFF n'appelle que ses opérations. */
 export function loadCoreApiContract(): OpenApiContract {
   return loadOrvalContract('@mairie360/core-api-openapi');
 }
+
+export { JWT_PUBLIC_KEY, useSessionPublicKey } from './session-keys';

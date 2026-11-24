@@ -1,6 +1,6 @@
 import { asCaller, callUpstream, noStore, requireSession } from '@mairie360/bffs-lib';
 import { z } from 'zod';
-import { CoreApiNotConfigured, ErrorResponse, registry } from '../openapi-registry';
+import { CoreApiNotConfigured, CoreApiRateLimited, ErrorResponse, registry } from '../openapi-registry';
 import { Request, Response, Router } from 'express';
 import { CORE_LARGEST_PAGE, coreGroupsClient, coreUsersClient } from '../clients/coreClient';
 import { whitelist } from './admin_helpers';
@@ -8,6 +8,7 @@ import { whitelist } from './admin_helpers';
 type UserWithRoles = {
     roles?: unknown;
     role?: unknown;
+    modules?: unknown;
 };
 
 const router = Router();
@@ -21,18 +22,24 @@ export const SessionResponseSchema = registry.register('SessionResponse', z.obje
     }),
     groups: z.array(z.object({ id: z.number(), name: z.string(), owner_id: z.number(), description: z.string().nullable().optional() })),
     roles: z.array(z.union([z.string(), z.object({ id: z.number().optional(), name: z.string() })])),
+    // MAIR-916: modules the role of the session opens, in navigation order; the shared navigation hides the others.
+    modules: z.array(z.string()).optional().openapi({
+        description: 'Modules the role of the session opens (`dashboard`, `projects`, `calendar`, `messages`, `training`, `admin`, `settings`), in navigation order. Absent when Core does not send them.',
+        example: ['dashboard', 'projects', 'admin'],
+    }),
 }));
 for (const path of ['/me', '/session/me']) {
-    registry.registerPath({ method: 'get', path, responses: {
+    registry.registerPath({ method: 'get', path, summary: 'Get the identity, groups and roles of the session', responses: {
         200: { description: 'Identity, groups and roles of the session (contract fields only)', content: { 'application/json': { schema: SessionResponseSchema } } },
         401: { description: 'Missing `Authorization: Bearer` header, or invalid or expired session', content: { 'application/json': { schema: ErrorResponse } } },
+        429: CoreApiRateLimited,
         502: { description: 'Core API unavailable, failed or answered another error', content: { 'application/json': { schema: ErrorResponse } } },
         503: CoreApiNotConfigured,
     } });
 }
 
 // Per route, not router.use(): this router is also mounted at `/`, where a router-level guard would answer
-// 401 to every unknown path instead of 404. `requireSession` verifies the token (HS256 with JWT_SECRET, expiry):
+// 401 to every unknown path instead of 404. `requireSession` verifies the token (EdDSA with JWT_PUBLIC_KEY, MAIR-680, expiry):
 // a forged or expired one gets its 401 here, before any Core call.
 router.get('/me', noStore, requireSession, async (req: Request, res: Response) => {
     const options = asCaller('CORE_API', req);
@@ -52,6 +59,7 @@ router.get('/me', noStore, requireSession, async (req: Request, res: Response) =
         user: userResponse.data,
         groups: groupsResponse.data?.groups,
         roles,
+        ...(Array.isArray(userWithRoles.modules) ? { modules: userWithRoles.modules } : {}),
     }));
 });
 
