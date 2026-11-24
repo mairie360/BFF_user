@@ -346,7 +346,7 @@ describe('POST /auth/refresh', () => {
         expect(response.headers.authorization).toBeUndefined();
         expect(response.headers['access-control-expose-headers']).toBeUndefined();
         expect(response.headers['set-cookie'][0]).toMatch(/^accessToken=renewed\.payload\.signature;.*HttpOnly/);
-        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything(), undefined);
     });
 
     it('replaces the refreshToken cookie with the token rotated by Core', async () => {
@@ -384,7 +384,7 @@ describe('POST /auth/refresh', () => {
         const response = await request(app).post('/auth/refresh').set('Cookie', `refreshToken=${REFRESH_TOKEN}`);
 
         expect(response.status).toBe(200);
-        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything(), undefined);
     });
 
     it('prefers the body refresh token over the cookie', async () => {
@@ -392,7 +392,7 @@ describe('POST /auth/refresh', () => {
 
         await request(app).post('/auth/refresh').set('Cookie', 'refreshToken=cookie-token').send({ refresh_token: REFRESH_TOKEN });
 
-        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything());
+        expect(mockedRefreshSession).toHaveBeenCalledWith(REFRESH_TOKEN, expect.anything(), undefined);
     });
 
     it('rejects a request without refresh token in the body nor the cookie with 400', async () => {
