@@ -87,8 +87,7 @@ inhabituelle ») relay Core's report, pending alert and acknowledgement; `GET /a
 alerts (MAIR-773) ».
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
-`GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
-`PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,
+`GET /api/v1/admin/users/`, group updates from `PATCH /api/v1/groups/{groupId}/`,
 group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing filtered by `group_id` for
 the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
 which validates the one-time token, saves the password and consumes the token. The admin role of the
@@ -305,8 +304,10 @@ The collection is split in two kinds of checks, both on the BFF's own routes:
   `force_change_password`, token single use), sign-in with cookies only (MAIR-397) and the `accessToken`
   cookie ignored as a credential (MAIR-429), public card, refresh from the cookie with rotation, admin
   update / listing, roles and groups round trips, the account as administrator listing and revoking its own
-  session, password reset by the administrator (sessions revoked) and by e-mail (the reset link is read
-  from the fake Resend journal `/__admin/requests`), logout, deletion (404 afterwards, sign-in refused).
+  session, password reset by e-mail (the reset link is read from the fake Resend journal
+  `/__admin/requests`), logout, deletion (404 afterwards, sign-in refused). An administrator never changes the
+  password of an account: `PATCH /admin/users/{userId}/password` is gone (404) and an admin update drops a
+  `password`; the agent changes it from Settings or through the e-mailed link.
 
 The seeded accounts have no known password and the Postman sandbox cannot sign EdDSA (MAIR-680):
 `integration_test.sh` signs their JWTs like Core with the run's key and the compose file passes them with `--env-var`

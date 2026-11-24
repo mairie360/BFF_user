@@ -206,12 +206,16 @@ async function enrolmentJourney() {
   const stamp = `${Date.now()}.${randomBytes(3).toString('hex')}`;
   const email = `passkey.journey.${stamp}@mairie360.test`;
   const password = `pw-${randomBytes(9).toString('hex')}`;
-  const created = await bff('POST', '/admin/users', { token: JWT_ADMIN, body: { email, first_name: 'Camille', last_name: 'Passkey', password: `pw-${randomBytes(9).toString('hex')}` } });
+  const temporary = `pw-${randomBytes(9).toString('hex')}`;
+  const created = await bff('POST', '/admin/users', { token: JWT_ADMIN, body: { email, first_name: 'Camille', last_name: 'Passkey', password: temporary } });
   if (!check('the account is created', created.status === 201 && Number.isInteger(created.json?.id), `${created.status} ${created.text}`)) return;
   const userId = created.json.id;
   try {
-    const reset = await bff('PATCH', `/admin/users/${userId}/password`, { token: JWT_ADMIN, body: { new_password: password } });
-    check('its first connection is ended by the administrator (204)', reset.status === 204, `${reset.status} ${reset.text}`);
+    const first = await bff('POST', '/auth/login', { body: { email, password: temporary, device_info: 'passkey-journey' } });
+    const changed = first.status === 412
+      ? await bff('POST', '/auth/force_change_password', { body: { token: first.json?.token, new_password: password } })
+      : first;
+    check('the agent ends its first connection with a password of its own (412, then 204)', first.status === 412 && changed.status === 204, `${first.status} ${changed.status} ${changed.text}`);
 
     const mandatory = await setPolicy({ ...OPTIONAL_POLICY, required: true, passkey_allowed: true });
     check('the administrator makes the second factor mandatory and allows passkeys', mandatory.status === 200 && mandatory.json?.passkey_allowed === true, `${mandatory.status} ${mandatory.text}`);

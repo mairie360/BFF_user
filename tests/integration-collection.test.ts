@@ -18,8 +18,9 @@ const contract = JSON.parse(readFileSync(join(__dirname, '..', 'contracts', 'ope
   paths: Record<string, Record<string, unknown>>;
 };
 
-// Routes the collection calls on the BFF that are not operations of the contract (served by the app anyway).
-const OUTSIDE_CONTRACT = ['GET /openapi.json', 'GET /newman/unknown-route'];
+// Routes the collection calls on the BFF that are not operations of the contract (served by the app anyway,
+// or removed on purpose: an administrator never changes the password of an account, the route answers 404).
+const OUTSIDE_CONTRACT = ['GET /openapi.json', 'GET /newman/unknown-route', 'PATCH /admin/users/{}/password'];
 
 type Flat = { name: string; folder: string; request: Request; tests: string[] };
 
