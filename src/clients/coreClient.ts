@@ -51,7 +51,6 @@ export const coreAdminUsersClient = {
     adminPostUser: coreApi.adminPostUser,
     adminPatchUser: coreApi.adminPatchUser,
     adminDeleteUser: coreApi.adminDeleteUser,
-    adminResetUserPassword: coreApi.adminResetUserPassword,
     adminResetUserTwoFactor: coreApi.adminResetUserTwoFactor,
     adminRevokeUserSessions: coreApi.adminRevokeUserSessions,
     adminRevokeUserSession: coreApi.adminRevokeUserSession,

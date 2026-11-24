@@ -1049,7 +1049,6 @@ describe('BFF User with a contract-driven Core API mock', () => {
         reply: { body: historyResult([session('s-1', { revoked_at: '2026-09-16T08:00:00Z' })]) }, status: 200, responseBody: historyResult([session('s-1', { revoked_at: '2026-09-16T08:00:00Z' })]),
       },
       // MAIR-537: the two routes of the table that used to be tested with a mocked client only.
-      { route: 'PATCH /admin/users/7/password', body: { new_password: 'MotDePasse123' }, upstream: called('PATCH', coreApiUrls.getAdminResetUserPasswordUrl(7)), template: '/api/v1/admin/users/{userId}/password', reply: { status: 204 }, status: 204 },
       { route: 'PATCH /admin/groups/5', body: { name: 'Culture' }, upstream: called('PATCH', coreApiUrls.getPatchGroupUrl(5)), template: CORE.group, reply: { body: group(5) }, status: 200, responseBody: { group: group(5) } },
       { route: 'POST /admin/sessions/revoke', body: { refresh_token: 'opaque-refresh-token' }, upstream: called('POST', coreApiUrls.getRevokeUrl()), template: CORE.sessionsRevoke, reply: { status: 200 }, status: 200 },
       // MAIR-916: the modules of a role are relayed; MAIR-923: services, service of an agent, colour of a group.

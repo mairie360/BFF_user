@@ -17,7 +17,7 @@ Les sections ci-dessous sont un aide-mémoire en anglais ; leur version françai
 
 ## Quick start
 
-Node.js 24 and read access to the GitHub Packages of `mairie360` (`NODE_AUTH_TOKEN`, `read:packages`) are needed for the private `@mairie360/*` packages.
+Node.js 26 and read access to the GitHub Packages of `mairie360` (`NODE_AUTH_TOKEN`, `read:packages`) are needed for the private `@mairie360/*` packages.
 
 ```bash
 export NODE_AUTH_TOKEN=<token with read:packages>
@@ -55,7 +55,6 @@ Generated contract: [`contracts/openapi.json`](contracts/openapi.json) (36 opera
 | `POST` | `/admin/users` | Create a user through Core API |
 | `PATCH` | `/admin/users/{userId}` | Update a user through Core API |
 | `DELETE` | `/admin/users/{userId}` | Delete a user for good through Core API |
-| `PATCH` | `/admin/users/{userId}/password` | Change the password and revoke the user sessions |
 | `POST` | `/admin/users/{userId}/roles` | Add a role to a user through Core API |
 | `DELETE` | `/admin/users/{userId}/roles/{roleId}` | Remove a role from a user through Core API |
 | `GET` | `/admin/roles` | List the admin roles through Core API |

@@ -30,7 +30,7 @@ npm run contracts:check     # fail if either is stale (CI gate)
 ```
 
 CI (`.github/workflows/contracts.yml`) runs `npm run contracts:check` then
-`npm test -- --runInBand` on Node 24.22.1 (`cicd.yml` uses `node_version: "24.22.1"` too). `cicd.yml` delegates to the reusable
+`npm test -- --runInBand` on Node 26.13.1 (`cicd.yml` uses `node_version: "26.13.1"` too). `cicd.yml` delegates to the reusable
 `mairie360/CICD` workflow.
 
 ### Private dependencies
@@ -87,8 +87,7 @@ inhabituelle ») relay Core's report, pending alert and acknowledgement; `GET /a
 alerts (MAIR-773) ».
 
 The BFF has **no database or Redis access**: the admin user list/search + pagination comes from
-`GET /api/v1/admin/users/`, the admin password reset (which also revokes the sessions) from
-`PATCH /api/v1/admin/users/{userId}/password`, group updates from `PATCH /api/v1/groups/{groupId}/`,
+`GET /api/v1/admin/users/`, group updates from `PATCH /api/v1/groups/{groupId}/`,
 group membership from `/api/v1/groups/{groupId}/users/` (+ the admin listing filtered by `group_id` for
 the member details), and the first-sign-in password flow from `POST /api/v1/auth/force_change_password`,
 which validates the one-time token, saves the password and consumes the token. The admin role of the
@@ -104,8 +103,8 @@ production image runs `node dist/index.js` and nothing registers `ts-node` at ru
 
 `src/index.ts` starts with `import 'dotenv/config'` and, only when run as the entry point
 (`require.main === module`), calls `assertStartupConfiguration()`: `assertConfigured(['CORE_API'])` + a
-session key check (`sessionKeysFromEnv()` of the lib: `JWT_PUBLIC_KEY`, or `JWT_SECRET` during the HS256
-transition; an invalid PEM refuses too), so a misconfigured instance refuses to start. Tests import the app without it.
+session key check (`sessionKeysFromEnv()` of the lib: `JWT_PUBLIC_KEY` only, bffs-lib >= 3 ignores `JWT_SECRET`;
+an invalid PEM refuses too), so a misconfigured instance refuses to start. Tests import the app without it.
 
 ### App and entry point (MAIR-430)
 
@@ -198,7 +197,7 @@ and the legacy `/me` resolve.
   `{ message, session_revoked }`.
 - **`/admin/*`**: `requireAdmin` in `src/routes/admin.ts` verifies the caller's JWT
   *locally* with the lib's `verifySessionToken` — EdDSA signature against Core's public key `JWT_PUBLIC_KEY` (MAIR-680:
-  `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 only while `JWT_SECRET` is set), `exp`, `sub` — then reads the roles from Core
+  `kid`, `iss` `mairie360-core`, `aud` `mairie360`; HS256 always refused since bffs-lib 3), `exp`, `sub` — then reads the roles from Core
   `GET /api/v1/user/me/` and requires an administrator among `roles` (Core ≥ 2.0.0; `role` is only the first one), recognised with the lib's `isAdminRole` (`Admin`, `Administrateur`, `ROLE_ADMIN`, … a custom role never is). A missing session key answers 503 (declared on every admin route). It is a `router.use` guard on **every**
   admin route, before parameter validation: Core API v1.1.1 has its `AdminMiddleware`
   commented out, so Core-proxied admin routes must not rely on Core to check the role.
@@ -251,10 +250,8 @@ never add span attributes holding request values (ids, URLs, bodies, headers). T
 ## Environment variables
 
 `CORE_API_URL` (+ optional `CORE_API_PORT`; required, no default), `JWT_PUBLIC_KEY` (MAIR-680: Core's Ed25519
-public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required to verify Core's EdDSA tokens, while during the HS256
-transition `JWT_SECRET` alone also passes the startup check; Core alone
-signs the session tokens), `JWT_SECRET` (HS256 transition only: while it is set, HS256 tokens signed with it are still
-accepted; remove it once `JWT_PUBLIC_KEY` is deployed), `COOKIE_DOMAIN` (omit for host-only
+public key as PEM, several blocks during a rotation, `\n`-escaped line breaks accepted; required, the BFF does not
+start without it; Core alone signs the session tokens; bffs-lib >= 3 refuses HS256 tokens and ignores `JWT_SECRET`), `COOKIE_DOMAIN` (omit for host-only
 cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`, unset = none) and
 `AUTH_RATE_LIMIT_{ENABLED,WINDOW_MS,MAX,IP_MAX,FORGOT_PASSWORD_MAX}` (see `src/middleware/rateLimit.ts`).
 
@@ -263,7 +260,7 @@ cookie), `PORT` (default 4000), `NODE_ENV`, `TRUST_PROXY` (Express `trust proxy`
 `docker compose up` uses `development.Dockerfile` (`npm run start`, i.e. `tsx watch`; `develop.watch`
 sync on `src/`) and brings up postgres, redis, liquibase migrations, the Core API image, a fake Resend
 (WireMock, `tests/fake-resend/`, journal on `localhost:8025/__admin/requests`: Core ≥ MAIR-522 sends the password
-e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:24.22.1-alpine` (pinned by digest, like `development.Dockerfile`)
+e-mails through Resend and refuses to start without it) and nginx. The production `Dockerfile` is a `node:26.13.1-alpine` (pinned by digest, like `development.Dockerfile`)
 multi-stage build running `node dist/index.js` with the heap capped at 180 MB for a 256 MB K8s limit.
 
 ## Tests with a contract-driven Core API mock
@@ -307,8 +304,10 @@ The collection is split in two kinds of checks, both on the BFF's own routes:
   `force_change_password`, token single use), sign-in with cookies only (MAIR-397) and the `accessToken`
   cookie ignored as a credential (MAIR-429), public card, refresh from the cookie with rotation, admin
   update / listing, roles and groups round trips, the account as administrator listing and revoking its own
-  session, password reset by the administrator (sessions revoked) and by e-mail (the reset link is read
-  from the fake Resend journal `/__admin/requests`), logout, deletion (404 afterwards, sign-in refused).
+  session, password reset by e-mail (the reset link is read from the fake Resend journal
+  `/__admin/requests`), logout, deletion (404 afterwards, sign-in refused). An administrator never changes the
+  password of an account: `PATCH /admin/users/{userId}/password` is gone (404) and an admin update drops a
+  `password`; the agent changes it from Settings or through the e-mailed link.
 
 The seeded accounts have no known password and the Postman sandbox cannot sign EdDSA (MAIR-680):
 `integration_test.sh` signs their JWTs like Core with the run's key and the compose file passes them with `--env-var`
@@ -362,8 +361,8 @@ working Core. Every `*_test.sh` sources `stack_secrets.sh` (MAIR-474, MAIR-680):
 anywhere), `ADMIN_JWT` (`sub=1`, 4 h, EdDSA like Core) for the ZAP replacer and k6, and `sign_jwt` / `sign_jwt_file`
 (node, for the thousands of k6 tokens: k6 cannot sign Ed25519) for the other callers; the compose files refuse to
 start without them, and no key or token is committed. The core-api image of the stacks must be one that signs EdDSA
-(`dev-690f32b` or later). The dev `docker-compose.yml` keeps `JWT_SECRET: b"secret"` (HS256 transition) unless the
-shell provides the key pair (`source ./stack_secrets.sh` before `docker compose up`). They
+(`dev-690f32b` or later). The dev `docker-compose.yml` gives the BFF no `JWT_SECRET`: the shell must provide the key pair
+(`source ./stack_secrets.sh` before `docker compose up`), otherwise Core signs HS256 tokens the BFF refuses. They
 drop the volumes before and after a run, and `performance_test.sh` pins every service of the stack to
 the first `min(PERF_CPUS, nproc)` CPUs (4 by default, like the CI runner). `.zap/rules.tsv` no longer
 ignores `100000`: a 500 / 502 answered during the scan fails it. In `crud`, handlers run path by
@@ -406,3 +405,19 @@ for that commit. `cicd.yml`, `promote-staging.yml` and `promote-prod.yml` pin th
 ## Shutdown
 
 `src/index.ts` wraps the server in the bffs-lib `gracefulShutdown`. On SIGTERM it drains the running requests, ends the SSE streams, flushes the telemetry and exits 0; after 10 s it exits 1. The image runs `tini` as PID 1 (`ENTRYPOINT`) so the signal reaches Node. The pod's `preStop` (5 s) and grace period (30 s) live in `Devops/Deploiment`. `tests/mair-682-graceful-shutdown.test.ts` starts the real entry point and sends it SIGTERM.
+
+## Agent dev loop
+
+`./agent_dev.sh` lets an agent run and observe the dev stack from a shell, without attaching to a terminal. `compose.agent.yml` is the overlay it adds (Postgres on `127.0.0.1:5432`, Redis on `127.0.0.1:6379`, bounded logs).
+
+```bash
+./agent_dev.sh up                 # build + start detached, wait for healthy, start `docker compose watch` in the background
+./agent_dev.sh wait               # after an edit: block until http://localhost:4000/health answers again (prints the app logs on timeout)
+./agent_dev.sh logs bff-user 100        # last 100 log lines (compile errors show up here)
+./agent_dev.sh sql "SELECT id, email FROM users LIMIT 5"
+./agent_dev.sh redis KEYS '*'
+./agent_dev.sh http GET /path     # authenticated call (admin EdDSA JWT, sub=1, signed with the stack's Ed25519 key)
+./agent_dev.sh status | restart | down [-v]
+```
+
+The loop is: edit, `wait`, `http`/`sql` to check the behaviour, `logs` when it fails. The watcher state and the stack's Ed25519 key pair (from `stack_secrets.sh`, reused until `down -v`) live in `.agent/` (gitignored). Needs `NODE_AUTH_TOKEN` exported (GitHub Packages), like `docker compose build`. Core API runs in the same stack on port 3000.

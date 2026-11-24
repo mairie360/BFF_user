@@ -102,9 +102,6 @@ const GroupPatchBody = z.object({
 }).refine((value) => value.name !== undefined || value.description !== undefined || value.color !== undefined, {
     message: 'At least one field is required',
 }).openapi('AdminGroupPatchBody');
-const UserPasswordResetBody = z.object({
-    new_password: z.string().min(PASSWORD_MIN_LENGTH).max(255).openapi({ example: 'Temporary-Ecole-Pont-2026' }),
-}).openapi('AdminUserPasswordResetBody');
 // Request bodies mirror the Core API views they are forwarded to (@mairie360/core-api-openapi); unknown
 // fields are stripped. The examples are valid values, so a generated request (Swagger UI, ZAP) is accepted.
 const atLeastOneField = (value: Record<string, unknown>) => Object.values(value).some((field) => field !== undefined);
@@ -125,8 +122,8 @@ const UserCreateBody = z.object({
     phone_number: PhoneNumber.nullable().optional(),
     phone_country: PhoneCountry.nullable().optional(),
 }).openapi('AdminUserCreateBody');
-// The password is not accepted here: Core writes it without any length check, the
-// PATCH /admin/users/{userId}/password route enforces the policy and revokes the sessions.
+// The password is not accepted here: an administrator never changes the password of an account. The agent
+// changes it from Settings or through the e-mailed reset link.
 const UserPatchBody = z.object({
     email: Email.nullable().optional().openapi({ example: 'scan-target@mairie360.fr' }),
     first_name: PersonName.nullable().optional().openapi({ example: 'Scan' }),
@@ -195,7 +192,6 @@ registry.register('AdminUserRoleParams', UserRoleParams);
 registry.register('AdminGroupUserParams', GroupUserParams);
 registry.register('AdminUserListQuery', UserListQuery);
 registry.register('AdminGroupPatchBody', GroupPatchBody);
-registry.register('AdminUserPasswordResetBody', UserPasswordResetBody);
 registry.register('AdminUserCreateBody', UserCreateBody);
 registry.register('AdminUserPatchBody', UserPatchBody);
 registry.register('AdminUserRoleBody', UserRoleBody);
@@ -320,7 +316,7 @@ async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, 
         throw new HttpError(401, INVALID_SESSION_MESSAGE);
     }
 
-    // Core's public key `JWT_PUBLIC_KEY` (MAIR-680), plus `JWT_SECRET` while the HS256 transition lasts.
+    // Core's public key `JWT_PUBLIC_KEY` (MAIR-680); since bffs-lib 3, `JWT_SECRET` is ignored.
     let keys: SessionKeys | undefined;
     try {
         keys = sessionKeysFromEnv();
@@ -334,7 +330,7 @@ async function requireRole(req: Request, isAllowed: (role: unknown) => boolean, 
         throw new HttpError(503, 'The administrator session check is not configured.');
     }
 
-    // EdDSA signature with Core's key (`kid`, `iss`, `aud`), or HS256 only while JWT_SECRET is set, expiry and a
+    // EdDSA signature with Core's key (`kid`, `iss`, `aud`; HS256 is refused), expiry and a
     // positive integer `sub` (`@mairie360/bffs-lib`, the checks of Core): a forged or expired token gets its 401
     // without any Core call, and never learns which check failed.
     verifySessionToken(token, keys);
@@ -455,40 +451,6 @@ router.patch('/users/:userId', async (req: Request, res: Response) => {
     try {
         const response = await coreAdminUsersClient.adminPatchUser(userId, body, asCaller('CORE_API', req));
         return forwardCoreResponse(res, response);
-    } catch (error) {
-        throw upstreamError('CORE_API', error, WRITE_STATUSES);
-    }
-});
-
-registry.registerPath({
-    method: 'patch',
-    path: '/admin/users/{userId}/password',
-    tags: ['Administration'],
-    summary: 'Change the password and revoke the user sessions',
-    request: {
-        params: UserIdParams,
-        body: {
-            required: true,
-            content: { 'application/json': { schema: UserPasswordResetBody } },
-        },
-    },
-    responses: coreWriteResponses,
-});
-
-router.patch('/users/:userId/password', async (req: Request, res: Response) => {
-    const { userId } = parseRequest(UserIdParams, req.params, 'params');
-
-    const payload = parseRequest(UserPasswordResetBody, req.body, 'body');
-
-    try {
-        // Core resets the password, clears the first sign-in flag and revokes the active sessions.
-        await coreAdminUsersClient.adminResetUserPassword(
-            userId,
-            { new_password: payload.new_password },
-            asCaller('CORE_API', req),
-        );
-
-        return res.status(204).send();
     } catch (error) {
         throw upstreamError('CORE_API', error, WRITE_STATUSES);
     }

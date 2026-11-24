@@ -1,0 +1,20 @@
+# Overlay used by ./agent_dev.sh (an AI agent or a human driving the dev stack from a shell).
+# Not needed for a plain `docker compose up`: it only opens the dependencies on the loopback
+# interface so the host can reach them, and bounds the container logs the agent reads back.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+    logging: &bounded-logs
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+    logging: *bounded-logs
+
+  bff-user:
+    logging: *bounded-logs

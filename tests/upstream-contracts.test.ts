@@ -38,7 +38,6 @@ const CONSUMED = [
   { operationId: 'adminListUsers', method: 'get', url: coreApiUrls.getAdminListUsersUrl({ page: 2, page_size: 5 }) },
   { operationId: 'adminPostUser', method: 'post', url: coreApiUrls.getAdminPostUserUrl() },
   { operationId: 'adminDeleteUser', method: 'delete', url: coreApiUrls.getAdminDeleteUserUrl(7) },
-  { operationId: 'adminResetUserPassword', method: 'patch', url: coreApiUrls.getAdminResetUserPasswordUrl(7) },
   { operationId: 'adminResetUserTwoFactor', method: 'delete', url: coreApiUrls.getAdminResetUserTwoFactorUrl(7) },
   { operationId: 'adminPatchUser', method: 'patch', url: coreApiUrls.getAdminPatchUserUrl(7) },
   { operationId: 'adminAddRoleToUser', method: 'post', url: coreApiUrls.getAdminAddRoleToUserUrl(7) },

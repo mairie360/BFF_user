@@ -37,9 +37,9 @@ jest.mock('../src/clients/coreClient', () => {
 const mockedGetMe = jest.mocked(coreUsersClient.getMe);
 const mockedListUsers = jest.mocked(coreAdminUsersClient.adminListUsers);
 const mockedDeleteUser = jest.mocked(coreAdminUsersClient.adminDeleteUser);
-const mockedResetUserPassword = jest.mocked(coreAdminUsersClient.adminResetUserPassword);
 const mockedGetPolicy = jest.mocked(coreTwoFactorPolicyClient.getTwoFactorPolicy);
 const mockedUpdatePolicy = jest.mocked(coreTwoFactorPolicyClient.updateTwoFactorPolicy);
+const mockedPatchUser = jest.mocked(coreAdminUsersClient.adminPatchUser);
 const mockedResetUserTwoFactor = jest.mocked(coreAdminUsersClient.adminResetUserTwoFactor);
 const mockedGetUser = jest.mocked(coreAdminUsersClient.adminGetUser);
 const mockedRevokeUserSessions = jest.mocked(coreAdminUsersClient.adminRevokeUserSessions);
@@ -224,7 +224,7 @@ describe('Administration routes', () => {
         expect(refused.headers['cache-control']).toBe('no-store');
     });
 
-    it('answers 503 without calling Core API when neither JWT_PUBLIC_KEY nor JWT_SECRET is configured', async () => {
+    it('answers 503 without calling Core API when JWT_PUBLIC_KEY is not configured', async () => {
         const token = tokenFor(1);
         delete process.env.JWT_PUBLIC_KEY;
         try {
@@ -308,20 +308,14 @@ describe('Administration routes', () => {
         expect(response.body).toEqual({ error: { code: 'BAD_GATEWAY', message: 'The CORE_API service is unavailable.', details: [] } });
     });
 
-    it('sets a new password for an authenticated administrator', async () => {
-        mockedResetUserPassword.mockResolvedValue(axiosResponse(undefined, 204));
-
+    it('an administrator cannot change the password of an account: no route, no Core call', async () => {
         const response = await request(app)
             .patch('/admin/users/42/password')
             .set('Authorization', `Bearer ${tokenFor(1)}`)
             .send({ new_password: 'Temporary-123!' });
 
-        expect(response.status).toBe(204);
-        expect(mockedResetUserPassword).toHaveBeenCalledWith(
-            42,
-            { new_password: 'Temporary-123!' },
-            expect.anything(),
-        );
+        expect(response.status).toBe(404);
+        expect(mockedPatchUser).not.toHaveBeenCalled();
     });
 
     it('MAIR-805 resets the second factor of a user for an administrator', async () => {
@@ -435,28 +429,6 @@ describe('Administration routes', () => {
         expect(mockedSuspendUser).not.toHaveBeenCalled();
     });
 
-    it('rejects an invalid new password', async () => {
-        const response = await request(app)
-            .patch('/admin/users/42/password')
-            .set('Authorization', `Bearer ${tokenFor(1)}`)
-            .send({ new_password: 'short' });
-
-        expect(response.status).toBe(400);
-        expect(mockedResetUserPassword).not.toHaveBeenCalled();
-    });
-
-    it('rejects a password reset when the requester is not an administrator', async () => {
-        mockedGetMe.mockResolvedValue(axiosResponse(meResponse({ role: 'User' })));
-
-        const response = await request(app)
-            .patch('/admin/users/42/password')
-            .set('Authorization', `Bearer ${tokenFor(2)}`)
-            .send({ new_password: 'Temporary-123!' });
-
-        expect(response.status).toBe(403);
-        expect(mockedResetUserPassword).not.toHaveBeenCalled();
-    });
-
     it('updates a group name and description', async () => {
         mockedPatchGroup.mockResolvedValue(axiosResponse(group(4, { name: 'Direction générale', description: 'Équipe de direction' })));
 
@@ -520,7 +492,6 @@ describe('Administration routes', () => {
         ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'short' }],
         // MAIR-757: Core API's policy needs 12 characters.
         ['post', '/admin/users', { email: 'jane.doe@mairie360.fr', first_name: 'Jane', last_name: 'Doe', password: 'Velo-2026-x' }],
-        ['patch', '/admin/users/7/password', { new_password: 'Velo-2026-x' }],
         ['patch', '/admin/users/7', {}],
         // MAIR-480: Core's phone characters, an upper-case ISO 3166-1 alpha-2 country.
         ['patch', '/admin/users/7', { phone_number: '06+12345678' }],
@@ -584,7 +555,6 @@ describe('Administration routes', () => {
     });
 
     it('does not forward a password in a user update', async () => {
-        const mockedPatchUser = jest.mocked(coreAdminUsersClient.adminPatchUser);
         mockedPatchUser.mockResolvedValue(axiosResponse('User updated', 200));
 
         const response = await request(app)

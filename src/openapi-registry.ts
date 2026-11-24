@@ -170,7 +170,7 @@ export const TwoFactorEnrolmentCompletedResponse = z.object({
     backup_codes: z.array(z.string()).openapi({ description: 'The ten single-use backup codes, shown once: the front must make the agent keep them.', example: ['a1b2-c3d4', 'e5f6-a7b8'] }),
 }).openapi('TwoFactorEnrolmentCompletedResponse');
 
-// Same password policy as the admin routes (AdminUserCreateBody, AdminUserPasswordResetBody): the length rule of Core
+// Same password policy as the admin account creation (AdminUserCreateBody): the length rule of Core
 // API's CNIL 2022 policy; Core also refuses common passwords and the account's e-mail or names, with a 400.
 /** Minimum password length of Core API's policy (CNIL 2022). */
 export const PASSWORD_MIN_LENGTH = 12;

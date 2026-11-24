@@ -3431,36 +3431,80 @@
           "response": []
         },
         {
-          "name": "MAIR-584 The administrator ends its first connection with a password",
+          "name": "MAIR-584 The agent's first sign-in asks for a password of its own",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json",
                 "type": "text"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_admin}}",
-                "type": "text"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/admin/users/{{su_user_id}}/password",
+              "raw": "{{baseUrl}}/auth/login",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "admin",
-                "users",
-                "{{su_user_id}}",
-                "password"
+                "auth",
+                "login"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"new_password\": \"{{test_user_new_password}}\"\n}",
+              "raw": "{\n  \"email\": \"{{su_email}}\",\n  \"password\": \"{{test_user_password}}\",\n  \"device_info\": \"newman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 412\", function () {",
+                  "    pm.response.to.have.status(412);",
+                  "});",
+                  "pm.test(\"Body carries the one-time token only\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(Object.keys(body)).to.eql(['token']);",
+                  "    pm.environment.set('first_connection_token', body.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-584 The agent ends its first connection with a password of its own",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/force_change_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "force_change_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{first_connection_token}}\",\n  \"new_password\": \"{{test_user_new_password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5025,7 +5069,7 @@
       "name": "Password reset",
       "item": [
         {
-          "name": "Administrator resets the password",
+          "name": "An administrator cannot change the password of an account",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5068,115 +5112,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 204\", function () {",
-                  "    pm.response.to.have.status(204);",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "The sessions of the account were revoked",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/me",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "me"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 401\", function () {",
-                  "    pm.response.to.have.status(401);",
+                  "pm.test(\"Status is 404: the route no longer exists\", function () {",
+                  "    pm.response.to.have.status(404);",
                   "});",
                   "pm.test(\"Body is the error envelope\", function () {",
                   "    const body = pm.response.json();",
                   "    pm.expect(body.error, 'error').to.be.an('object');",
-                  "    pm.expect(body.error.code).to.be.a('string');",
-                  "    pm.expect(body.error.message).to.be.a('string');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Sign in with the password set by the administrator",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/auth/login",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "login"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"{{test_user_email}}\",\n  \"password\": \"{{test_user_admin_password}}\",\n  \"device_info\": \"newman\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "const setCookies = pm.response.headers.all().filter((h) => h.key.toLowerCase() === 'set-cookie').map((h) => h.value);",
-                  "const cookieOf = (name) => {",
-                  "    const raw = setCookies.find((value) => value.startsWith(`${name}=`));",
-                  "    return raw === undefined ? undefined : decodeURIComponent(raw.split(';')[0].slice(name.length + 1));",
-                  "};",
-                  "pm.test(\"The session only travels in HttpOnly cookies\", function () {",
-                  "    const jwt = cookieOf('accessToken');",
-                  "    const refresh = cookieOf('refreshToken');",
-                  "    pm.expect(jwt, 'accessToken cookie').to.match(/^[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+\\.[A-Za-z0-9\\-_]+$/);",
-                  "    pm.expect(refresh, 'refreshToken cookie').to.be.a('string').and.not.empty;",
-                  "    setCookies.forEach((value) => pm.expect(value).to.match(/HttpOnly/i));",
-                  "    pm.expect(pm.response.headers.get('Authorization'), 'Authorization header').to.be.undefined;",
-                  "    const body = pm.response.json();",
-                  "    pm.expect(body.message).to.be.a('string');",
-                  "    pm.expect(body).to.not.have.property('token');",
-                  "    pm.expect(body).to.not.have.property('refresh_token');",
-                  "    pm.environment.set('jwt', jwt);",
-                  "    pm.environment.set('refresh_token', refresh);",
+                  "    pm.expect(body.error.code).to.eql('NOT_FOUND');",
                   "});"
                 ]
               }
@@ -5964,36 +5906,80 @@
           "response": []
         },
         {
-          "name": "MAIR-805 The administrator ends its first connection with a password",
+          "name": "MAIR-805 The agent's first sign-in asks for a password of its own",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json",
                 "type": "text"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_admin}}",
-                "type": "text"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/admin/users/{{tf_user_id}}/password",
+              "raw": "{{baseUrl}}/auth/login",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "admin",
-                "users",
-                "{{tf_user_id}}",
-                "password"
+                "auth",
+                "login"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"new_password\": \"{{test_user_new_password}}\"\n}",
+              "raw": "{\n  \"email\": \"{{tf_email}}\",\n  \"password\": \"{{test_user_password}}\",\n  \"device_info\": \"newman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 412\", function () {",
+                  "    pm.response.to.have.status(412);",
+                  "});",
+                  "pm.test(\"Body carries the one-time token only\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(Object.keys(body)).to.eql(['token']);",
+                  "    pm.environment.set('first_connection_token', body.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-805 The agent ends its first connection with a password of its own",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/force_change_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "force_change_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{first_connection_token}}\",\n  \"new_password\": \"{{test_user_new_password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7060,36 +7046,80 @@
           "response": []
         },
         {
-          "name": "MAIR-808 The administrator ends its first connection with a password",
+          "name": "MAIR-808 The agent's first sign-in asks for a password of its own",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json",
                 "type": "text"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{jwt_admin}}",
-                "type": "text"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/admin/users/{{pol_user_id}}/password",
+              "raw": "{{baseUrl}}/auth/login",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
-                "admin",
-                "users",
-                "{{pol_user_id}}",
-                "password"
+                "auth",
+                "login"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"new_password\": \"{{test_user_new_password}}\"\n}",
+              "raw": "{\n  \"email\": \"{{pol_email}}\",\n  \"password\": \"{{test_user_password}}\",\n  \"device_info\": \"newman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 412\", function () {",
+                  "    pm.response.to.have.status(412);",
+                  "});",
+                  "pm.test(\"Body carries the one-time token only\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(Object.keys(body)).to.eql(['token']);",
+                  "    pm.environment.set('first_connection_token', body.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "MAIR-808 The agent ends its first connection with a password of its own",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/force_change_password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "force_change_password"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{first_connection_token}}\",\n  \"new_password\": \"{{test_user_new_password}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
