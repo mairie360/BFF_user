@@ -224,7 +224,7 @@ describe('Administration routes', () => {
         expect(refused.headers['cache-control']).toBe('no-store');
     });
 
-    it('answers 503 without calling Core API when neither JWT_PUBLIC_KEY nor JWT_SECRET is configured', async () => {
+    it('answers 503 without calling Core API when JWT_PUBLIC_KEY is not configured', async () => {
         const token = tokenFor(1);
         delete process.env.JWT_PUBLIC_KEY;
         try {
