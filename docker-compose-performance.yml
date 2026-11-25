@@ -182,6 +182,8 @@ services:
       redis:
         condition: service_healthy
     environment:
+      # mairie360_api_lib >= 6 only lifts its rate limit with a rate of 0 (RATE_LIMIT_ENABLED is ignored).
+      RATE_LIMIT_PER_SECOND: "0"
       # Lift the API rate limit (MAIR-425): the scan and the load test hammer it as one user.
       RATE_LIMIT_ENABLED: "false"
       <<: *db-env

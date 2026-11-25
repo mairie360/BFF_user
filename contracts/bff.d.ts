@@ -7848,11 +7848,17 @@ export interface components {
             serviceId: number;
         };
         AdminServiceWriteBody: {
-            /** @example Roads */
+            /**
+             * @description Name of the service: 1 to 64 characters, without <, >, /, \ nor ..
+             * @example Roads
+             */
             name: string;
         };
         AdminServiceRenameBody: {
-            /** @example Scan service */
+            /**
+             * @description Name of the service: 1 to 64 characters, without <, >, /, \ nor ..
+             * @example Scan service
+             */
             name: string;
         };
         AdminUserServiceBody: {

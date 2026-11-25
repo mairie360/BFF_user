@@ -590,6 +590,40 @@ const handlers = {
   },
 
   // MAIR-584 / MAIR-904: sessions of a user and suspension, each on its own throwaway account.
+  // --- Stolen sessions (MAIR-773) ---
+  // The front proxies report the session they checked: a fresh account signs in, and its session is reported as
+  // possibly stolen, which closes it (`revoked: true`).
+  'POST /user/me/sessions/report': ({ request, data }) => {
+    const account = freshAccount(data);
+    try {
+      const jwt = ((loginOf(account).cookies.accessToken || [])[0] || {}).value;
+      check(request({ body: { level: 'possible', ip_address: '203.0.113.7', device_info: 'k6' }, headers: bearer(need(jwt, 'session to report')) }), {
+        'report session 200': (r) => r.status === 200,
+        'report session closes it': (r) => r.status === 200 && r.json('revoked') === true,
+      });
+    } finally {
+      dropAccount(account, data);
+    }
+  },
+  // The seeded administrator has no unread alert: 204, the Login screen shows nothing.
+  'GET /user/me/security-alert': ({ request, data }) =>
+    check(request({ headers: data.admin, params: { responseCallback: http.expectedStatuses(200, 204) } }), {
+      'security alert 200 or 204': (r) => r.status === 200 || r.status === 204,
+    }),
+  // An alert of nobody: Core answers 404, the route and the proxying are what is measured.
+  'POST /user/me/security-alert/{alertId}/acknowledge': ({ request, data }) =>
+    check(request({ path: { alertId: 2147483000 }, headers: data.admin, params: { responseCallback: http.expectedStatuses(404) } }), {
+      'acknowledge unknown alert 404': (r) => r.status === 404,
+    }),
+  'GET /admin/security-alerts': ({ request, data }) =>
+    check(request({ headers: data.admin }), {
+      'security alerts 200': (r) => r.status === 200 && Array.isArray(r.json()),
+    }),
+  'GET /admin/users/{userId}/connection-logs': ({ request, data }) =>
+    check(request({ path: { userId: 1 }, headers: data.admin }), {
+      'connection logs 200': (r) => r.status === 200 && Array.isArray(r.json()),
+    }),
+
   'GET /admin/users/{userId}/sessions': ({ request, data }) => {
     check(request({ path: { userId: 2 }, headers: data.admin }), {
       'admin user sessions 200': (r) => r.status === 200 && Array.isArray(r.json('sessions')),
