@@ -83,7 +83,8 @@ steps:
       rotated_refresh_token: {from: cookie.refreshToken, sensitive: true}
   - name: refresh with the consumed refresh token (deliberate error)
     request: {method: POST, path: /auth/refresh, json: {refresh_token: "{{refresh_token}}"}}
-    expect: [401]
+    # 409 when replayed within 10 s of its renewal (refresh_superseded), 401 after: both refuse it.
+    expect: [409, 401]
   - name: update the marker as admin (names and phone)
     request:
       method: PATCH
@@ -97,14 +98,15 @@ steps:
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {phone_number: "{{marker.phone}}{{marker.last_name}}"}
     expect: [400]
-  - name: reset the marker's password as admin
+  - name: reset the marker's password as admin (route removed, deliberate error)
     request:
       method: PATCH
       path: "/admin/users/{{user_id}}/password"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
       json: {new_password: "{{marker.password}}3"}
-  - name: log in with the new password
-    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}3", device_info: "gdpr marker"}}
+    expect: [404]
+  - name: log in again
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}2", device_info: "gdpr marker"}}
     capture:
       last_access_token: {from: cookie.accessToken, sensitive: true}
       last_refresh_token: {from: cookie.refreshToken, sensitive: true}
@@ -116,5 +118,5 @@ steps:
       path: "/admin/users/{{user_id}}"
       headers: {Authorization: "Bearer {{env.ADMIN_JWT}}"}
   - name: log in to the archived account (deliberate error)
-    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}3", device_info: "gdpr marker"}}
+    request: {method: POST, path: /auth/login, json: {email: "{{marker.email}}", password: "{{marker.password}}2", device_info: "gdpr marker"}}
     expect: [401]

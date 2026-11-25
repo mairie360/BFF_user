@@ -1,0 +1,44 @@
+# GDPR simulation risks reviewed and accepted (mairie360/CICD tests/gdpr/simulation/accepted.mjs).
+# A high-risk AI finding whose fingerprint is listed no longer blocks the Prod release.
+version: 1
+risks:
+  - fingerprint: 23a7593ee93b5ce97d434808  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: 33b1259e374adea7a7a4e567  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: 3bee3c645cd01d6941af348e  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: 6ff290bfe829f471fca08342  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: 7e4af028e2523eb076e749fa  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: 8d18d7b1ee07e8f3d88afc80  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: bd53b8af29ea5fae6e5aeda5  # users_audit_log.new_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
+  - fingerprint: f46cff88896f412aaba8e1bd  # users_audit_log.previous_data
+    reason: >-
+      Audit trail of the accounts (users_audit_log): the database trigger copies the users row on every change, and only administrators read it. On erasure, anonymize_user() replaces the identity keys of the user's rows with a salted hash whose salt is never stored (the sha256: values of the findings). The 10-year retention declared in retention_policies is not applied by fn_apply_retention_policies yet, so the rows stay until then. Accepted for this release.
+    date: 2026-11-25
+    author: Quentintnrl
