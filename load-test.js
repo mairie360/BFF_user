@@ -64,7 +64,9 @@ if (!PROFILE) throw new Error(`Unknown K6_PROFILE ${__ENV.K6_PROFILE}: ${Object.
 // Role and group seeded by init-test.sql, used by the role and group membership operations.
 const FIXTURE_ROLE_ID = 10;
 const FIXTURE_GROUP_ID = 10;
-const USER_PASSWORD = 'Perf-User-Passw0rd';
+// Core refuses a password holding the account's first or last name (CNIL 2022 policy): every account of this script
+// is named `Perf <something>`, so the password must not contain `perf`.
+const USER_PASSWORD = 'Granite-Tilleul-Horizon';
 // Derived from USER_PASSWORD rather than a second literal (Gitleaks reads a new literal as a secret).
 const SIGN_IN_PASSWORD = `${USER_PASSWORD}-sign-in`;
 
@@ -92,8 +94,10 @@ function randomAgent() {
   return { id, headers: agentTokens[id] };
 }
 
+// `__ITER` only exists inside an iteration: setup() (VU 0) has none and k6 throws a ReferenceError on it.
 function unique(prefix) {
-  return `${prefix}-${__VU}-${__ITER}-${Date.now()}`;
+  const iteration = typeof __ITER === 'undefined' ? 'setup' : __ITER;
+  return `${prefix}-${__VU}-${iteration}-${Date.now()}`;
 }
 
 function need(value, what) {
