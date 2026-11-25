@@ -1312,6 +1312,34 @@ describe('BFF User with a contract-driven Core API mock', () => {
       // The role is checked before the parameters, so nothing is revealed to an unauthorized caller.
       expect(upstreamSequence()).toEqual([called('GET', coreApiUrls.getGetMeUrl())]);
     });
+
+    // MAIR-1203: ZAP created services named after path traversal payloads (Path Traversal [6] on the 201).
+    test.each([
+      ['POST /admin/services', '../../etc/passwd'],
+      ['POST /admin/services', 'Voirie/Propreté'],
+      ['POST /admin/services', 'C:\\Windows\\system.ini'],
+      ['POST /admin/services', 'Voirie..'],
+      ['PATCH /admin/services/3', 'WEB-INF/web.xml'],
+    ])('MAIR-1203 %s refuses the service name %j with 400 before calling Core API', async (route, name) => {
+      const [method, pathname] = route.split(' ');
+
+      const response = await request(app)[method.toLowerCase() as 'post'](pathname).set('Authorization', `Bearer ${SESSION}`).send({ name });
+
+      expect(response.status).toBe(400);
+      expectBffContract(method, pathname, response);
+      expect(new Set(response.body.error.details.map((detail: { path: string }) => detail.path))).toEqual(new Set(['body.name']));
+      expect(coreApi.calls(CORE.adminServices, 'POST')).toHaveLength(0);
+      expect(coreApi.calls(CORE.adminService, 'PATCH')).toHaveLength(0);
+    });
+
+    test.each(['Voirie', 'Espaces verts - Propreté', "État civil", 'Service n°2. Urbanisme'])('MAIR-1203 POST /admin/services still accepts the name %j', async (name) => {
+      coreApi.on('post', CORE.adminServices, { status: 201, body: { id: 3, name, created_at: '2026-11-20T08:00:00Z', agents: 0 } });
+
+      const response = await request(app).post('/admin/services').set('Authorization', `Bearer ${SESSION}`).send({ name });
+
+      expect(response.status).toBe(201);
+      expect(coreApi.calls(CORE.adminServices, 'POST')[0].body).toEqual({ name });
+    });
   });
 
   describe('DELETE /admin/users/:userId', () => {

@@ -124,10 +124,20 @@ function check(name, condition, detail = '') {
   return condition;
 }
 
+// The journey's own client address (TEST-NET-3). Core trusts the private ranges as proxies, so without it every
+// container of the stack counts as one client, and the collection run just before uses up Core's sign-in budget
+// (30 a minute per address): the first passkey challenge of the journey got a 429.
+const JOURNEY_CLIENT_IP = '203.0.113.10';
+
 async function call(method, url, { token, body, headers = {} } = {}) {
   const response = await fetch(url, {
     method,
-    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
+    headers: {
+      'X-Forwarded-For': JOURNEY_CLIENT_IP,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     redirect: 'manual',
   });

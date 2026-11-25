@@ -162,7 +162,11 @@ const GroupCreateBody = z.object({
     color: GroupColorSchema.nullable().optional(),
 }).openapi('AdminGroupCreateBody');
 // Services of the mairie (MAIR-923).
-const ServiceName = noMarkup(z.string().trim().min(1).max(64)).openapi({ example: 'Roads' });
+// No `/`, `\` nor `..`: a service name is a label, and path-like names only served a scanner's traversal payloads.
+const ServiceName = noMarkup(z.string().trim().min(1).max(64))
+    .regex(/^[^/\\]*$/, 'Must not contain / or \\')
+    .refine((value) => !value.includes('..'), 'Must not contain ..')
+    .openapi({ description: 'Name of the service: 1 to 64 characters, without <, >, /, \\ nor ..', example: 'Roads' });
 const ServiceWriteBody = z.object({ name: ServiceName }).openapi('AdminServiceWriteBody');
 // Update examples name another service than the seeded one, so a replayed example never hits a taken name.
 const ServiceRenameBody = z.object({ name: ServiceName.openapi({ example: 'Scan service' }) }).openapi('AdminServiceRenameBody');
