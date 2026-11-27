@@ -9,6 +9,7 @@ import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 import checkApis from './routes/check_apis';
 import healthRouter from './routes/health';
+import searchRouter from './routes/search';
 import sessionRouter from './routes/session';
 import userRouter from './routes/user';
 
@@ -42,6 +43,8 @@ app.use('/session', sessionRouter);
 // Alias kept for the fronts and the BFFs that call GET /me.
 app.use('/', sessionRouter);
 app.use('/admin', adminRouter);
+// The header's global search, over every business API (noStore + requireSession in the router).
+app.use('/search', searchRouter);
 
 // Unknown routes and every error end in the shared envelope `{ error: { code, message, details } }`:
 // the status of the error is kept (400 for an unparsable body, 401, 404, 409, 502, 503...) and anything

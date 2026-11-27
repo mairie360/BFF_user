@@ -75,6 +75,7 @@ export function meResponse(overrides: Partial<GetMeResponseView> = {}): GetMeRes
     roles: role ? [role] : [],
     status: 'active',
     groups: [group(1)],
+    has_photo: false,
     // MAIR-916: the modules the role opens, in navigation order (Admin opens every one).
     modules: role === 'Admin' ? ['dashboard', 'projects', 'calendar', 'messages', 'training', 'admin', 'settings'] : ['dashboard'],
     ...overrides,

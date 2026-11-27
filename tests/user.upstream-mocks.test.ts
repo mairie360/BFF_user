@@ -920,6 +920,8 @@ describe('BFF User with a contract-driven Core API mock', () => {
       delete user.groups;
       delete user.roles;
       delete user.modules;
+      // The photo flag of Core is not part of this BFF's session answer.
+      delete user.has_photo;
       expect(response.body).toEqual({
         user,
         groups: [group(1), group(2, { description: null })],

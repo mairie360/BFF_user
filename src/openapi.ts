@@ -6,6 +6,7 @@ import './routes/auth';
 import './routes/user';
 import './routes/admin';
 import './routes/session';
+import './routes/search';
 
 // Runtime documentation and exported clients use the same mounted routes.
 export const openApiDocument = new OpenApiGeneratorV31(registry.definitions).generateDocument({

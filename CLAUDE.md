@@ -72,6 +72,14 @@ One exception: `GET /admin/projects-without-group` (groups tab of the administra
 read per call, 503 when missing, not required at startup). It forwards the caller's session after `requireAdmin`; the
 test stacks run `project-api` and `bff-project` images for it.
 
+Second exception: `GET /search` (`src/routes/search.ts`, the global search of the shared header) is
+`globalSearchHandler` of `@mairie360/bffs-lib` (>= 3.1.0): it queries `GET /api/v1/search` of Core, Project, Calendar,
+Message and E-learning API in parallel with the caller's session (`CORE_API_URL`, `PROJECT_API_URL`, `CALENDAR_API_URL`,
+`MESSAGE_API_URL`, `ELEARNING_API_URL`, read per call, optional at startup) and lists a module whose API fails or is not
+configured in `unavailable`. The test stacks only configure Core for it, so newman expects the other modules unavailable;
+`tests/mair-1230-global-search.upstream-mocks.test.ts` mocks the five APIs from their installed `*-api-openapi` packages
+(devDependencies).
+
 The administration V2 (MAIR-584, MAIR-904): `GET /admin/users` relays `account_status`, `role_id` and `sort` to Core and its rows
 carry `account_status`, `active_sessions`, `last_login_at` and `two_factor`; `GET /admin/users/{userId}/sessions` reads the sessions of
 Core's user record, `DELETE /admin/users/{userId}/sessions[/{sessionId}]` and `POST /admin/users/{userId}/suspend|reactivate` relay

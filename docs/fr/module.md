@@ -14,6 +14,7 @@ Domaine fonctionnel: Identité et administration.
 
 - Connexion, changement de mot de passe de première connexion, mot de passe oublié (e-mail de réinitialisation, puis réinitialisation avec le jeton reçu, qui connecte l’utilisateur) et déconnexion (pas d’inscription publique: les administrateurs créent les comptes).
 - Consultation de la session avec identité, groupes et rôles via `/me` et `/session/me`.
+- Recherche globale de l’en-tête partagé (`/search`) : agents, projets et tâches, événements, conversations et messages, et formations, regroupés par module.
 - Gestion des utilisateurs, rôles, groupes, membres et opérations de session sous `/admin`.
 - Liste des projets restés sans groupe (`/admin/projects-without-group`, lue dans BFF_Project) pour l’onglet Groupes.
 

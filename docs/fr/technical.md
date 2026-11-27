@@ -59,6 +59,7 @@ Les valeurs ci-dessous sont des exemples locaux ou des comportements expliciteme
 | `PORT` | 4000 | Port de cet exemple local. |
 | `CORE_API_URL` | http://core-api:3000 | **Obligatoire**, sans valeur par défaut. Adresse de Core (schéma facultatif, `http` par défaut), relue à chaque appel : le serveur ne démarre pas sans elle, et une route qui appelle Core répond 503 si elle disparaît. |
 | `CORE_API_PORT` | 3000 | Port ajouté si l’adresse ne contient pas de port. |
+| `PROJECT_API_URL`, `CALENDAR_API_URL`, `MESSAGE_API_URL`, `ELEARNING_API_URL` (+ `*_PORT` facultatif) | http://project-api:3001 | API métier lues par `GET /search` seulement, à chaque appel : facultatives au démarrage, un module dont l’adresse manque est listé dans `unavailable`. |
 | `PROJECT_BFF_URL` | http://bff-project:4001 | Adresse de BFF_Project, relue à chaque appel par `GET /admin/projects-without-group` seulement : facultative au démarrage, cette route répond 503 sans elle. |
 | `PROJECT_BFF_PORT` | 4001 | Port ajouté quand l’adresse n’en a pas, ou seulement le port par défaut de son schéma (`:80`, `:443`), que l’analyse de l’URL retire : ne pas la définir pour garder un tel port explicite. |
 | `JWT_PUBLIC_KEY` | — | **Obligatoire** pour vérifier les jetons EdDSA de Core (MAIR-680 ; bffs-lib >= 3 refuse les jetons HS256 et ignore `JWT_SECRET`) : clé publique Ed25519 de Core (PEM ; plusieurs blocs pendant une rotation, retours à la ligne échappés en `\n` acceptés). Les jetons de session sont vérifiés localement avec elle (EdDSA, `kid`, `iss`, `aud`) ; le serveur ne démarre pas sans elle (503 sur `/admin/*` si elle disparaît). |
@@ -127,6 +128,9 @@ Inventaire extrait de `contracts/openapi.json`. Les paramètres entre accolades 
 | POST | `/user/me/security-alert/{alertId}/acknowledge` | — | 204, 400, 401, 404, 429, 500, 502, 503 |
 | GET | `/me` | — | 200, 401, 502 |
 | GET | `/session/me` | — | 200, 401, 502 |
+| GET | `/search` | — | 200, 400, 401, 500, 503 |
+
+Recherche globale de l’en-tête partagé : `GET /search?q=&limit=` (`q` de 2 à 100 caractères une fois rogné, `limit` de 1 à 20, 8 par défaut) est servie par `globalSearchHandler` de `@mairie360/bffs-lib`. Elle interroge en parallèle `GET /api/v1/search` des cinq API métier avec la session de l’appelant (Core API pour les agents, puis Project, Calendar, Message et E-learning API, via `CORE_API_URL`, `PROJECT_API_URL`, `CALENDAR_API_URL`, `MESSAGE_API_URL`, `ELEARNING_API_URL`), jamais un autre BFF, et répond `{ groups: [{ module, items }], unavailable }` : un module dont l’API échoue, dépasse le délai ou n’est pas configurée est listé dans `unavailable` au lieu de faire échouer la recherche, et une session refusée par une API donne un 401. Rien n’est stocké ni journalisé, hormis les modules indisponibles.
 
 `GET /admin/groups` et `GET /admin/sessions/history` renvoient une page de la liste de Core, choisie par le front avec `limit` (1 à 500) et `offset` (0 à 1000000), les bornes de Core API : une valeur hors bornes donne un 400, et sans eux Core renvoie ses 100 premiers éléments. Les vérifications faites par le BFF lui-même (les groupes de `/me`, la lecture des membres avant d'ajouter ou de retirer un membre d'un groupe) lisent la plus grande page de Core, 500 éléments.
 

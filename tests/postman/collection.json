@@ -11658,6 +11658,270 @@
         }
       ],
       "description": "The account is deleted by an administrator."
+    },
+    {
+      "name": "MAIR-1230 Global search",
+      "item": [
+        {
+          "name": "MAIR-1230 Read the seeded agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const agent = pm.response.json();",
+                  "pm.test('The agent has a name and an e-mail', function () {",
+                  "    pm.expect(agent.last_name).to.be.a('string').and.not.empty;",
+                  "    pm.expect(agent.email).to.be.a('string').and.include('@');",
+                  "});",
+                  "// The local part of the e-mail is unique among the seeded accounts: the search matches it as a substring.",
+                  "pm.environment.set('search_term', agent.email.split('@')[0]);",
+                  "pm.environment.set('search_agent_last_name', agent.last_name);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/{{agent_user_id}}/about",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "{{agent_user_id}}",
+                "about"
+              ]
+            }
+          }
+        },
+        {
+          "name": "MAIR-1230 The global search finds the seeded agent in the agents group",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"No-store\", function () {",
+                  "    pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store');",
+                  "});",
+                  "const body = pm.response.json();",
+                  "pm.test(\"The answer has the contract shape\", function () {",
+                  "    pm.expect(body.groups).to.be.an('array');",
+                  "    pm.expect(body.unavailable).to.be.an('array');",
+                  "    const modules = ['agents', 'projects', 'calendar', 'messages', 'elearning'];",
+                  "    for (const group of body.groups) {",
+                  "        pm.expect(modules).to.include(group.module);",
+                  "        pm.expect(group.items).to.be.an('array').that.is.not.empty;",
+                  "        for (const entry of group.items) {",
+                  "            pm.expect(entry).to.have.all.keys('kind', 'id', 'title', 'excerpt', 'parent_id', 'updated_at');",
+                  "        }",
+                  "    }",
+                  "    for (const module of body.unavailable) pm.expect(modules).to.include(module);",
+                  "});",
+                  "pm.test(\"The seeded agent is found among the agents\", function () {",
+                  "    pm.expect(body.unavailable).to.not.include('agents');",
+                  "    const group = body.groups.find((entry) => entry.module === 'agents');",
+                  "    pm.expect(group, 'agents group').to.be.an('object');",
+                  "    const agentId = Number(pm.environment.get('agent_user_id'));",
+                  "    const agent = group.items.find((entry) => entry.kind === 'agent' && entry.id === agentId);",
+                  "    pm.expect(agent, 'the seeded agent').to.be.an('object');",
+                  "    pm.expect(agent.title).to.include(pm.environment.get('search_agent_last_name'));",
+                  "    pm.expect(agent.parent_id).to.eql(null);",
+                  "});",
+                  "pm.test(\"The modules whose API this stack does not run are unavailable, not an error\", function () {",
+                  "    pm.expect(body.unavailable).to.include.members(['calendar', 'messages', 'elearning']);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q={{search_term}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{search_term}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "MAIR-1230 A one-character term is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const error = pm.response.json().error;",
+                  "    pm.expect(error).to.be.an('object');",
+                  "    pm.expect(error.code).to.eql('BAD_REQUEST');",
+                  "    pm.expect(error.message).to.be.a('string').and.not.empty;",
+                  "    pm.expect(error.details.map((detail) => detail.path)).to.include('query.q');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=a",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "a"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "MAIR-1230 A limit over 20 is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const error = pm.response.json().error;",
+                  "    pm.expect(error).to.be.an('object');",
+                  "    pm.expect(error.code).to.eql('BAD_REQUEST');",
+                  "    pm.expect(error.message).to.be.a('string').and.not.empty;",
+                  "    pm.expect(error.details.map((detail) => detail.path)).to.include('query.limit');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_admin}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/search?q={{search_term}}&limit=21",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{search_term}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "21"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "MAIR-1230 Without a session the search is refused",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "pm.test(\"Body is the error envelope\", function () {",
+                  "    const error = pm.response.json().error;",
+                  "    pm.expect(error).to.be.an('object');",
+                  "    pm.expect(error.code).to.eql('UNAUTHORIZED');",
+                  "    pm.expect(error.message).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.environment.unset('search_term');",
+                  "pm.environment.unset('search_agent_last_name');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search?q={{search_term}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "{{search_term}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ]
 }

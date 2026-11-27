@@ -75,6 +75,7 @@ Generated contract: [`contracts/openapi.json`](contracts/openapi.json) (36 opera
 | `POST` | `/admin/sessions/revoke` | Revokes a session through Core API |
 | `GET` | `/me` | Get the identity, groups and roles of the session |
 | `GET` | `/session/me` | Get the identity, groups and roles of the session |
+| `GET` | `/search` | Global search of the shared header, over the five business APIs, grouped by module |
 
 ## Upstream contracts
 

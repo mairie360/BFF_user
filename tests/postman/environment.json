@@ -169,6 +169,18 @@
       "value": "",
       "type": "default",
       "enabled": true
+    },
+    {
+      "key": "search_term",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "search_agent_last_name",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ]
 }

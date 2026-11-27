@@ -41,6 +41,7 @@ Les chemins sont relatifs au BFF. Les proxies web conservent méthode, paramètr
 | POST | `/admin/sessions/revoke` | 200 CoreResponse ; 201 CoreResponse ; 204 Aucun contenu retourné par le Core API |
 | GET | `/me` | 200 SessionResponse |
 | GET | `/session/me` | 200 SessionResponse |
+| GET | `/search` | 200 GlobalSearchResponse |
 
 ## Mise à jour et validation
 
