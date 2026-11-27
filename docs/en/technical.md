@@ -59,6 +59,7 @@ Values below are local examples or explicitly described behavior, not production
 | `PORT` | 4000 | Port used by this local example. |
 | `CORE_API_URL` | http://core-api:3000 | **Required**, no default. Core address (scheme optional, `http` by default), read on every call: the server does not start without it, and a route calling Core answers 503 if it disappears. |
 | `CORE_API_PORT` | 3000 | Port appended when the address has none. |
+| `PROJECT_API_URL`, `CALENDAR_API_URL`, `MESSAGE_API_URL`, `ELEARNING_API_URL` (+ optional `*_PORT`) | http://project-api:3001 | Business APIs read by `GET /search` only, on every call: optional at startup, a module whose address is missing is listed in `unavailable`. |
 | `PROJECT_BFF_URL` | http://bff-project:4001 | BFF_Project address, read on every call by `GET /admin/projects-without-group` only: optional at startup, that route answers 503 without it. |
 | `PROJECT_BFF_PORT` | 4001 | Port appended when the address has none, or only the default port of its scheme (`:80`, `:443`), which URL parsing drops: leave it unset to keep such an explicit port. |
 | `JWT_PUBLIC_KEY` | — | **Required** to verify Core's EdDSA tokens (MAIR-680; bffs-lib >= 3 refuses HS256 tokens and ignores `JWT_SECRET`): Core's Ed25519 public key (PEM; several blocks during a rotation, `\n`-escaped line breaks accepted). Session tokens are verified locally with it (EdDSA, `kid`, `iss`, `aud`); the server does not start without it (503 on `/admin/*` if it disappears). |
@@ -127,6 +128,9 @@ Inventory extracted from `contracts/openapi.json`. Replace brace parameters with
 | POST | `/user/me/security-alert/{alertId}/acknowledge` | — | 204, 400, 401, 404, 429, 500, 502, 503 |
 | GET | `/me` | — | 200, 401, 502 |
 | GET | `/session/me` | — | 200, 401, 502 |
+| GET | `/search` | — | 200, 400, 401, 500, 503 |
+
+Global search of the shared header: `GET /search?q=&limit=` (`q` 2 to 100 characters once trimmed, `limit` 1 to 20, default 8) is served by `globalSearchHandler` of `@mairie360/bffs-lib`. It queries `GET /api/v1/search` of the five business APIs in parallel with the caller's session (Core API for the agents, then Project, Calendar, Message and E-learning API, from `CORE_API_URL`, `PROJECT_API_URL`, `CALENDAR_API_URL`, `MESSAGE_API_URL`, `ELEARNING_API_URL`), never another BFF, and answers `{ groups: [{ module, items }], unavailable }`: a module whose API fails, times out or is not configured is listed in `unavailable` instead of failing the search, and a session one API refuses is a 401. Nothing is stored or logged but the unavailable modules.
 
 `GET /admin/groups` and `GET /admin/sessions/history` return one page of Core's list, chosen by the front with `limit` (1 to 500) and `offset` (0 to 1000000), Core API's own bounds: a value outside them is a 400, and without them Core answers its first 100 items. The checks the BFF makes itself (the groups of `/me`, the membership read before adding or removing a group member) read Core's largest page, 500 items.
 

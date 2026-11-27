@@ -59,6 +59,8 @@ describe('GET /session/me', () => {
         delete user.groups;
         delete user.roles;
         delete user.modules;
+        // The photo flag of Core is not part of this BFF's session answer.
+        delete user.has_photo;
         // MAIR-916: the modules of the session's role, relayed for the shared navigation.
         expect(response.body).toEqual({ user, groups: [group(7, { name: 'Direction des finances' })], roles: ['Responsable'], modules: ['dashboard'] });
         expect(mockedGetMe).toHaveBeenCalledWith({ baseURL: 'http://core.test', timeout: 10_000, headers: { Authorization: `Bearer ${tokenFor(42)}` } });

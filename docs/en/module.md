@@ -14,6 +14,7 @@ Business domain: Identity and administration.
 
 - Sign-in, first-sign-in password change, forgotten password (reset e-mail, then reset with the e-mailed token, which signs the user in) and logout (no public self-registration: administrators create accounts).
 - Session lookup with identity, groups and roles through `/me` and `/session/me`.
+- Global search of the shared header (`/search`): agents, projects and tasks, events, conversations and messages, and courses, grouped by module.
 - User, role, group, membership and session operations under `/admin`.
 - List of the projects left without a group (`/admin/projects-without-group`, read from BFF_Project) for the groups tab.
 
